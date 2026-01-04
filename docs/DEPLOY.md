@@ -16,7 +16,7 @@
 
 ```bash
 # Install Vercel CLI (optional)
-npm i -g vercel
+pnpm add -g vercel
 
 # Login to Vercel
 vercel login
@@ -76,8 +76,8 @@ The `vercel.json` configuration includes:
 
 ```bash
 # Local build test (same as Vercel)
-npm run build
-npm run start
+pnpm run build
+pnpm run start
 
 # Check PWA features
 # Visit: chrome://flags/#bypass-app-banner-engagement-checks

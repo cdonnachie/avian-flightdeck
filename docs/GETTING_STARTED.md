@@ -16,15 +16,15 @@
 1. **Development Server:**
 
    ```bash
-   npm run dev
+   pnpm run dev
    ```
 
    Then open [http://localhost:3000](http://localhost:3000)
 
 2. **Production Build:**
    ```bash
-   npm run build
-   npm start
+   pnpm run build
+   pnpm start
    ```
 
 ## 🔧 Key Features Implemented
@@ -65,7 +65,7 @@
 Ready to launch your Avian FlightDeck Wallet! Run:
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 The wallet will be available at `http://localhost:3000` with all features ready for testing.

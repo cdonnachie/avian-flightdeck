@@ -42,7 +42,7 @@ A Progressive Web App (PWA) implementation of the Avian cryptocurrency wallet, b
 ### Prerequisites
 
 - Node.js 18+
-- npm or yarn
+- pnpm
 
 ### Installation
 
@@ -56,7 +56,7 @@ cd avian-flightdeck
 2. Install dependencies:
 
 ```bash
-npm install
+pnpm install
 ```
 
 3. Set up environment variables (optional):
@@ -70,7 +70,7 @@ Edit `.env.local` if you need to customize any settings.
 4. Run the development server:
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 6. Open [http://localhost:3000](http://localhost:3000) in your browser
@@ -78,8 +78,8 @@ npm run dev
 ### Building for Production
 
 ```bash
-npm run build
-npm start
+pnpm run build
+pnpm start
 ```
 
 ## Project Structure
