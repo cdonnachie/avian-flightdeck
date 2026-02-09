@@ -1614,6 +1614,7 @@ export class WalletService {
         name: string;
         password: string; // Now required for security
         useMnemonic?: boolean;
+        mnemonic?: string; // Optional: use specific mnemonic instead of generating new one
         passphrase?: string; // Optional BIP39 passphrase
         mnemonicLength?: 128 | 256; // 12 or 24 words (default: 128)
         makeActive?: boolean;
@@ -1627,9 +1628,18 @@ export class WalletService {
             let mnemonic: string | undefined;
 
             if (params.useMnemonic !== false) {
-                // Generate BIP39 mnemonic with specified length (default: 128 bits = 12 words)
-                const entropyBits = params.mnemonicLength || 128;
-                mnemonic = bip39.generateMnemonic(entropyBits); // 12 or 24 words
+                // Use provided mnemonic or generate a new one
+                if (params.mnemonic) {
+                    // Validate provided mnemonic
+                    if (!bip39.validateMnemonic(params.mnemonic)) {
+                        throw new Error('Invalid mnemonic provided');
+                    }
+                    mnemonic = params.mnemonic;
+                } else {
+                    // Generate BIP39 mnemonic with specified length (default: 128 bits = 12 words)
+                    const entropyBits = params.mnemonicLength || 128;
+                    mnemonic = bip39.generateMnemonic(entropyBits); // 12 or 24 words
+                }
 
                 // Derive seed from mnemonic with optional passphrase
                 const seed = await bip39.mnemonicToSeed(mnemonic, params.passphrase || '');

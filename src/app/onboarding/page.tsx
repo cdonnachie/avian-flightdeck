@@ -61,6 +61,8 @@ export default function OnboardingPage() {
                     name: data.name.trim(),
                     password: data.password,
                     useMnemonic: true,
+                    mnemonic: data.mnemonic,
+                    passphrase: data.passphrase,
                     makeActive: true,
                 });
             } else if (formMode === 'importMnemonic') {
@@ -68,6 +70,8 @@ export default function OnboardingPage() {
                     name: data.name.trim(),
                     mnemonic: data.mnemonic!.trim(),
                     password: data.password,
+                    passphrase: data.passphrase,
+                    coinType: data.coinType,
                     makeActive: true,
                 });
             } else if (formMode === 'importWIF') {
