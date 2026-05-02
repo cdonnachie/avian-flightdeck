@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Check, RefreshCw, AlertTriangle, Eye, EyeOff } from 'lucide-react';
+import { Check, RefreshCw, AlertTriangle, Eye, EyeOff, ScrollText } from 'lucide-react';
 import * as bip39 from 'bip39';
+import { AddressType, ADDRESS_TYPE_INFO } from '@/services/wallet/WalletService';
 import PasswordStrengthChecker, { PasswordStrength } from '@/components/PasswordStrength';
 import { StorageService } from '@/services/core/StorageService';
 
@@ -22,7 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 // Define the wallet creation modes
-export type WalletCreationMode = 'create' | 'importMnemonic' | 'importWIF';
+export type WalletCreationMode = 'create' | 'importMnemonic' | 'importWIF' | 'importDescriptor';
 
 // Define component props
 interface WalletCreationFormProps {
@@ -39,9 +40,11 @@ export interface WalletCreationData {
   password: string;
   mnemonic?: string;
   privateKey?: string;
+  descriptor?: string; // BIP380 xprv descriptor
   passphrase?: string; // Optional BIP39 passphrase
   mnemonicLength?: '12' | '24'; // Recovery phrase length
   coinType?: 921 | 175; // BIP44 coin type for import compatibility
+  addressType?: AddressType; // Script type / BIP derivation standard
 }
 
 export default function WalletCreationForm({
@@ -57,16 +60,19 @@ export default function WalletCreationForm({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [mnemonic, setMnemonic] = useState('');
   const [privateKey, setPrivateKey] = useState('');
+  const [descriptor, setDescriptor] = useState('');
   const [passphrase, setPassphrase] = useState('');
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [mnemonicLength, setMnemonicLength] = useState<'12' | '24'>('12');
   const [coinType, setCoinType] = useState<921 | 175>(921);
+  const [addressType, setAddressType] = useState<AddressType>('p2pkh');
 
   // Error states
   const [nameError, setNameError] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [mnemonicError, setMnemonicError] = useState('');
   const [privateKeyError, setPrivateKeyError] = useState('');
+  const [descriptorError, setDescriptorError] = useState('');
 
   // Password strength
   const [passwordStrength, setPasswordStrength] = useState<PasswordStrength | null>(null);
@@ -328,6 +334,25 @@ export default function WalletCreationForm({
       return;
     }
 
+    // Validate descriptor if in import descriptor mode
+    if (mode === 'importDescriptor') {
+      if (!descriptor.trim()) {
+        setDescriptorError('Descriptor is required');
+        return;
+      }
+      // Basic format check
+      const clean = descriptor.trim().replace(/#[a-zA-Z0-9]+$/, '');
+      if (!clean.startsWith('pkh(') && !clean.startsWith('wpkh(') && !clean.startsWith('sh(wpkh(')) {
+        setDescriptorError('Invalid descriptor format. Expected pkh(...), wpkh(...), or sh(wpkh(...)).');
+        return;
+      }
+      if (!clean.includes('xprv')) {
+        setDescriptorError('Descriptor must contain an xprv (private key). Run `listdescriptors true` in Avian Core.');
+        return;
+      }
+      setDescriptorError('');
+    }
+
     // Create data object for submission
     const data: WalletCreationData = {
       name: walletName.trim(),
@@ -344,11 +369,14 @@ export default function WalletCreationForm({
     } else if (mode === 'importMnemonic') {
       data.mnemonic = mnemonic.trim();
       data.coinType = coinType; // Include coin type for legacy compatibility
+      data.addressType = addressType;
       if (passphrase) {
         data.passphrase = passphrase;
       }
     } else if (mode === 'importWIF') {
       data.privateKey = privateKey.trim();
+    } else if (mode === 'importDescriptor') {
+      data.descriptor = descriptor.trim();
     }
 
     // Submit form data
@@ -381,6 +409,11 @@ export default function WalletCreationForm({
           title: 'Import from Private Key',
           description: 'Import an existing wallet using your private key (WIF format)',
         };
+      case 'importDescriptor':
+        return {
+          title: 'Import from Descriptor',
+          description: 'Import from an Avian Core v5 output script descriptor (listdescriptors true)',
+        };
     }
   };
 
@@ -394,6 +427,8 @@ export default function WalletCreationForm({
           return 'Importing...';
         case 'importWIF':
           return 'Importing...';
+        case 'importDescriptor':
+          return 'Importing...';
       }
     } else {
       switch (mode) {
@@ -402,6 +437,8 @@ export default function WalletCreationForm({
         case 'importMnemonic':
           return 'Import Wallet';
         case 'importWIF':
+          return 'Import Wallet';
+        case 'importDescriptor':
           return 'Import Wallet';
       }
     }
@@ -424,6 +461,8 @@ export default function WalletCreationForm({
       return !walletName || !mnemonic || !hasValidPassword;
     } else if (mode === 'importWIF') {
       return !walletName || !privateKey || !hasValidPassword;
+    } else if (mode === 'importDescriptor') {
+      return !walletName || !descriptor || !hasValidPassword;
     }
 
     return true;
@@ -897,6 +936,38 @@ export default function WalletCreationForm({
                   </div>
 
                   <div className="space-y-3">
+                    <Label className="text-sm font-medium">Address Type</Label>
+                    <div className="space-y-2">
+                      {(Object.keys(ADDRESS_TYPE_INFO) as AddressType[]).map((type) => (
+                        <label key={type} className="flex items-center space-x-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="addressType"
+                            value={type}
+                            checked={addressType === type}
+                            onChange={() => setAddressType(type)}
+                            className="w-4 h-4"
+                            disabled={isSubmitting}
+                          />
+                          <span className="text-sm">
+                            {ADDRESS_TYPE_INFO[type].label} ({ADDRESS_TYPE_INFO[type].bipLabel})
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    {addressType !== 'p2pkh' && (
+                      <Alert className="bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertTitle className="text-amber-800 dark:text-amber-200">Asset Transfers Not Supported</AlertTitle>
+                        <AlertDescription className="text-amber-700 dark:text-amber-300">
+                          Avian asset operations (issue, transfer) require a Legacy (P2PKH) address.
+                          SegWit addresses can only send and receive AVN.
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
                     <Label className="text-sm font-medium">
                       BIP44 Coin Type (Legacy Compatibility)
                     </Label>
@@ -1215,6 +1286,160 @@ export default function WalletCreationForm({
             ) : (
               <>
                 <Check className="w-4 h-4 mr-2" />
+                Import Wallet
+              </>
+            )}
+          </Button>
+        </CardFooter>
+      </Card>
+    );
+  }
+
+  // ── Import from Descriptor ──────────────────────────────────────────────────
+  if (mode === 'importDescriptor') {
+    return (
+      <Card className={isFullscreen ? 'border-0 shadow-none' : ''}>
+        {!isFullscreen && (
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ScrollText className="w-5 h-5" />
+              {title}
+            </CardTitle>
+            <CardDescription>{description}</CardDescription>
+          </CardHeader>
+        )}
+        <CardContent className="space-y-4 pt-4">
+          <Alert className="border-blue-200 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-700">
+            <AlertDescription className="text-sm text-blue-800 dark:text-blue-200">
+              In Avian Core v5, run: <code className="font-mono text-xs bg-blue-100 dark:bg-blue-800 px-1 rounded">listdescriptors true</code> — then paste the descriptor for the address type you want to import.
+            </AlertDescription>
+          </Alert>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="desc-wallet-name">Wallet Name</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="desc-wallet-name"
+                  type="text"
+                  value={walletName}
+                  onChange={(e) => setWalletName(e.target.value)}
+                  placeholder="Enter wallet name"
+                  disabled={isSubmitting}
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={handleGenerateWalletName}
+                  disabled={isSubmitting}
+                  title="Generate creative wallet name"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </div>
+              {nameError && <p className="text-red-500 text-sm mt-1">{nameError}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="descriptor-input">Output Script Descriptor</Label>
+              <Textarea
+                id="descriptor-input"
+                value={descriptor}
+                onChange={(e) => { setDescriptor(e.target.value); setDescriptorError(''); }}
+                placeholder="wpkh([a1b2c3d4/84h/921h/0h]xprvABC.../0/*)#checksum"
+                disabled={isSubmitting}
+                className="font-mono text-xs min-h-[80px] resize-none"
+              />
+              {descriptorError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{descriptorError}</AlertDescription>
+                </Alert>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Paste a descriptor containing an <strong>xprv</strong> (private key). Descriptors with xpub only cannot sign transactions.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="desc-import-password">Password</Label>
+              <div className="relative">
+                <Input
+                  id="desc-import-password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter password"
+                  autoComplete="new-password"
+                  disabled={isSubmitting}
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                  disabled={isSubmitting}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4 text-gray-500" /> : <Eye className="h-4 w-4 text-gray-500" />}
+                </Button>
+              </div>
+              {passwordStrength && <PasswordStrengthChecker password={password} onStrengthChange={handlePasswordStrengthChange} className="mt-2" />}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="desc-confirm-password">Confirm Password</Label>
+              <div className="relative">
+                <Input
+                  id="desc-confirm-password"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm password"
+                  autoComplete="new-password"
+                  disabled={isSubmitting}
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  disabled={isSubmitting}
+                >
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4 text-gray-500" /> : <Eye className="h-4 w-4 text-gray-500" />}
+                </Button>
+              </div>
+            </div>
+
+            {passwordError && (
+              <Alert variant="destructive">
+                <AlertDescription>{passwordError}</AlertDescription>
+              </Alert>
+            )}
+          </div>
+        </CardContent>
+        <CardFooter className="flex justify-between mt-4">
+          <Button variant="outline" onClick={onCancel} disabled={isSubmitting}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            variant="default"
+            className="bg-avian-600 hover:bg-avian-700"
+            disabled={isButtonDisabled()}
+          >
+            {isSubmitting ? (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                Importing...
+              </>
+            ) : (
+              <>
+                <ScrollText className="w-4 h-4 mr-2" />
                 Import Wallet
               </>
             )}

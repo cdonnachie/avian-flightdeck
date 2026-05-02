@@ -860,9 +860,10 @@ export function WalletManager({ onWalletSelect, onClose }: WalletManagerProps) {
 
           <TabsContent value="import" className="mt-4">
             <Tabs defaultValue="private-key" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="private-key">Private Key</TabsTrigger>
                 <TabsTrigger value="mnemonic">Recovery Phrase</TabsTrigger>
+                <TabsTrigger value="descriptor">Descriptor</TabsTrigger>
               </TabsList>
 
               <TabsContent value="private-key">
@@ -939,6 +940,45 @@ export function WalletManager({ onWalletSelect, onClose }: WalletManagerProps) {
                       });
                     } catch (error) {
                       toast.error('Failed to recover wallet', {
+                        description: error instanceof Error ? error.message : 'Unknown error',
+                      });
+                    } finally {
+                      setIsCreating(false);
+                    }
+                  }}
+                  onCancel={() => { }}
+                  isSubmitting={isCreating}
+                />
+              </TabsContent>
+
+              <TabsContent value="descriptor">
+                <WalletCreationForm
+                  mode="importDescriptor"
+                  onSubmit={async (data) => {
+                    try {
+                      setIsCreating(true);
+                      const { WalletService } = await import('@/services/wallet/WalletService');
+                      const walletService = new WalletService();
+
+                      const newWallet = await walletService.importWalletFromDescriptor({
+                        name: data.name,
+                        descriptor: data.descriptor!,
+                        password: data.password,
+                        makeActive: true,
+                      });
+
+                      await loadWallets();
+                      await reloadActiveWallet();
+
+                      if (onWalletSelect) {
+                        onWalletSelect(newWallet);
+                      }
+
+                      toast.success('Descriptor wallet imported', {
+                        description: `${data.name} has been imported and is now active.`,
+                      });
+                    } catch (error) {
+                      toast.error('Failed to import descriptor wallet', {
                         description: error instanceof Error ? error.message : 'Unknown error',
                       });
                     } finally {

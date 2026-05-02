@@ -19,7 +19,7 @@ export default function AddressInput({
   value,
   onChange,
   onPaymentRequest,
-  placeholder = 'Enter Avian address (R...)',
+  placeholder = 'Enter Avian address (R... or avn1q...)',
   className = '',
   disabled = false,
   error = false,

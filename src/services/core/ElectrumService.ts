@@ -48,7 +48,7 @@ const ECPair = ECPairFactory(ecc);
 // Avian network configuration (same as in WalletService)
 const avianNetwork: bitcoin.Network = {
   messagePrefix: '\x16Raven Signed Message:\n',
-  bech32: '',
+  bech32: 'avn',
   bip32: {
     public: 0x0488b21e,
     private: 0x0488ade4,

@@ -98,18 +98,19 @@ export default function SendForm() {
   const isMobile = useMediaQuery('(max-width: 768px)');
 
   const validateAddress = (address: string): boolean => {
-    // Avian addresses should be base58 encoded and start with 'R'
-    // Length should be between 26-35 characters for P2PKH addresses
-    if (!address || address.length < 26 || address.length > 35) {
-      return false;
+    if (!address) return false;
+
+    // Native SegWit bech32 (avn1q...)
+    if (address.toLowerCase().startsWith('avn1')) {
+      // bech32 charset: 0-9 a-z (no b i o)
+      const bech32Regex = /^avn1[ac-hj-np-z02-9]{6,87}$/i;
+      return bech32Regex.test(address);
     }
 
-    // Must start with 'R' for Avian mainnet
-    if (!address.startsWith('R')) {
+    // Legacy P2PKH — base58, starts with 'R', 26-35 chars
+    if (!address.startsWith('R') || address.length < 26 || address.length > 35) {
       return false;
     }
-
-    // Basic character validation - should only contain base58 characters
     const base58Regex = /^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/;
     return base58Regex.test(address);
   };
@@ -1072,7 +1073,7 @@ export default function SendForm() {
                 setAskToSaveAddress(false);
               }}
               onPaymentRequest={handlePaymentRequest}
-              placeholder="Enter Avian address (R...)"
+              placeholder="Enter Avian address (R... or avn1q...)"
               className="text-sm"
               disabled={isSending}
               error={error.includes('Invalid Avian address')}

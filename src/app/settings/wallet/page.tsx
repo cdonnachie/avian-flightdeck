@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Wallet, Plus, Settings, Eye, EyeOff, Lock, Unlock, Key, FileText, Hash, Copy, AlertTriangle, HardDrive } from 'lucide-react';
+import { Wallet, Plus, Settings, Eye, EyeOff, Lock, Unlock, Key, FileText, Hash, Copy, AlertTriangle, HardDrive, ScrollText } from 'lucide-react';
 import { useWallet } from '@/contexts/WalletContext';
+import { QRCodeSVG } from 'qrcode.react';
 import { useSecurity } from '@/contexts/SecurityContext';
 import { toast } from 'sonner';
 
@@ -23,9 +24,9 @@ import RouteGuard from '@/components/RouteGuard';
 export default function WalletSettingsPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { exportPrivateKey, isEncrypted, encryptWallet, decryptWallet, exportMnemonic, address: currentWalletAddress } = useWallet();
+    const { exportPrivateKey, isEncrypted, encryptWallet, decryptWallet, exportMnemonic, getWalletDescriptor, address: currentWalletAddress } = useWallet();
     const { requireAuth } = useSecurity();
-    const [activeSection, setActiveSection] = useState<'wallets' | 'addresses' | 'recovery' | 'privatekey' | 'encryption' | 'hdconfig' | null>(null);
+    const [activeSection, setActiveSection] = useState<'wallets' | 'addresses' | 'recovery' | 'privatekey' | 'encryption' | 'hdconfig' | 'descriptor' | null>(null);
     const [showAuthDialog, setShowAuthDialog] = useState(false);
     const [exportedPrivateKey, setExportedPrivateKey] = useState<string>('');
     const [showPrivateKey, setShowPrivateKey] = useState(false);
@@ -45,12 +46,16 @@ export default function WalletSettingsPage() {
     // HD wallet address count state
     const [addressCount, setAddressCount] = useState<number>(5);
 
+    // Descriptor export state
+    const [exportedDescriptor, setExportedDescriptor] = useState<string>('');
+    const [isExportingDescriptor, setIsExportingDescriptor] = useState(false);
+
     // Check for section parameter in URL
     useEffect(() => {
         const section = searchParams.get('section');
         if (section === 'wallets' || section === 'addresses' || section === 'recovery' ||
-            section === 'privatekey' || section === 'encryption' || section === 'hdconfig') {
-            setActiveSection(section as 'wallets' | 'addresses' | 'recovery' | 'privatekey' | 'encryption' | 'hdconfig');
+            section === 'privatekey' || section === 'encryption' || section === 'hdconfig' || section === 'descriptor') {
+            setActiveSection(section as 'wallets' | 'addresses' | 'recovery' | 'privatekey' | 'encryption' | 'hdconfig' | 'descriptor');
         }
     }, [searchParams]);
 
@@ -342,6 +347,13 @@ export default function WalletSettingsPage() {
             description: 'Change address count for HD wallets',
             icon: Hash,
             action: () => setActiveSection('hdconfig'),
+        },
+        {
+            id: 'descriptor' as const,
+            title: 'Output Script Descriptor',
+            description: 'Export BIP380 descriptor for use with Avian Core v5 descriptor wallets',
+            icon: ScrollText,
+            action: () => setActiveSection('descriptor'),
         },
     ];
 
@@ -866,6 +878,92 @@ export default function WalletSettingsPage() {
             );
         }
 
+        if (activeSection === 'descriptor') {
+            return (
+                <Card>
+                    <CardHeader className="pb-3 sm:pb-6">
+                        <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                            <ScrollText className="w-4 h-4 sm:w-5 sm:h-5" />
+                            Output Script Descriptor
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-3 sm:px-6 pb-4 sm:pb-6">
+                        <div className="space-y-4">
+                            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-3 sm:p-4">
+                                <p className="text-sm text-blue-800 dark:text-blue-200">
+                                    A BIP380 output script descriptor encodes your wallet&apos;s public key derivation policy.
+                                    It can be imported into <strong>Avian Core v5.0.0</strong> (or compatible wallets) to create a watch-only descriptor wallet.
+                                    It contains only your <em>public</em> key — no private key material is exposed.
+                                </p>
+                            </div>
+
+                            {!exportedDescriptor ? (
+                                <Button
+                                    onClick={async () => {
+                                        setIsExportingDescriptor(true);
+                                        try {
+                                            const authResult = await requireAuth('Authenticate to export descriptor', true);
+                                            if (!authResult.success || !authResult.password) return;
+                                            const desc = await getWalletDescriptor(authResult.password);
+                                            setExportedDescriptor(desc);
+                                        } catch (err: any) {
+                                            toast.error('Failed to export descriptor', { description: err.message });
+                                        } finally {
+                                            setIsExportingDescriptor(false);
+                                        }
+                                    }}
+                                    disabled={isExportingDescriptor}
+                                    className="w-full"
+                                >
+                                    {isExportingDescriptor ? 'Generating…' : 'Show Descriptor'}
+                                </Button>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="space-y-2">
+                                        <Label>Descriptor</Label>
+                                        <div className="flex items-start gap-2">
+                                            <code className="flex-1 text-xs bg-muted rounded-md p-3 break-all font-mono">
+                                                {exportedDescriptor}
+                                            </code>
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(exportedDescriptor);
+                                                    toast.success('Descriptor copied to clipboard');
+                                                }}
+                                                title="Copy descriptor"
+                                            >
+                                                <Copy className="w-4 h-4" />
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-col items-center gap-2">
+                                        <Label>QR Code</Label>
+                                        <div className="p-4 bg-white rounded-xl border">
+                                            <QRCodeSVG value={exportedDescriptor} size={200} />
+                                        </div>
+                                        <p className="text-xs text-muted-foreground text-center">
+                                            Scan with Avian Core v5 or a compatible descriptor wallet
+                                        </p>
+                                    </div>
+
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => setExportedDescriptor('')}
+                                        className="w-full"
+                                    >
+                                        Clear
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+            );
+        }
+
         return (
             <div className="grid gap-3 sm:gap-4">
                 {sections.map((section) => {
@@ -906,7 +1004,8 @@ export default function WalletSettingsPage() {
                                 activeSection === 'privatekey' ? 'Export Private Key' :
                                     activeSection === 'encryption' ? 'Wallet Encryption' :
                                         activeSection === 'hdconfig' ? 'HD Wallet Config' :
-                                            'Wallet Management',
+                                            activeSection === 'descriptor' ? 'Output Script Descriptor' :
+                                                'Wallet Management',
                     showBackButton: true,
                     customBackAction: handleBack,
                     actions: <HeaderActions />

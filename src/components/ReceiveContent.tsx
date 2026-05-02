@@ -544,7 +544,7 @@ export default function ReceiveContent({ address }: ReceiveContentProps) {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <a
-                    href={`https://explorer.avn.network/address/?address=${selectedAddress}`}
+                    href={`https://flightpath.avn.network/address/${selectedAddress}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-primary hover:text-primary/80 flex"

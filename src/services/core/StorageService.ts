@@ -1,7 +1,7 @@
 // Required imports
 import { SavedAddress } from '../../types/addressBook';
 import { toast } from 'sonner';
-import { secureEncrypt, decryptData } from '../wallet/WalletService';
+import { secureEncrypt, decryptData, type AddressType } from '../wallet/WalletService';
 import { storageLogger } from '@/lib/Logger';
 
 interface WalletData {
@@ -12,6 +12,9 @@ interface WalletData {
   mnemonic?: string;
   bip39Passphrase?: string; // Optional encrypted BIP39 passphrase (25th word)
   coinType?: 921 | 175; // BIP44 coin type for derivation (default: 921 for Avian, 175 for Ravencoin legacy)
+  addressType?: AddressType; // Script type / BIP standard: 'p2pkh' | 'p2wpkh' | 'p2sh-p2wpkh'
+  descriptor?: string;  // BIP380 output-script descriptor with checksum
+  xprv?: string;        // Encrypted account-level xprv for descriptor-imported HD wallets
   isEncrypted: boolean;
   isActive: boolean;
   createdAt: Date;
@@ -599,7 +602,10 @@ export class StorageService {
     privateKey: string;
     mnemonic?: string;
     bip39Passphrase?: string; // Optional encrypted BIP39 passphrase
+    xprv?: string; // Encrypted account-level xprv (for descriptor-imported HD wallets)
     coinType?: 921 | 175; // BIP44 coin type for derivation
+    addressType?: AddressType; // Script type: 'p2pkh' | 'p2wpkh' | 'p2sh-p2wpkh'
+    descriptor?: string;  // BIP380 output-script descriptor
     isEncrypted?: boolean;
     makeActive?: boolean;
   }): Promise<WalletData> {
@@ -624,7 +630,10 @@ export class StorageService {
         privateKey: params.privateKey,
         mnemonic: params.mnemonic,
         ...(params.bip39Passphrase !== undefined && { bip39Passphrase: params.bip39Passphrase }),
+        ...(params.xprv !== undefined && { xprv: params.xprv }),
         ...(params.coinType !== undefined && { coinType: params.coinType }),
+        ...(params.addressType !== undefined && { addressType: params.addressType }),
+        ...(params.descriptor !== undefined && { descriptor: params.descriptor }),
         isEncrypted: params.isEncrypted || false,
         isActive: params.makeActive !== false,
         createdAt: new Date(),

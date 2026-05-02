@@ -38,6 +38,11 @@ interface WalletContextType {
     password: string,
     passphrase?: string,
   ) => Promise<void>;
+  importWalletFromDescriptor: (
+    name: string,
+    descriptor: string,
+    password: string,
+  ) => Promise<void>;
   sendTransaction: (
     toAddress: string,
     amount: number,
@@ -72,6 +77,7 @@ interface WalletContextType {
   exportPrivateKey: (password?: string) => Promise<string>;
   exportMnemonic: (password?: string) => Promise<string | null>;
   validateMnemonic: (mnemonic: string) => Promise<boolean>;
+  getWalletDescriptor: (password: string) => Promise<string>;
   connectToElectrum: () => Promise<void>;
   disconnectFromElectrum: () => Promise<void>;
   selectElectrumServer: (index: number) => Promise<void>;
@@ -900,6 +906,28 @@ export function WalletProvider({ children }: WalletProviderProps) {
     selectElectrumServer,
     testConnection,
     restoreWalletFromMnemonic,
+    importWalletFromDescriptor: async (name: string, descriptor: string, password: string) => {
+      if (!wallet) throw new Error('Wallet service not initialized');
+      try {
+        setIsLoading(true);
+        const newWallet = await wallet.importWalletFromDescriptor({ name, descriptor, password, makeActive: true });
+        setAddress(newWallet.address);
+        setIsEncrypted(true);
+        await wallet.initializeWallet(
+          newWallet.address,
+          (data) => { setBalance(data.balance); },
+          (processed, total, currentTx) => {
+            setProcessingProgress({ isProcessing: total > 0, processed, total, currentTx });
+          },
+        );
+        setProcessingProgress({ isProcessing: false, processed: 0, total: 0 });
+      } catch (error) {
+        walletContextLogger.error('Failed to import descriptor wallet:', error);
+        throw error;
+      } finally {
+        setIsLoading(false);
+      }
+    },
     validateMnemonic,
     reloadActiveWallet,
     refreshTransactionHistory,
@@ -967,6 +995,12 @@ export function WalletProvider({ children }: WalletProviderProps) {
       }
     },
     refreshAfterTransaction,
+    getWalletDescriptor: async (password: string) => {
+      if (!wallet) throw new Error('Wallet not initialized');
+      const activeWalletData = await StorageService.getActiveWallet();
+      if (!activeWalletData) throw new Error('No active wallet');
+      return wallet.getWalletDescriptor(activeWalletData, password);
+    },
   };
 
   return <WalletContext.Provider value={contextValue}>{children}</WalletContext.Provider>;

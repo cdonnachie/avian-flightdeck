@@ -1,4 +1,5 @@
 import * as CryptoJS from 'crypto-js';
+import packageJson from '../../../package.json';
 import { StorageService } from './StorageService';
 import {
   WalletBackup,
@@ -60,6 +61,8 @@ export class BackupService {
           createdAt: wallet.createdAt ? new Date(wallet.createdAt).getTime() : Date.now(),
           lastAccessed: wallet.lastAccessed ? new Date(wallet.lastAccessed).getTime() : Date.now(),
           biometricEnabled, // Only used for informational purposes about which wallets had biometrics
+          descriptor: wallet.descriptor,
+          xprv: wallet.xprv,
         });
       }
 
@@ -157,7 +160,7 @@ export class BackupService {
 
       // Create metadata
       const metadata: BackupMetadata = {
-        appVersion: process.env.NEXT_PUBLIC_APP_VERSION || '1.0.0',
+        appVersion: packageJson.version,
         platform: typeof window !== 'undefined' ? window.navigator.platform : 'unknown',
         deviceInfo: typeof window !== 'undefined' ? window.navigator.userAgent : 'unknown',
         backupType: 'full',
@@ -444,6 +447,8 @@ export class BackupService {
             mnemonic: wallet.mnemonic,
             isEncrypted: wallet.isEncrypted,
             makeActive: wallet.isActive,
+            ...(wallet.descriptor !== undefined && { descriptor: wallet.descriptor }),
+            ...(wallet.xprv !== undefined && { xprv: wallet.xprv }),
           });
           this.backupLogger.debug('Restored wallet', {
             name: wallet.name,

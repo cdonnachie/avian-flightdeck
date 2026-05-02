@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWallet } from '@/contexts/WalletContext';
-import { Wallet, Import, FileKey, ArrowLeft, Upload, QrCode, AlertTriangle, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Wallet, Import, FileKey, ArrowLeft, Upload, QrCode, AlertTriangle, ArrowRight, Eye, EyeOff, ScrollText } from 'lucide-react';
 import { StorageService } from '@/services/core/StorageService';
 import WalletCreationForm, {
     WalletCreationMode,
@@ -78,6 +78,13 @@ export default function OnboardingPage() {
                 newWallet = await walletService.importWalletFromPrivateKey({
                     name: data.name.trim(),
                     privateKey: data.privateKey!.trim(),
+                    password: data.password,
+                    makeActive: true,
+                });
+            } else if (formMode === 'importDescriptor') {
+                newWallet = await walletService.importWalletFromDescriptor({
+                    name: data.name.trim(),
+                    descriptor: data.descriptor!.trim(),
                     password: data.password,
                     makeActive: true,
                 });
@@ -277,6 +284,22 @@ export default function OnboardingPage() {
                         <CardTitle className="text-xl">Restore from Backup</CardTitle>
                         <p className="text-muted-foreground">
                             Import wallet from a backup file or QR codes
+                        </p>
+                    </CardHeader>
+                </Card>
+
+                {/* Import from Descriptor */}
+                <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => {
+                    setFormMode('importDescriptor');
+                    setStep('form');
+                }}>
+                    <CardHeader>
+                        <div className="w-12 h-12 bg-teal-100 rounded-lg flex items-center justify-center mb-4">
+                            <ScrollText className="w-6 h-6 text-teal-600" />
+                        </div>
+                        <CardTitle className="text-xl">Import from Descriptor</CardTitle>
+                        <p className="text-muted-foreground">
+                            Import from an Avian Core v5 output script descriptor
                         </p>
                     </CardHeader>
                 </Card>

@@ -200,7 +200,7 @@ const AddressDetailsDialog = ({
                     className={`${isMobile ? 'w-full' : 'w-full sm:w-auto'} text-avian-600 hover:text-avian-700 dark:text-avian-400 dark:hover:text-avian-300 border-avian-200 dark:border-avian-800`}
                 >
                     <a
-                        href={`https://explorer.avn.network/address/?address=${addressDetails.address}`}
+                        href={`https://flightpath.avn.network/address/${addressDetails.address}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center justify-center gap-2"
@@ -363,6 +363,8 @@ export default function DerivedAddressesPanel() {
     // Initialize coin type from wallet's coin type, default to 921
     const [coinType, setCoinType] = useState<number>(921);
     const [walletCoinType, setWalletCoinType] = useState<number | null>(null);
+    // Address type is read from the wallet (p2pkh / p2wpkh / p2sh-p2wpkh)
+    const [walletAddressType, setWalletAddressType] = useState<string>('p2pkh');
 
     // Load address count preference on component mount
     useEffect(() => {
@@ -392,6 +394,8 @@ export default function DerivedAddressesPanel() {
                         setWalletCoinType(921);
                         setCoinType(921);
                     }
+                    // Set address type from wallet data (defaults to p2pkh for legacy wallets)
+                    setWalletAddressType(walletData?.addressType || 'p2pkh');
                 } catch (error) {
                     // Silently fall back to default value
                     setWalletCoinType(921);
@@ -485,7 +489,7 @@ export default function DerivedAddressesPanel() {
                     authResult.password,
                     accountIndex,
                     addressCount,
-                    'p2pkh', // Hardcoded to legacy address type
+                    walletAddressType, // Use wallet's actual address type (p2pkh/p2wpkh/p2sh-p2wpkh)
                     0, // Receiving addresses path
                     coinType, // Use selected coin type
                 );
@@ -495,7 +499,7 @@ export default function DerivedAddressesPanel() {
                     authResult.password,
                     accountIndex,
                     addressCount,
-                    'p2pkh', // Hardcoded to legacy address type
+                    walletAddressType, // Use wallet's actual address type (p2pkh/p2wpkh/p2sh-p2wpkh)
                     1, // Change addresses path
                     coinType, // Use selected coin type
                 );
@@ -984,13 +988,13 @@ export default function DerivedAddressesPanel() {
                                             <div className="flex items-center">
                                                 <div className="w-5 h-5 border-l-4 border-amber-500 dark:border-amber-400 bg-amber-100/50 dark:bg-amber-900/30 mr-3 rounded"></div>
                                                 <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
-                                                    Receiving address (m/44&apos;/{coinType}&apos;/0&apos;/0/x)
+                                                    Receiving address (m/{walletAddressType === 'p2wpkh' ? 84 : walletAddressType === 'p2sh-p2wpkh' ? 49 : 44}&apos;/{coinType}&apos;/0&apos;/0/x)
                                                 </span>
                                             </div>
                                             <div className="flex items-center">
                                                 <div className="w-5 h-5 border-l-4 border-indigo-500 dark:border-indigo-400 bg-indigo-100/50 dark:bg-indigo-900/30 mr-3 rounded"></div>
                                                 <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
-                                                    Change address (m/44&apos;/{coinType}&apos;/0&apos;/1/x)
+                                                    Change address (m/{walletAddressType === 'p2wpkh' ? 84 : walletAddressType === 'p2sh-p2wpkh' ? 49 : 44}&apos;/{coinType}&apos;/0&apos;/1/x)
                                                 </span>
                                             </div>
                                         </div>
@@ -1177,7 +1181,7 @@ export default function DerivedAddressesPanel() {
                                                         className="text-avian-500 dark:text-avian-300 hover:text-avian-700 dark:hover:text-avian-200 group relative transition-colors h-8 w-8"
                                                     >
                                                         <a
-                                                            href={`https://explorer.avn.network/address/?address=${item.address}`}
+                                                            href={`https://flightpath.avn.network/address/${item.address}`}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             aria-label="Open address in Avian Explorer (opens in new tab)"

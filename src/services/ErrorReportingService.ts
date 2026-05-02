@@ -57,6 +57,7 @@ class ErrorReportingService {
   }
 
   private getOrCreateUserId(): string {
+    if (typeof window === 'undefined') return 'ssr';
     const key = 'wallet_user_id';
     let userId = localStorage.getItem(key);
 

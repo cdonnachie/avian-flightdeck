@@ -99,13 +99,27 @@ const bip32 = BIP32Factory(ecc);
 
 const ECIES_PREFIX = Buffer.from('BIE1');
 
+/** Address type determines the BIP derivation path and script type used. */
+export type AddressType = 'p2pkh' | 'p2wpkh' | 'p2sh-p2wpkh';
+
+/** Maps an AddressType to its BIP44/49/84 purpose level and a human-readable label. */
+export const ADDRESS_TYPE_INFO: Record<AddressType, { purpose: number; label: string; bipLabel: string }> = {
+    p2pkh:       { purpose: 44, label: 'Legacy (P2PKH)',        bipLabel: 'BIP44' },
+    'p2sh-p2wpkh': { purpose: 49, label: 'SegWit Wrapped (P2SH-P2WPKH)', bipLabel: 'BIP49' },
+    p2wpkh:      { purpose: 84, label: 'Native SegWit (P2WPKH)', bipLabel: 'BIP84' },
+};
+
 export interface WalletData {
     id?: number;
     name: string;
     address: string;
     privateKey: string;
     mnemonic?: string; // BIP39 mnemonic phrase for backup/recovery
+    bip39Passphrase?: string; // Optional encrypted BIP39 passphrase (25th word)
+    xprv?: string; // Encrypted account-level xprv (used for descriptor-imported wallets, replaces mnemonic for HD derivation)
     coinType?: 921 | 175; // BIP44 coin type for derivation (default: 921 for Avian, 175 for Ravencoin legacy)
+    addressType?: AddressType; // Script type / BIP derivation standard (default: p2pkh)
+    descriptor?: string; // Output script descriptor (BIP380) derived at import/creation time
     isEncrypted: boolean;
     isActive: boolean;
     createdAt: Date;
@@ -120,17 +134,56 @@ export interface LegacyWalletData {
 }
 
 // Avian network configuration
+// bech32 HRP confirmed from Avian Core v5.0.0 chainparams.cpp: bech32_hrp = "avn"
+// Testnet uses "tavn", regtest uses "avnrt"
 export const avianNetwork: bitcoin.Network = {
     messagePrefix: '\x16Raven Signed Message:\n',
-    bech32: '', // Avian doesn't use bech32
+    bech32: 'avn', // Avian native SegWit address HRP (P2WPKH addresses start with 'avn1')
     bip32: {
         public: 0x0488b21e,
         private: 0x0488ade4,
     },
-    pubKeyHash: 0x3c, // Avian addresses start with 'R' (decimal 60)
-    scriptHash: 0x7a, // Avian script addresses start with 'r' (decimal 122)
+    pubKeyHash: 0x3c, // Avian P2PKH addresses start with 'R' (decimal 60)
+    scriptHash: 0x7a, // Avian P2SH addresses start with 'r' (decimal 122)
     wif: 0x80, // WIF version byte (decimal 128)
 };
+
+/**
+ * Derives an address from a public key for the given address type on the Avian network.
+ * Asset operations MUST use P2PKH (enforced by Avian Core v5.0.0).
+ */
+export function deriveAddress(
+    pubkey: Buffer,
+    addressType: AddressType = 'p2pkh',
+): string {
+    switch (addressType) {
+        case 'p2wpkh': {
+            const p2wpkh = bitcoin.payments.p2wpkh({ pubkey, network: avianNetwork });
+            if (!p2wpkh.address) throw new Error('Failed to derive P2WPKH address');
+            return p2wpkh.address;
+        }
+        case 'p2sh-p2wpkh': {
+            const p2wpkh = bitcoin.payments.p2wpkh({ pubkey, network: avianNetwork });
+            const p2sh = bitcoin.payments.p2sh({ redeem: p2wpkh, network: avianNetwork });
+            if (!p2sh.address) throw new Error('Failed to derive P2SH-P2WPKH address');
+            return p2sh.address;
+        }
+        case 'p2pkh':
+        default: {
+            const p2pkh = bitcoin.payments.p2pkh({ pubkey, network: avianNetwork });
+            if (!p2pkh.address) throw new Error('Failed to derive P2PKH address');
+            return p2pkh.address;
+        }
+    }
+}
+
+/**
+ * Returns the BIP derivation path purpose level for the given address type.
+ * p2pkh → 44, p2sh-p2wpkh → 49, p2wpkh → 84
+ */
+export function purposeForAddressType(addressType: AddressType): number {
+    return ADDRESS_TYPE_INFO[addressType].purpose;
+}
 
 export async function secureEncrypt(data: string, password: string): Promise<string> {
     const salt = randomBytes(SALT_LENGTH);
@@ -281,6 +334,7 @@ export class WalletService {
                 const root = bip32.fromSeed(seed, avianNetwork);
 
                 // Derive key at standard path m/44'/921'/0'/0/0 (921 is Avian's coin type)
+                // generateWallet always creates P2PKH legacy wallets for asset compatibility
                 const path = "m/44'/921'/0'/0/0";
                 const child = root.derivePath(path);
 
@@ -297,11 +351,8 @@ export class WalletService {
 
             const privateKeyWIF = keyPair.toWIF();
 
-            // Get the address
-            const { address } = bitcoin.payments.p2pkh({
-                pubkey: Buffer.from(keyPair.publicKey),
-                network: avianNetwork,
-            });
+            // P2PKH address (legacy generateWallet always uses P2PKH for asset compatibility)
+            const address = deriveAddress(Buffer.from(keyPair.publicKey), 'p2pkh');
 
             if (!address) {
                 throw new Error('Failed to generate address');
@@ -658,14 +709,54 @@ export class WalletService {
             // Build transaction using PSBT
             const psbt = new bitcoin.Psbt({ network: avianNetwork });
 
+            // Avian requires SIGHASH_ALL | SIGHASH_FORKID (0x41) for all inputs.
+            // Declare here so the value can be stamped onto each PSBT input.
+            const SIGHASH_ALL = 0x01;
+            const SIGHASH_FORKID = 0x40;
+            const hashType = SIGHASH_ALL | SIGHASH_FORKID; // 0x41
+
+            // Determine the wallet's address type so we can populate the correct PSBT input fields.
+            // SegWit inputs (P2WPKH, P2SH-P2WPKH) use witnessUtxo; legacy P2PKH uses nonWitnessUtxo.
+            const walletAddrType: AddressType = activeWallet.addressType || 'p2pkh';
+            const isSegWit = walletAddrType === 'p2wpkh' || walletAddrType === 'p2sh-p2wpkh';
+
             // Add inputs from selected UTXOs
             for (const utxo of selectedUTXOs) {
                 const txHex = await this.electrum.getTransaction(utxo.txid, false);
-                psbt.addInput({
-                    hash: utxo.txid,
-                    index: utxo.vout,
-                    nonWitnessUtxo: Buffer.from(txHex, 'hex'),
-                });
+                const prevTx = bitcoin.Transaction.fromHex(txHex);
+                const prevOut = prevTx.outs[utxo.vout];
+
+                if (isSegWit) {
+                    // SegWit inputs: provide witnessUtxo (the output being spent) so PSBT can
+                    // compute the BIP143 sighash without the full previous transaction.
+                    // sighashType must be set on the input so bitcoinjs-lib signs with 0x41.
+                    const inputObj: any = {
+                        hash: utxo.txid,
+                        index: utxo.vout,
+                        sighashType: hashType,
+                        witnessUtxo: {
+                            script: prevOut.script,
+                            value: prevOut.value,
+                        },
+                    };
+                    // P2SH-P2WPKH also needs the redeemScript so the finaliser can build the
+                    // input scriptSig (the push of the redeem script).
+                    if (walletAddrType === 'p2sh-p2wpkh') {
+                        const p2wpkh = bitcoin.payments.p2wpkh({
+                            pubkey: Buffer.from(keyPair.publicKey),
+                            network: avianNetwork,
+                        });
+                        inputObj.redeemScript = p2wpkh.output!;
+                    }
+                    psbt.addInput(inputObj);
+                } else {
+                    // Legacy P2PKH inputs: provide the full previous transaction hex.
+                    psbt.addInput({
+                        hash: utxo.txid,
+                        index: utxo.vout,
+                        nonWitnessUtxo: Buffer.from(txHex, 'hex'),
+                    });
+                }
             }
 
             // Add output for recipient
@@ -683,11 +774,6 @@ export class WalletService {
             }
 
             // Create a compatible signer object with Avian fork ID support
-            // Avian uses SIGHASH_FORKID (0x40) to prevent replay attacks from other Bitcoin forks
-            const SIGHASH_ALL = 0x01;
-            const SIGHASH_FORKID = 0x40;
-            const hashType = SIGHASH_ALL | SIGHASH_FORKID; // 0x41 - required for Avian transactions
-
             const signer = {
                 publicKey: Buffer.from(keyPair.publicKey),
                 sign: (hash: Buffer) => Buffer.from(keyPair.sign(hash)),
@@ -721,21 +807,32 @@ export class WalletService {
                     const utxo = selectedUTXOs[i];
                     const prevTxHex = await this.electrum.getTransaction(utxo.txid, false);
                     const prevTx = bitcoin.Transaction.fromHex(prevTxHex);
+                    const prevOut = prevTx.outs[utxo.vout];
 
-                    // Get the previous output script (scriptPubKey)
-                    const prevOutScript = prevTx.outs[utxo.vout].script;
-
-                    // Create the signature hash with fork ID
-                    const signatureHash = tx.hashForSignature(i, prevOutScript, hashType);
-
-                    // Sign the hash
-                    const signature = keyPair.sign(signatureHash);
-                    const derSignature = this.encodeDERWithCustomHashType(Buffer.from(signature), hashType);
-
-                    // Build script sig (P2PKH: <signature> <publicKey>)
-                    const scriptSig = bitcoin.script.compile([derSignature, Buffer.from(keyPair.publicKey)]);
-
-                    tx.ins[i].script = scriptSig;
+                    if (walletAddrType === 'p2wpkh') {
+                        // BIP143 sighash for native SegWit (P2WPKH) with Avian FORKID
+                        const pubkeyHash = bitcoin.crypto.hash160(Buffer.from(keyPair.publicKey));
+                        const scriptCode = bitcoin.script.compile([
+                            bitcoin.opcodes.OP_DUP,
+                            bitcoin.opcodes.OP_HASH160,
+                            pubkeyHash,
+                            bitcoin.opcodes.OP_EQUALVERIFY,
+                            bitcoin.opcodes.OP_CHECKSIG,
+                        ]);
+                        const signatureHash = tx.hashForWitnessV0(i, scriptCode, prevOut.value, hashType);
+                        const signature = keyPair.sign(signatureHash);
+                        const derSignature = this.encodeDERWithCustomHashType(Buffer.from(signature), hashType);
+                        // P2WPKH: witness holds [sig, pubkey]; scriptSig stays empty
+                        tx.ins[i].witness = [derSignature, Buffer.from(keyPair.publicKey)];
+                    } else {
+                        // Legacy P2PKH / P2SH-P2WPKH
+                        const prevOutScript = prevOut.script;
+                        const signatureHash = tx.hashForSignature(i, prevOutScript, hashType);
+                        const signature = keyPair.sign(signatureHash);
+                        const derSignature = this.encodeDERWithCustomHashType(Buffer.from(signature), hashType);
+                        const scriptSig = bitcoin.script.compile([derSignature, Buffer.from(keyPair.publicKey)]);
+                        tx.ins[i].script = scriptSig;
+                    }
                 }
 
                 // Return the manually built transaction
@@ -746,11 +843,11 @@ export class WalletService {
                 try {
                     const validateTx = bitcoin.Transaction.fromHex(txHex);
 
-                    // Check each input has a valid script
+                    // Check each input has a valid script or witness
                     for (let i = 0; i < validateTx.ins.length; i++) {
-                        const script = validateTx.ins[i].script;
-                        if (script.length === 0) {
-                            throw new Error(`Input ${i} has empty script`);
+                        const inp = validateTx.ins[i];
+                        if (inp.script.length === 0 && (!inp.witness || inp.witness.length === 0)) {
+                            throw new Error(`Input ${i} has empty script and witness`);
                         }
                     }
                 } catch (validationError) {
@@ -907,18 +1004,20 @@ export class WalletService {
                 } else if (hdRoot) {
                     // HD address - derive the correct key
                     // We need to find which derivation path this address corresponds to
-                    // Use the wallet's stored coin type for derivation
+                    // Use the wallet's stored coin type and address type for derivation
                     const coinType = activeWallet.coinType || 921;
+                    const walletType: AddressType = activeWallet.addressType || 'p2pkh';
+                    const walletPurpose = purposeForAddressType(walletType);
                     // Check both receiving (0) and change (1) paths
                     for (const changePath of [0, 1]) {
                         for (let addressIndex = 0; addressIndex < 50; addressIndex++) {
                             // Check up to 50 addresses
-                            const path = `m/44'/${coinType}'/0'/${changePath}/${addressIndex}`;
+                            const path = `m/${walletPurpose}'/${coinType}'/0'/${changePath}/${addressIndex}`;
                             const child = hdRoot.derivePath(path);
-                            const { address: derivedAddress } = bitcoin.payments.p2pkh({
-                                pubkey: Buffer.from(child.publicKey),
-                                network: avianNetwork,
-                            });
+                            const derivedAddress = deriveAddress(
+                                Buffer.from(child.publicKey),
+                                walletType,
+                            );
 
                             if (derivedAddress === address) {
                                 // Found the matching derivation path
@@ -1423,13 +1522,13 @@ export class WalletService {
 
     // Utility method to open transaction in block explorer
     static openTransactionInExplorer(txid: string): void {
-        const explorerUrl = `https://explorer.avn.network/tx/?txid=${txid}`;
+        const explorerUrl = `https://flightpath.avn.network/tx/${txid}`;
         window.open(explorerUrl, '_blank', 'noopener,noreferrer');
     }
 
     // Utility method to get explorer URL for a transaction
     static getExplorerUrl(txid: string): string {
-        return `https://explorer.avn.network/tx/?txid=${txid}`;
+        return `https://flightpath.avn.network/tx/${txid}`;
     }
 
     // Utility method for testing WIF compatibility
@@ -1715,6 +1814,7 @@ export class WalletService {
         password: string; // Now required for security
         passphrase?: string; // Optional BIP39 passphrase (25th word)
         coinType?: 921 | 175; // BIP44 coin type for legacy compatibility (default: 921)
+        addressType?: AddressType; // Script type / BIP standard (default: p2pkh)
         makeActive?: boolean;
     }): Promise<WalletData> {
         try {
@@ -1734,11 +1834,16 @@ export class WalletService {
             // Create HD wallet root
             const root = bip32.fromSeed(seed, avianNetwork);
 
-            // Derive key using the specified coin type (default: 921 for Avian, optional: 175 for legacy compatibility)
+            // Choose derivation path based on address type:
+            // P2PKH (default) → BIP44 purpose 44
+            // P2SH-P2WPKH     → BIP49 purpose 49
+            // P2WPKH          → BIP84 purpose 84
             const coinType = params.coinType || 921;
-            const path = `m/44'/${coinType}'/0'/0/0`;
+            const addrType: AddressType = params.addressType || 'p2pkh';
+            const purpose = purposeForAddressType(addrType);
+            const path = `m/${purpose}'/${coinType}'/0'/0/0`;
             walletLogger.info(
-                `Importing wallet using derivation path: ${path} (coin type ${coinType === 921 ? 'Avian' : 'Ravencoin Legacy'})`,
+                `Importing wallet using derivation path: ${path} (${ADDRESS_TYPE_INFO[addrType].bipLabel}, coin type ${coinType === 921 ? 'Avian' : 'Ravencoin Legacy'})`,
             );
             const child = root.derivePath(path);
 
@@ -1750,11 +1855,8 @@ export class WalletService {
             const keyPair = ECPair.fromPrivateKey(child.privateKey, { network: avianNetwork });
             const privateKeyWIF = keyPair.toWIF();
 
-            // Get the address
-            const { address } = bitcoin.payments.p2pkh({
-                pubkey: Buffer.from(keyPair.publicKey),
-                network: avianNetwork,
-            });
+            // Derive address for the chosen script type
+            const address = deriveAddress(Buffer.from(keyPair.publicKey), addrType);
 
             if (!address) {
                 throw new Error('Failed to generate address from mnemonic');
@@ -1778,6 +1880,14 @@ export class WalletService {
                 walletLogger.debug('BIP39 passphrase encrypted and stored securely');
             }
 
+            // Build output script descriptor (BIP380) for this wallet
+            // Derives the xpub at account level (m/purpose'/coinType'/0') and formats descriptor
+            const accountChild = root.derivePath(`m/${purpose}'/${coinType}'/0'`);
+            const xpub = accountChild.neutered().toBase58();
+            const fingerprint = Array.from(root.fingerprint).map(b => b.toString(16).padStart(2, '0')).join('');
+            const descriptorBody = buildDescriptorBody(addrType, fingerprint, purpose, coinType, xpub);
+            const descriptor = `${descriptorBody}#${descriptorChecksum(descriptorBody)}`;
+
             // Create wallet in storage
             const walletData = await StorageService.createWallet({
                 name: params.name,
@@ -1786,6 +1896,8 @@ export class WalletService {
                 mnemonic: finalMnemonic,
                 bip39Passphrase: encryptedPassphrase,
                 coinType: coinType, // Store the coin type used for derivation
+                addressType: addrType,
+                descriptor,
                 isEncrypted: true,
                 makeActive: params.makeActive,
             });
@@ -1795,6 +1907,223 @@ export class WalletService {
             walletLogger.error('Error importing wallet from mnemonic:', error);
             const errorMessage = error instanceof Error ? error.message : 'Unknown error';
             throw new Error(`Failed to import wallet: ${errorMessage}`);
+        }
+    }
+
+    /**
+     * Parses a BIP380 output script descriptor (with or without checksum) and extracts
+     * the address type, key material, and derivation metadata.
+     *
+     * Handles descriptors produced by `listdescriptors true` from Avian Core v5, e.g.:
+     *   wpkh([a1b2c3d4/84h/921h/0h]xprvABC.../0/*)#checksum
+     *   sh(wpkh([a1b2c3d4/49h/921h/0h]xprvABC.../0/*))#checksum
+     *   pkh([a1b2c3d4/44h/921h/0h]xprvABC.../0/*)#checksum
+     *
+     * Both `h` and `'` hardened-path notations are accepted.
+     */
+    static parseDescriptor(descriptor: string): {
+        addrType: AddressType;
+        xkey: string;
+        isPrivate: boolean;
+        fingerprint: string;
+        purpose: number;
+        coinType: number;
+        accountIndex: number;
+        /** Set when xkey is a root key with an inline derivation path (e.g. xprv.../44h/921h/0h/0/*) */
+        accountDerivationPath?: string;
+    } {
+        const clean = descriptor.trim().replace(/#[a-zA-Z0-9]+$/, '');
+
+        let addrType: AddressType;
+        let inner: string;
+
+        if (clean.startsWith('sh(wpkh(') && clean.endsWith('))')) {
+            addrType = 'p2sh-p2wpkh';
+            inner = clean.slice(8, -2);
+        } else if (clean.startsWith('wpkh(') && clean.endsWith(')')) {
+            addrType = 'p2wpkh';
+            inner = clean.slice(5, -1);
+        } else if (clean.startsWith('pkh(') && clean.endsWith(')')) {
+            addrType = 'p2pkh';
+            inner = clean.slice(4, -1);
+        } else {
+            throw new Error(
+                'Unsupported descriptor type. Expected pkh(...), wpkh(...), or sh(wpkh(...)).',
+            );
+        }
+
+        // Try full origin expression: [fingerprint/purpose'/coinType'/account']xkey
+        const mFull = inner.match(
+            /^\[([0-9a-fA-F]{8})\/(\d+)[h']\/(\d+)[h']\/(\d+)[h']\]([a-zA-Z0-9]+)/,
+        );
+
+        let fingerprint: string;
+        let purpose: number;
+        let coinType: number;
+        let accountIndex: number;
+        let xkey: string;
+
+        if (mFull) {
+            [, fingerprint, , , , xkey] = mFull;
+            fingerprint = fingerprint.toLowerCase();
+            purpose = parseInt(mFull[2], 10);
+            coinType = parseInt(mFull[3], 10);
+            accountIndex = parseInt(mFull[4], 10);
+        } else {
+            // No origin — accept bare xkey with optional inline path
+            // e.g. pkh(xprv.../44h/921h/0h/0/*) or wpkh(xpubXXX/0/*)
+            const mBare = inner.match(/^([a-zA-Z0-9]+)((?:\/(?:\d+[h']?|\*))*)/);
+            if (!mBare || (!mBare[1].startsWith('xprv') && !mBare[1].startsWith('xpub') &&
+                          !mBare[1].startsWith('tprv') && !mBare[1].startsWith('tpub'))) {
+                throw new Error(
+                    'Descriptor must contain an xprv/xpub key, optionally with an origin ' +
+                    'expression: [fingerprint/84h/921h/0h]xprv...',
+                );
+            }
+            xkey = mBare[1];
+            fingerprint = '00000000';
+
+            // Parse hardened path components from the inline suffix (e.g. /44h/921h/0h/0/*)
+            const pathSuffix = mBare[2] || '';
+            const hComponents: number[] = [];
+            const hRe = /\/(\d+)[h']/g;
+            let hm: RegExpExecArray | null;
+            while ((hm = hRe.exec(pathSuffix)) !== null) {
+                hComponents.push(parseInt(hm[1], 10));
+            }
+
+            let accountDerivationPath: string | undefined;
+            if (hComponents.length >= 3) {
+                // Full BIP44 path: purpose/coinType/account all present
+                purpose = hComponents[0];
+                coinType = hComponents[1];
+                accountIndex = hComponents[2];
+                accountDerivationPath = `m/${purpose}'/${coinType}'/${accountIndex}'`;
+            } else if (hComponents.length === 2) {
+                purpose = hComponents[0];
+                coinType = hComponents[1];
+                accountIndex = 0;
+                accountDerivationPath = `m/${purpose}'/${coinType}'/${accountIndex}'`;
+            } else {
+                // No inline hardened path — xkey is already at account level; infer from script type
+                accountIndex = 0;
+                if (addrType === 'p2wpkh')           { purpose = 84; coinType = 921; }
+                else if (addrType === 'p2sh-p2wpkh') { purpose = 49; coinType = 921; }
+                else                                  { purpose = 44; coinType = 921; }
+            }
+
+            const isPriv = xkey.startsWith('xprv') || xkey.startsWith('tprv');
+            return {
+                addrType, xkey, isPrivate: isPriv, fingerprint,
+                purpose, coinType, accountIndex, accountDerivationPath,
+            };
+        }
+
+        const isPrivate = xkey.startsWith('xprv') || xkey.startsWith('tprv');
+
+        return {
+            addrType,
+            xkey,
+            isPrivate,
+            fingerprint,
+            purpose,
+            coinType,
+            accountIndex,
+        };
+    }
+
+    /**
+     * Import a wallet from a BIP380 output script descriptor containing an xprv.
+     * Use `listdescriptors true` in Avian Core v5 to obtain the descriptor.
+     * The encrypted xprv is stored, enabling full HD address derivation without a mnemonic.
+     */
+    async importWalletFromDescriptor(params: {
+        name: string;
+        descriptor: string;
+        password: string;
+        makeActive?: boolean;
+    }): Promise<WalletData> {
+        try {
+            if (!params.password || params.password.length < 8) {
+                throw new Error('Password is required and must be at least 8 characters long');
+            }
+
+            const parsed = WalletService.parseDescriptor(params.descriptor);
+
+            if (!parsed.isPrivate) {
+                throw new Error(
+                    'This descriptor contains only a public key (xpub). ' +
+                    'Run `listdescriptors true` in Avian Core to export the xprv descriptor.',
+                );
+            }
+
+            let accountNode: ReturnType<typeof bip32.fromBase58>;
+            let resolvedFingerprint = parsed.fingerprint;
+            try {
+                const rawNode = bip32.fromBase58(parsed.xkey, avianNetwork);
+                if (parsed.accountDerivationPath) {
+                    // xkey is the root key — compute the master fingerprint then derive to account
+                    resolvedFingerprint = Array.from(rawNode.fingerprint)
+                        .map(b => b.toString(16).padStart(2, '0')).join('');
+                    accountNode = rawNode.derivePath(parsed.accountDerivationPath);
+                } else {
+                    accountNode = rawNode;
+                }
+            } catch {
+                throw new Error('Invalid xprv in descriptor — check the descriptor is from an Avian mainnet wallet');
+            }
+
+            if (!accountNode.privateKey) {
+                throw new Error('Failed to extract private key from xprv');
+            }
+
+            // Derive first receiving address: account/0/0
+            const receiveNode = accountNode.derive(0).derive(0);
+            if (!receiveNode.privateKey) {
+                throw new Error('Failed to derive child key from xprv');
+            }
+
+            const keyPair = ECPair.fromPrivateKey(Buffer.from(receiveNode.privateKey), {
+                network: avianNetwork,
+            });
+            const address = deriveAddress(Buffer.from(keyPair.publicKey), parsed.addrType);
+            const privateKeyWIF = keyPair.toWIF();
+
+            if (await StorageService.walletExists(address)) {
+                throw new Error('Wallet with this address already exists');
+            }
+
+            const encryptedPrivateKey = await secureEncrypt(privateKeyWIF, params.password);
+            // Store account-level xprv (not root), so deriveCurrentWalletAddresses works correctly
+            const encryptedXprv = await secureEncrypt(accountNode.toBase58(), params.password);
+
+            // Build canonical descriptor with xpub (no private key in stored descriptor)
+            const descriptorBody = buildDescriptorBody(
+                parsed.addrType,
+                resolvedFingerprint,
+                parsed.purpose,
+                parsed.coinType,
+                accountNode.neutered().toBase58(),
+            );
+            const descriptor = `${descriptorBody}#${descriptorChecksum(descriptorBody)}`;
+
+            const walletData = await StorageService.createWallet({
+                name: params.name,
+                address,
+                privateKey: encryptedPrivateKey,
+                xprv: encryptedXprv,
+                coinType: (parsed.coinType === 175 ? 175 : 921) as 921 | 175,
+                addressType: parsed.addrType,
+                descriptor,
+                isEncrypted: true,
+                makeActive: params.makeActive,
+            });
+
+            return walletData;
+        } catch (error) {
+            walletLogger.error('Error importing wallet from descriptor:', error);
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            throw new Error(`Failed to import descriptor wallet: ${errorMessage}`);
         }
     }
 
@@ -2198,8 +2527,8 @@ export class WalletService {
         let hasOutputToUs = false;
         if (txDetails.vout) {
             for (const output of txDetails.vout) {
-                if (output.scriptPubKey && output.scriptPubKey.addresses) {
-                    if (output.scriptPubKey.addresses.includes(address)) {
+                if (output.scriptPubKey) {
+                    if (this.scriptPubKeyToAddresses(output.scriptPubKey).includes(address)) {
                         hasOutputToUs = true;
                         break;
                     }
@@ -2235,8 +2564,8 @@ export class WalletService {
                         const prevTxDetails = await this.electrum.getTransaction(input.txid, true);
                         if (prevTxDetails && prevTxDetails.vout && prevTxDetails.vout[input.vout]) {
                             const prevOutput = prevTxDetails.vout[input.vout];
-                            if (prevOutput.scriptPubKey && prevOutput.scriptPubKey.addresses) {
-                                for (const inputAddress of prevOutput.scriptPubKey.addresses) {
+                            if (prevOutput.scriptPubKey) {
+                                for (const inputAddress of this.scriptPubKeyToAddresses(prevOutput.scriptPubKey)) {
                                     if (inputAddress === address) {
                                         return false;
                                     }
@@ -2262,8 +2591,8 @@ export class WalletService {
 
         if (txDetails.vout) {
             for (const output of txDetails.vout) {
-                if (output.scriptPubKey && output.scriptPubKey.addresses) {
-                    if (output.scriptPubKey.addresses.includes(address)) {
+                if (output.scriptPubKey) {
+                    if (this.scriptPubKeyToAddresses(output.scriptPubKey).includes(address)) {
                         // Handle both number and string values for output.value
                         const valueStr = output.value.toString();
                         const value = parseFloat(valueStr);
@@ -2281,6 +2610,32 @@ export class WalletService {
         }
 
         return totalReceived;
+    }
+
+    /**
+     * Resolve address(es) from any scriptPubKey format, including native SegWit
+     * outputs that only carry an `asm` / `hex` field without an `addresses` array.
+     */
+    private scriptPubKeyToAddresses(scriptPubKey: any): string[] {
+        // Standard path — legacy & P2SH outputs
+        if (scriptPubKey.addresses && scriptPubKey.addresses.length > 0) {
+            return scriptPubKey.addresses;
+        }
+        // Single address field (some server variants)
+        if (scriptPubKey.address) {
+            return [scriptPubKey.address];
+        }
+        // Native SegWit (P2WPKH / P2WSH) — reconstruct from scriptPubKey hex
+        if (scriptPubKey.hex) {
+            try {
+                const script = Buffer.from(scriptPubKey.hex, 'hex');
+                const addr = bitcoin.address.fromOutputScript(script, avianNetwork);
+                return [addr];
+            } catch {
+                // not a recognised script for this network
+            }
+        }
+        return [];
     }
 
     private getSenderAddress(txDetails: any): string {
@@ -2385,8 +2740,8 @@ export class WalletService {
                                     );
                                 }
 
-                                if (prevOutput.scriptPubKey && prevOutput.scriptPubKey.addresses) {
-                                    for (const inputAddress of prevOutput.scriptPubKey.addresses) {
+                                if (prevOutput.scriptPubKey) {
+                                    for (const inputAddress of this.scriptPubKeyToAddresses(prevOutput.scriptPubKey)) {
                                         inputAddresses.push(inputAddress);
                                         if (inputAddress === address) {
                                             inputFromCurrentAddress = true;
@@ -2420,11 +2775,13 @@ export class WalletService {
             if (txDetails.vout) {
                 for (let i = 0; i < txDetails.vout.length; i++) {
                     const output = txDetails.vout[i];
-                    if (output.scriptPubKey && output.scriptPubKey.addresses) {
+                    if (output.scriptPubKey) {
+                        const outputAddresses = this.scriptPubKeyToAddresses(output.scriptPubKey);
+                        if (outputAddresses.length === 0) continue;
+
                         // Handle both number and string values for output.value
                         const outputValue = Math.round(parseFloat(output.value.toString()) * 100000000); // Convert to satoshis
                         totalOutputValue += outputValue;
-                        const outputAddresses = output.scriptPubKey.addresses;
 
                         // Check if this output goes to our address or any of our addresses
                         let isOurOutput = false;
@@ -2995,7 +3352,7 @@ export class WalletService {
         passphrase?: string,
         accountIndex: number = 0,
         addressCount: number = 10,
-        addressType: string = 'p2pkh',
+        addressType: AddressType | string = 'p2pkh',
         changePath: number = 0, // 0 for receiving addresses, 1 for change addresses
         coinType: number = 921, // 921 for Avian, 175 for Ravencoin compatibility
     ): Promise<Array<{ path: string; address: string; balance: number; hasTransactions: boolean }>> {
@@ -3003,6 +3360,13 @@ export class WalletService {
         if (!bip39.validateMnemonic(mnemonic)) {
             throw new Error('Invalid BIP39 mnemonic phrase');
         }
+
+        // Normalise addressType to a known AddressType (default p2pkh for unrecognised values)
+        const resolvedType: AddressType =
+            addressType === 'p2wpkh' || addressType === 'p2sh-p2wpkh'
+                ? (addressType as AddressType)
+                : 'p2pkh';
+        const purpose = purposeForAddressType(resolvedType);
 
         try {
             // Create ElectrumService instance for balance checking
@@ -3027,51 +3391,30 @@ export class WalletService {
                 hasTransactions: boolean;
             }> = [];
 
-            // Generate addresses based on the selected address type
+            // Generate addresses for the selected address type.
+            // BIP44: m/44'/coinType'/account'/change/index (P2PKH)
+            // BIP49: m/49'/coinType'/account'/change/index (P2SH-P2WPKH)
+            // BIP84: m/84'/coinType'/account'/change/index (P2WPKH / native SegWit)
             for (let i = 0; i < addressCount; i++) {
-                // Derive path - m/44'/coinType'/accountIndex'/changePath/i
-                // coinType: 921 for Avian, 175 for Ravencoin compatibility
-                const path = `m/44'/${coinType}'/${accountIndex}'/${changePath}/${i}`;
+                const path = `m/${purpose}'/${coinType}'/${accountIndex}'/${changePath}/${i}`;
                 const child = root.derivePath(path);
 
                 if (!child.privateKey) {
                     throw new Error(`Failed to derive private key for path ${path}`);
                 }
 
-                // Create ECPair from derived private key
                 const keyPair = ECPair.fromPrivateKey(child.privateKey, { network: avianNetwork });
-
-                // Get the address based on address type
-                let address: string | undefined;
-
-                if (addressType === 'p2pkh') {
-                    // Standard P2PKH address
-                    const p2pkh = bitcoin.payments.p2pkh({
-                        pubkey: Buffer.from(keyPair.publicKey),
-                        network: avianNetwork,
-                    });
-                    address = p2pkh.address;
-                } else {
-                    // Default to P2PKH if type is not recognized
-                    const p2pkh = bitcoin.payments.p2pkh({
-                        pubkey: Buffer.from(keyPair.publicKey),
-                        network: avianNetwork,
-                    });
-                    address = p2pkh.address;
-                }
+                const address = deriveAddress(Buffer.from(keyPair.publicKey), resolvedType);
 
                 if (!address) {
                     throw new Error(`Failed to generate address for path ${path}`);
                 }
 
-                // Check balance for the address
+                // Check balance and history for the address
                 const balance = await electrum.getBalance(address);
-
-                // Check if the address has any transactions
                 const history = await electrum.getTransactionHistory(address);
                 const hasTransactions = history.length > 0;
 
-                // Add derived address with balance to the array
                 derivedAddresses.push({
                     path,
                     address,
@@ -3108,6 +3451,45 @@ export class WalletService {
             // Use the wallet's stored coin type, defaulting to 921 for legacy wallets
             const coinType = activeWallet.coinType || 921;
 
+            // ── xprv-based wallet (imported from descriptor) ──────────────────
+            if (activeWallet.xprv && !activeWallet.mnemonic) {
+                const isEncryptedXprv = await StorageService.getIsEncrypted();
+                let decryptedXprv: string;
+
+                if (isEncryptedXprv) {
+                    try {
+                        const { decrypted } = await decryptData(activeWallet.xprv, password);
+                        decryptedXprv = decrypted;
+                    } catch {
+                        throw new Error('Invalid password or corrupted xprv');
+                    }
+                } else {
+                    decryptedXprv = activeWallet.xprv;
+                }
+
+                const accountNode = bip32.fromBase58(decryptedXprv, avianNetwork);
+                const resolvedType = (addressType as AddressType) || activeWallet.addressType || 'p2pkh';
+                const purpose = purposeForAddressType(resolvedType as AddressType);
+
+                const result: Array<{ path: string; address: string; balance: number; hasTransactions: boolean }> = [];
+                const electrum = this.electrum;
+
+                for (let i = 0; i < addressCount; i++) {
+                    const childNode = accountNode.derive(changePath).derive(i);
+                    if (!childNode.privateKey) throw new Error(`Failed to derive key at ${changePath}/${i}`);
+                    const kp = ECPair.fromPrivateKey(Buffer.from(childNode.privateKey), { network: avianNetwork });
+                    const addr = deriveAddress(Buffer.from(kp.publicKey), resolvedType as AddressType);
+
+                    const descriptivePath = `m/${purpose}'/${coinType}'/${accountIndex}'/${changePath}/${i}`;
+                    const balance = await electrum.getBalance(addr);
+                    const history = await electrum.getTransactionHistory(addr);
+
+                    result.push({ path: descriptivePath, address: addr, balance, hasTransactions: history.length > 0 });
+                }
+                return result;
+            }
+
+            // ── mnemonic-based wallet ─────────────────────────────────────────
             const storedMnemonic = await StorageService.getMnemonic();
             if (!storedMnemonic) {
                 throw new Error('No mnemonic stored for this wallet. Address derivation is not available.');
@@ -3707,4 +4089,204 @@ export class WalletService {
             throw error;
         }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PSBT utilities (Avian Core v5.0.0 / Bitcoin 30.2 base)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Serialises a PSBT to base64 for export / QR display.
+     */
+    static exportPSBT(psbt: bitcoin.Psbt): string {
+        return psbt.toBase64();
+    }
+
+    /**
+     * Imports a base64-encoded PSBT, finalises it and broadcasts the extracted
+     * transaction to the Avian network via ElectrumX.
+     */
+    async importAndBroadcastPSBT(base64: string): Promise<string> {
+        const psbt = bitcoin.Psbt.fromBase64(base64, { network: avianNetwork });
+        psbt.finalizeAllInputs();
+        const tx = psbt.extractTransaction();
+        return await this.electrum.broadcastTransaction(tx.toHex());
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Descriptor utilities (BIP380, Avian Core v5 descriptor wallets)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Derives and returns the BIP380 output-script descriptor for the given
+     * wallet, decrypting the mnemonic with the supplied password.
+     *
+     * The descriptor format depends on the wallet's address type:
+     *   P2PKH        → pkh([fingerprint/44h/921h/0h]xpub/0/*)
+     *   P2SH-P2WPKH  → sh(wpkh([fingerprint/49h/921h/0h]xpub/0/*))
+     *   P2WPKH       → wpkh([fingerprint/84h/921h/0h]xpub/0/*)
+     *
+     * A BIP380 checksum is appended (e.g. `#abcdef12`).
+     */
+    async getWalletDescriptor(wallet: WalletData, password: string): Promise<string> {
+        // Descriptor-imported wallets store the canonical descriptor directly
+        if (!wallet.mnemonic && wallet.descriptor) {
+            return wallet.descriptor;
+        }
+
+        // xprv-only descriptor wallet: derive xpub from the stored encrypted xprv
+        if (!wallet.mnemonic && wallet.xprv) {
+            const xprvDecrypted = await secureDecrypt(wallet.xprv, password);
+            const accountNode = bip32.fromBase58(xprvDecrypted, avianNetwork);
+            const xpub = accountNode.neutered().toBase58();
+            const addrType: AddressType = wallet.addressType || 'p2pkh';
+            const coinType = wallet.coinType || 921;
+            const purpose = purposeForAddressType(addrType);
+            const fingerprint = '00000000'; // not stored when imported without origin
+            const body = buildDescriptorBody(addrType, fingerprint, purpose, coinType, xpub);
+            return `${body}#${descriptorChecksum(body)}`;
+        }
+
+        if (!wallet.mnemonic) {
+            throw new Error('Descriptor generation requires an HD wallet with a mnemonic');
+        }
+
+        const encryptedMnemonic = await StorageService.getMnemonic();
+        if (!encryptedMnemonic) {
+            throw new Error('No mnemonic found in storage');
+        }
+
+        const mnemonic = await secureDecrypt(encryptedMnemonic, password);
+        if (!bip39.validateMnemonic(mnemonic)) {
+            throw new Error('Decrypted mnemonic is invalid — wrong password?');
+        }
+
+        const passphrase = wallet.bip39Passphrase
+            ? await secureDecrypt(wallet.bip39Passphrase, password)
+            : '';
+        const seed = await bip39.mnemonicToSeed(mnemonic, passphrase);
+        const root = bip32.fromSeed(seed, avianNetwork);
+
+        const coinType = wallet.coinType || 921;
+        const addrType: AddressType = wallet.addressType || 'p2pkh';
+        const purpose = purposeForAddressType(addrType);
+
+        const accountChild = root.derivePath(`m/${purpose}'/${coinType}'/0'`);
+        const xpub = accountChild.neutered().toBase58();
+        const fingerprint = Array.from(root.fingerprint).map(b => b.toString(16).padStart(2, '0')).join('');
+
+        const body = buildDescriptorBody(addrType, fingerprint, purpose, coinType, xpub);
+        return `${body}#${descriptorChecksum(body)}`;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BIP380 descriptor helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Builds the descriptor string body (without checksum) for a given address type
+ * and account-level xpub.
+ */
+export function buildDescriptorBody(
+    addrType: AddressType,
+    fingerprint: string,
+    purpose: number,
+    coinType: number,
+    xpub: string,
+): string {
+    const origin = `[${fingerprint}/${purpose}h/${coinType}h/0h]${xpub}`;
+    switch (addrType) {
+        case 'p2wpkh':
+            return `wpkh(${origin}/0/*)`;
+        case 'p2sh-p2wpkh':
+            return `sh(wpkh(${origin}/0/*))`;
+        default:
+            return `pkh(${origin}/0/*)`;
+    }
+}
+
+/**
+ * Computes a BIP380-compliant 8-character checksum for a descriptor body string.
+ *
+ * Reference implementation:
+ *   https://github.com/bitcoin/bitcoin/blob/master/src/script/descriptor.cpp
+ */
+export function descriptorChecksum(desc: string): string {
+    const INPUT_CHARSET =
+        '0123456789()[]\'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#"\\  ';
+    const CHECKSUM_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+
+    let c = BigInt(1);
+    let cls = 0;
+    let clscount = 0;
+
+    for (const ch of desc) {
+        const pos = INPUT_CHARSET.indexOf(ch);
+        if (pos === -1) return '????????';
+        c = descriptorPolymod(c ^ BigInt(pos & 31));
+        cls = cls * 3 + (pos >> 5);
+        clscount += 1;
+        if (clscount === 3) {
+            c = descriptorPolymod(c ^ BigInt(cls));
+            cls = 0;
+            clscount = 0;
+        }
+    }
+    if (clscount > 0) {
+        c = descriptorPolymod(c ^ BigInt(cls));
+    }
+    for (let j = 0; j < 8; j++) {
+        c = descriptorPolymod(c ^ BigInt(0));
+    }
+    c ^= BigInt(1);
+
+    let result = '';
+    for (let j = 0; j < 8; j++) {
+        result = CHECKSUM_CHARSET[Number((c >> BigInt(5 * (7 - j))) & BigInt(31))] + result;
+    }
+    return result.split('').reverse().join('');
+}
+
+function descriptorPolymod(c: bigint): bigint {
+    const GEN = [
+        BigInt(0xf5dee51989),
+        BigInt(0xa9fdca3312),
+        BigInt(0x1bab10e32d),
+        BigInt(0x3706b1677a),
+        BigInt(0x644d626ffd),
+    ];
+    const b = c >> BigInt(35);
+    c = ((c & BigInt(0x7ffffffff)) << BigInt(5)) ^ BigInt(0);
+    for (let i = 0; i < 5; i++) {
+        if ((b >> BigInt(i)) & BigInt(1)) {
+            c ^= GEN[i];
+        }
+    }
+    return c;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RIP-25 (ML-DSA-44 / Post-Quantum) — STUB
+// Active on testnet/regtest only. Not enabled on Avian mainnet.
+// Full implementation requires liboqs WASM bindings (out of scope).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Stub for RIP-25 ML-DSA-44 post-quantum address generation.
+ *
+ * RIP-25 introduces Dilithium (ML-DSA-44) lattice-based signing.
+ * As of Avian Core v5.0.0, the deployment is ONLY active on testnet/regtest.
+ * Mainnet deployment is not yet scheduled.
+ *
+ * To implement this fully, the liboqs WASM module would be required for
+ * ML-DSA-44 key generation and signing in browser environments.
+ *
+ * @throws Always throws — not available on mainnet.
+ */
+export function generateMLDSA44Address(): never {
+    throw new Error(
+        'RIP-25 ML-DSA-44 post-quantum addresses are currently only available on ' +
+        'Avian testnet/regtest (not mainnet). ' +
+        'Full implementation requires liboqs WASM bindings.',
+    );
 }

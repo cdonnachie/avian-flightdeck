@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bug, Code, Eye, Trash2 } from 'lucide-react';
+import { Bug, Code, Eye, Trash2, FlaskConical } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import MessageUtilities from '@/components/MessageUtilities';
@@ -97,6 +97,30 @@ export default function AdvancedSettingsPage() {
                         Advanced features for developers and power users
                     </p>
                 </div>
+
+                {/* RIP-25 Post-Quantum Notice */}
+                <Card className="border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="flex items-center gap-2 text-base text-purple-800 dark:text-purple-200">
+                            <FlaskConical className="w-4 h-4" />
+                            RIP-25: Post-Quantum Signatures (ML-DSA-44)
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="text-sm text-purple-700 dark:text-purple-300 space-y-1">
+                        <p>
+                            Avian Core v5.0.0 introduces <strong>RIP-25</strong> — ML-DSA-44 (Dilithium) lattice-based
+                            post-quantum signature support.
+                        </p>
+                        <p>
+                            <strong>Status:</strong> Testnet &amp; Regtest only — not active on mainnet.
+                            Mainnet activation requires a future network upgrade.
+                        </p>
+                        <p className="text-xs opacity-75">
+                            Full browser support requires liboqs WASM bindings. Mainnet post-quantum addresses
+                            are not yet available in this wallet.
+                        </p>
+                    </CardContent>
+                </Card>
 
                 <div className="grid gap-4">
                     {sections.map((section) => {

@@ -43,6 +43,10 @@ export interface BackupWallet {
   createdAt: number;
   lastAccessed?: number;
   biometricEnabled?: boolean;
+  coinType?: number;
+  addressType?: string;
+  descriptor?: string;
+  xprv?: string; // Encrypted account-level xprv for descriptor-imported wallets
 }
 
 export interface BackupAddress {
