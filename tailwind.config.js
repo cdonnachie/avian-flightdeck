@@ -13,27 +13,48 @@ module.exports = {
   		},
   		colors: {
   			avian: {
-  				'50': '#e6fbfa',
-  				'100': '#c5f7f4',
-  				'200': '#94f0eb',
-  				'300': '#5ae3dc',
-  				'400': '#2dd4cd',
-  				'500': '#14b8b2',
-  				'600': '#0a9993',
-  				'700': '#0b7b77',
-  				'800': '#0e6360',
-  				'900': '#105352',
-  				'950': '#03302f',
-  				primary: '#23c9c1',
-  				secondary: '#0a7f8c',
-  				accent: '#1a9691',
-  				dark: '#06595a',
-  				light: '#4cecdf',
-  				orange: '#ff6b35',
-  				gold: '#f4b942',
+  				'50': '#e4fbf4',
+  				'100': '#bef6e7',
+  				'200': '#8defd9',
+  				'300': '#34f5c6',
+  				'400': '#34e2d5',
+  				'500': '#17a7b6',
+  				'600': '#19827a',
+  				'700': '#2a737f',
+  				'800': '#14666a',
+  				'900': '#123e46',
+  				'950': '#0d1b21',
+  				primary: '#34e2d5',
+  				secondary: '#19827a',
+  				accent: '#17a7b6',
+  				dark: '#0d1b21',
+  				light: '#34f5c6',
+  				/* named brand stops (Avian mainnet palette) */
+  				mint: '#34f5c6',
+  				turquoise: '#34e2d5',
+  				cyan: '#17a7b6',
+  				teal: '#19827a',
+  				slate: '#2a737f',
+  				/* Sodium — the secondary/accent that complements the teal */
+  				gold: '#f0b44e',
+  				orange: '#ef8a3c',
   				blue: '#2a8dc5',
-  				red: '#e54b4b'
+  				red: '#f0566b',
+  				/* testnet palette — reserved, only ever used on testnet */
+  				testnet: {
+  					violet: '#3c2c88',
+  					indigo: '#2d2178',
+  					blue: '#3a33bd',
+  					'blue-light': '#4449cd',
+  					navy: '#1f168e'
+  				}
   			},
+  			/* Sodium accent + caution, driven by CSS vars (theme-aware) */
+  			sodium: {
+  				DEFAULT: 'hsl(var(--sodium))',
+  				foreground: 'hsl(var(--sodium-foreground))'
+  			},
+  			caution: 'hsl(var(--caution))',
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			card: {
@@ -76,18 +97,18 @@ module.exports = {
   				'3': 'hsl(var(--chart-3))',
   				'4': 'hsl(var(--chart-4))',
   				'5': 'hsl(var(--chart-5))',
-  				avian1: '#23c9c1',
-  				avian2: '#0a7f8c',
-  				avian3: '#f4b942',
-  				avian4: '#2a8dc5',
-  				avian5: '#e54b4b'
+  				avian1: '#34e2d5',
+  				avian2: '#f0b44e',
+  				avian3: '#17a7b6',
+  				avian4: '#19827a',
+  				avian5: '#2a737f'
   			},
   			status: {
-  				success: '#1e9d88',
-  				warning: '#f4b942',
-  				error: '#e54b4b',
-  				info: '#2a8dc5',
-  				pending: '#8f8f8f'
+  				success: '#19827a',
+  				warning: '#ef8a3c',
+  				error: '#f0566b',
+  				info: '#17a7b6',
+  				pending: '#9db4bc'
   			},
   			sidebar: {
   				DEFAULT: 'hsl(var(--sidebar-background))',
@@ -102,8 +123,24 @@ module.exports = {
   		},
   		fontFamily: {
   			sans: [
+  				'var(--font-inter)',
   				'Inter',
+  				'-apple-system',
+  				'BlinkMacSystemFont',
+  				'Segoe UI',
+  				'Roboto',
+  				'Helvetica Neue',
+  				'Arial',
   				'sans-serif'
+  			],
+  			mono: [
+  				'var(--font-roboto-mono)',
+  				'Roboto Mono',
+  				'ui-monospace',
+  				'Cascadia Code',
+  				'Segoe UI Mono',
+  				'Consolas',
+  				'monospace'
   			]
   		},
   		borderRadius: {
