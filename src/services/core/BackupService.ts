@@ -11,7 +11,7 @@ import {
   BackupValidationResult,
 } from '@/types/backup';
 import { toast } from 'sonner';
-import { secureEncrypt, decryptData } from '../wallet/WalletService';
+import { secureEncrypt, decryptData } from '../wallet/encryption';
 import { Logger } from '@/lib/Logger';
 
 export class BackupService {

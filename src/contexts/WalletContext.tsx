@@ -9,7 +9,11 @@ import React, {
   useCallback,
   useRef,
 } from 'react';
-import { WalletService } from '@/services/wallet/WalletService';
+// Type-only import: WalletService binds the ~1.7 MB secp256k1 build at module load, so it is
+// imported dynamically (below) rather than statically. Keeping only the type here means every
+// route no longer carries the crypto in its initial bundle — it loads asynchronously on mount,
+// after first paint, off the critical path.
+import type { WalletService } from '@/services/wallet/WalletService';
 import { ElectrumService } from '@/services/core/ElectrumService';
 import { StorageService } from '@/services/core/StorageService';
 import { TransactionClientService } from '@/services/notifications/client/TransactionClientService';
@@ -156,7 +160,8 @@ export function WalletProvider({ children }: WalletProviderProps) {
       const electrumService = new ElectrumService();
       setElectrum(electrumService);
 
-      // Create WalletService with shared ElectrumService
+      // Load the crypto-heavy WalletService lazily so it is not in the initial bundle.
+      const { WalletService } = await import('@/services/wallet/WalletService');
       const walletService = new WalletService(electrumService);
       setWallet(walletService);
 
@@ -991,6 +996,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
       addressType,
       changePath,
     ) => {
+      const { WalletService } = await import('@/services/wallet/WalletService');
       return WalletService.deriveAddressesWithBalances(
         mnemonic,
         passphrase,

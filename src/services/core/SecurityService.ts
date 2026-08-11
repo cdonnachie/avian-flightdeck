@@ -9,8 +9,11 @@ import {
   SecurityState,
 } from '@/types/security';
 import { StorageService } from './StorageService';
-import { secureEncrypt, decryptData, isValidWIF, legacyDecrypt } from '../wallet/WalletService';
-import * as bip39 from 'bip39';
+// Encryption helpers come from the lean module so this service — instantiated eagerly by the
+// lock screen — does not pull the secp256k1 build. The elliptic-curve validation it needs on the
+// legacy-upgrade path is loaded lazily via initializeCrypto() below, and bip39 lazily at its one
+// use site, so neither is in the initial bundle.
+import { secureEncrypt, decryptData, legacyDecrypt } from '../wallet/encryption';
 import { securityLogger } from '@/lib/Logger';
 import { isBrowser } from '@/lib/utils';
 
@@ -768,8 +771,22 @@ export class SecurityService {
           // reliably fail — it can decrypt to plausible-looking rubbish. Checking that the
           // result is a usable key is the only way to tell the two apart, and it has to happen
           // before anything is written back: re-encrypting rubbish over the stored key would
-          // destroy the wallet outright.
-          if (!isValidWIF(decrypted)) {
+          // destroy the wallet outright. ECC is loaded lazily so it stays out of the initial
+          // bundle; validate the WIF here the same way validateWalletPassword does.
+          const { ECPair: ECPairLib } = await initializeCrypto();
+          try {
+            if (ECPairLib) {
+              ECPairLib.fromWIF(decrypted, getAvianNetwork());
+            } else if (
+              !(
+                decrypted.length >= 51 &&
+                decrypted.length <= 52 &&
+                /^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/.test(decrypted)
+              )
+            ) {
+              throw new Error('invalid WIF');
+            }
+          } catch {
             throw new Error('Decrypted value is not a valid private key, password incorrect.');
           }
 
@@ -785,7 +802,9 @@ export class SecurityService {
                 // We can use the legacy decrypt directly since we know it's an old format
                 const decryptedMnemonic = legacyDecrypt(activeWallet.mnemonic, password);
                 // Same reasoning as the key above: only store something that is demonstrably
-                // a real mnemonic, or the user's recovery phrase is lost.
+                // a real mnemonic, or the user's recovery phrase is lost. bip39 is loaded lazily
+                // so it stays out of the initial bundle.
+                const bip39 = await import('bip39');
                 if (decryptedMnemonic && bip39.validateMnemonic(decryptedMnemonic)) {
                   newEncryptedMnemonic = await secureEncrypt(decryptedMnemonic, password);
                 }

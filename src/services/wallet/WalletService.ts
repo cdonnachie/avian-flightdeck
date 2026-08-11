@@ -13,6 +13,7 @@ import { BIP32Factory } from 'bip32';
 import { ElectrumService, type DetailedBalance } from '../core/ElectrumService';
 import { StorageService } from '../core/StorageService';
 import { walletLogger } from '@/lib/Logger';
+import { getExplorerUrl, openTransactionInExplorer } from '@/lib/explorer';
 import {
     UTXOSelectionService,
     EnhancedUTXO,
@@ -21,77 +22,12 @@ import {
 } from './UTXOSelectionService';
 import * as bitcoinMessage from 'bitcoinjs-message';
 import { randomBytes, createHash, createCipheriv, createDecipheriv, createHmac } from 'crypto';
-import { scrypt, ProgressCallback } from 'scrypt-js';
-import * as CryptoJS from 'crypto-js';
+import { secureEncrypt, secureDecrypt, decryptData, legacyDecrypt } from './encryption';
 
-const scryptPromise = (
-    password: Buffer,
-    salt: Buffer,
-    N: number,
-    r: number,
-    p: number,
-    dkLen: number,
-): Promise<Buffer> => {
-    return new Promise((resolve, reject) => {
-        try {
-            walletLogger.debug('Starting scrypt key derivation with parameters:', {
-                passwordLength: password.length,
-                saltLength: salt.length,
-                N,
-                r,
-                p,
-                dkLen,
-            });
-
-            let hasStarted = false;
-            let lastProgress = 0;
-
-            // Based on the scrypt-js v3 documentation, the progress callback only receives one argument
-            // (the progress value between 0-1) and can return true to cancel the operation
-            const progressCallback = (progress: number): boolean | void => {
-                // Mark that we've received at least one callback
-                hasStarted = true;
-
-                // Only log progress occasionally to avoid too many logs
-                if (progress - lastProgress >= 0.1 || progress === 1) {
-                    walletLogger.debug(`Scrypt progress: ${Math.round(progress * 100)}%`);
-                    lastProgress = progress;
-                }
-
-                // Return false to continue (or undefined which is falsy)
-                return false;
-            };
-
-            // Call scrypt with our progress callback
-            scrypt(password, salt, N, r, p, dkLen, progressCallback)
-                .then((key) => {
-                    walletLogger.debug('Scrypt key derivation complete');
-                    resolve(Buffer.from(key));
-                })
-                .catch((error) => {
-                    walletLogger.error('Scrypt error:', error);
-                    reject(error);
-                });
-
-            // Add a safety check in case the callback is never called
-            setTimeout(() => {
-                if (!hasStarted) {
-                    walletLogger.error('Scrypt key derivation timed out - callback was never called');
-                    reject(new Error('Scrypt key derivation timed out - callback was never called'));
-                }
-            }, 10000); // 10 second timeout
-        } catch (e) {
-            // Catch any synchronous errors that might occur when starting scrypt
-            reject(
-                new Error(`Failed to initialize scrypt: ${e instanceof Error ? e.message : String(e)}`),
-            );
-        }
-    });
-};
-const ALGORITHM = 'aes-256-gcm';
-const IV_LENGTH = 16;
-const SALT_LENGTH = 64;
-const TAG_LENGTH = 16;
+// Re-exported so existing importers of these helpers from WalletService keep working. New code
+// that only needs encryption should import from './encryption' directly, to avoid pulling the
+// elliptic-curve dependencies this module binds at load.
+export { secureEncrypt, decryptData, legacyDecrypt } from './encryption';
 
 // Initialize ECPair and BIP32 with secp256k1
 const ECPair = ECPairFactory(ecc);
@@ -233,99 +169,9 @@ export function resolveSendAmounts(
     return { sendAmount, change };
 }
 
-export async function secureEncrypt(data: string, password: string): Promise<string> {
-    const salt = randomBytes(SALT_LENGTH);
-    const N = 16384,
-        r = 8,
-        p = 1,
-        dkLen = 32;
-    const key = await scryptPromise(Buffer.from(password, 'utf-8'), salt, N, r, p, dkLen);
-    const iv = randomBytes(IV_LENGTH);
-    const cipher = createCipheriv(ALGORITHM, key, iv);
-    const encrypted = Buffer.concat([cipher.update(data, 'utf8'), cipher.final()]);
-    const tag = cipher.getAuthTag();
-    return Buffer.concat([salt, iv, tag, encrypted]).toString('hex');
-}
 
-async function secureDecrypt(encryptedHex: string, password: string): Promise<string> {
-    const encryptedData = Buffer.from(encryptedHex, 'hex');
-    const salt = encryptedData.subarray(0, SALT_LENGTH);
-    const iv = encryptedData.subarray(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
-    const tag = encryptedData.subarray(SALT_LENGTH + IV_LENGTH, SALT_LENGTH + IV_LENGTH + TAG_LENGTH);
-    const encrypted = encryptedData.subarray(SALT_LENGTH + IV_LENGTH + TAG_LENGTH);
-    const N = 16384,
-        r = 8,
-        p = 1,
-        dkLen = 32;
-    const key = await scryptPromise(Buffer.from(password, 'utf-8'), salt, N, r, p, dkLen);
-    const decipher = createDecipheriv(ALGORITHM, key, iv);
-    decipher.setAuthTag(tag);
-    const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
-    return decrypted.toString('utf8');
-}
 
-/**
- * Legacy decryption using CryptoJS for backward compatibility
- */
-export function legacyDecrypt(encryptedData: string, password: string): string {
-    const decryptedBytes = CryptoJS.AES.decrypt(encryptedData, password);
-    const decryptedText = decryptedBytes.toString(CryptoJS.enc.Utf8);
-    if (!decryptedText) {
-        throw new Error('Legacy decryption failed or resulted in empty string.');
-    }
-    return decryptedText;
-}
 
-/**
- * Unified decryption function that handles both new (scrypt) and legacy (CryptoJS) formats.
- *
- * IMPORTANT — the two formats give very different guarantees:
- *
- * - The current format is AES-GCM, which is authenticated. A wrong password always throws.
- * - The legacy CryptoJS format is unauthenticated AES-CBC. There is nothing in the ciphertext
- *   to verify a password against, so a wrong password yields garbage plaintext. Usually that
- *   garbage is invalid UTF-8 and this function throws, but often enough to matter it decodes
- *   cleanly and is returned as if it were correct.
- *
- * So `wasLegacy: true` means "this value has not been authenticated". Callers must validate it
- * against what they expected — isValidWIF for a key, bip39.validateMnemonic for a mnemonic —
- * before trusting it, and certainly before writing it anywhere.
- *
- * @returns An object containing the decrypted data and a flag indicating if legacy format was used.
- */
-export async function decryptData(
-    encryptedData: string,
-    password: string,
-): Promise<{ decrypted: string; wasLegacy: boolean }> {
-    try {
-        // Attempt to decrypt using the new secure method first.
-        // This will fail on non-hex legacy data, triggering the catch block.
-        const decrypted = await secureDecrypt(encryptedData, password);
-        return { decrypted, wasLegacy: false };
-    } catch (secureError) {
-        // Log more useful information about the secure decryption failure
-        walletLogger.debug('Secure decryption failed, attempting legacy method', {
-            error: secureError instanceof Error ? secureError.message : 'Unknown error',
-            isHex: /^[0-9a-fA-F]+$/.test(encryptedData),
-            dataLength: encryptedData.length,
-        });
-
-        try {
-            // If secure decrypt fails, fall back to the legacy method.
-            const decrypted = legacyDecrypt(encryptedData, password);
-            return { decrypted, wasLegacy: true };
-        } catch (legacyError) {
-            // If both methods fail, the password is wrong or data is corrupt.
-            walletLogger.error('Decryption failed for both secure and legacy methods.', {
-                secureError: secureError instanceof Error ? secureError.message : 'Unknown error',
-                legacyError: legacyError instanceof Error ? legacyError.message : 'Unknown error',
-                isHex: /^[0-9a-fA-F]+$/.test(encryptedData),
-                dataLength: encryptedData.length,
-            });
-            throw new Error('Invalid password or corrupted data');
-        }
-    }
-}
 
 /**
  * Recover a secp256k1 public key from a Bitcoin-message signature.
@@ -1600,14 +1446,14 @@ export class WalletService {
     }
 
     // Utility method to open transaction in block explorer
+    // These delegate to the crypto-free helpers in lib/explorer so a read-only view can link to
+    // the explorer without importing this module. Kept here for existing callers.
     static openTransactionInExplorer(txid: string): void {
-        const explorerUrl = `https://flightpath.avn.network/tx/${txid}`;
-        window.open(explorerUrl, '_blank', 'noopener,noreferrer');
+        openTransactionInExplorer(txid);
     }
 
-    // Utility method to get explorer URL for a transaction
     static getExplorerUrl(txid: string): string {
-        return `https://flightpath.avn.network/tx/${txid}`;
+        return getExplorerUrl(txid);
     }
 
     // Utility method for testing WIF compatibility
