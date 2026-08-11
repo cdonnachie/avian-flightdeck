@@ -8,76 +8,83 @@
 
 @layer base {
   :root {
-    /* Light mode - Avian themed */
-    --background: 180 20% 99%;
-    --foreground: 180 10% 10%;
+    /* Light mode — Avian brand (paper ground, teal primary, Sodium gold accent) */
+    --background: 195 22% 96%; /* paper-alt #F4F7F8 */
+    --foreground: 201 31% 13%; /* ink #16232A */
     --card: 0 0% 100%;
-    --card-foreground: 180 10% 10%;
+    --card-foreground: 201 31% 13%;
     --popover: 0 0% 100%;
-    --popover-foreground: 180 10% 10%;
-    --primary: 173 73% 54%; /* Avian primary teal */
-    --primary-foreground: 0 0% 98%;
-    --secondary: 185 30% 34%; /* Avian secondary */
-    --secondary-foreground: 0 0% 98%;
-    --muted: 180 10% 96%;
-    --muted-foreground: 180 5% 40%;
-    --accent: 174 41% 30%; /* Avian accent */
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 180 20% 90%;
-    --input: 180 20% 90%;
-    --ring: 173 73% 54%; /* Match primary */
+    --popover-foreground: 201 31% 13%;
+    --primary: 175 68% 30%; /* teal #19827A — dark enough for white text */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 193 23% 92%; /* muted teal-tinted surface */
+    --secondary-foreground: 201 31% 13%;
+    --muted: 190 20% 94%;
+    --muted-foreground: 202 15% 35%; /* ink-soft #4D5E68 */
+    --accent: 162 82% 94%; /* brand-primary-light #E1FCF4 (subtle hover surface) */
+    --accent-foreground: 181 57% 18%;
+    --destructive: 351 74% 56%; /* rose #E23E56 */
+    --destructive-foreground: 0 0% 100%;
+    --border: 196 19% 89%; /* line #DDE5E8 */
+    --input: 196 19% 89%;
+    --ring: 175 68% 30%;
     --radius: 0.5rem;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-    --sidebar-background: 0 0% 98%; /* Very light neutral background for readability */
-    --sidebar-foreground: 180 25% 25%; /* Dark text for light background */
-    --sidebar-primary: 173 73% 54%; /* Avian primary teal */
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 173 20% 90%; /* Very light teal accent */
-    --sidebar-accent-foreground: 180 25% 25%;
-    --sidebar-border: 180 15% 88%; /* Light neutral border */
-    --sidebar-ring: 173 73% 54%; /* Match primary */
+    /* Brand accent (Sodium gold) + semantic tokens — hex, used directly */
+    --sodium: 41 85% 62%; /* accent #F0B44E */
+    --sodium-foreground: 32 82% 12%; /* #3A2606 */
+    --caution: 28 86% 59%; /* orange #EF8A3C */
+    --chart-1: 186 78% 40%; /* cyan */
+    --chart-2: 38 84% 62%; /* Sodium gold */
+    --chart-3: 175 68% 30%; /* teal */
+    --chart-4: 176 75% 55%; /* turquoise */
+    --chart-5: 188 50% 33%; /* slate */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 201 31% 13%;
+    --sidebar-primary: 175 68% 30%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 162 82% 94%;
+    --sidebar-accent-foreground: 181 57% 18%;
+    --sidebar-border: 196 19% 89%;
+    --sidebar-ring: 175 68% 30%;
   }
 
   .dark {
-    /* Dark mode - Avian themed */
-    --background: 185 20% 12%;
-    --foreground: 0 0% 98%;
-    --card: 185 25% 10%;
-    --card-foreground: 0 0% 98%;
-    --popover: 185 25% 10%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 173 73% 54%; /* Avian primary teal */
-    --primary-foreground: 0 0% 10%;
-    --secondary: 185 30% 34%; /* Avian secondary */
-    --secondary-foreground: 0 0% 98%;
-    --muted: 180 10% 20%;
-    --muted-foreground: 0 0% 70%;
-    --accent: 174 41% 30%; /* Avian accent */
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 70% 45%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 185 25% 25%;
-    --input: 185 25% 25%;
-    --ring: 173 73% 54%; /* Match primary */
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
-    --sidebar-background: 185 20% 12%; /* Dark Avian teal background */
-    --sidebar-foreground: 180 15% 85%; /* Light text for dark background */
-    --sidebar-primary: 173 73% 54%; /* Avian primary teal */
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 185 25% 18%; /* Dark Avian teal accent */
-    --sidebar-accent-foreground: 180 15% 85%;
-    --sidebar-border: 185 25% 18%; /* Dark Avian teal border */
-    --sidebar-ring: 173 73% 54%; /* Match primary */
+    /* Dark mode — Avian brand (night ground, bright turquoise primary) */
+    --background: 198 43% 9%; /* night #0D1B21 */
+    --foreground: 190 32% 93%; /* ink #E6F0F2 */
+    --card: 198 45% 13%; /* panel #122730 */
+    --card-foreground: 190 32% 93%;
+    --popover: 198 45% 13%;
+    --popover-foreground: 190 32% 93%;
+    --primary: 176 75% 55%; /* turquoise #34E2D5 */
+    --primary-foreground: 192 75% 9%; /* deep #06232A */
+    --secondary: 194 44% 15%; /* panel-3 #163139 */
+    --secondary-foreground: 190 32% 93%;
+    --muted: 194 44% 15%;
+    --muted-foreground: 195 19% 68%; /* ink-soft #9DB4BC */
+    --accent: 194 44% 15%;
+    --accent-foreground: 190 32% 93%;
+    --destructive: 352 84% 64%; /* rose #F0566B */
+    --destructive-foreground: 0 0% 100%;
+    --border: 196 35% 22%; /* line #24404A */
+    --input: 196 35% 22%;
+    --ring: 176 75% 55%;
+    --sodium: 41 85% 62%; /* accent #F0B44E */
+    --sodium-foreground: 32 82% 12%;
+    --caution: 28 86% 59%; /* orange #EF8A3C */
+    --chart-1: 176 75% 55%; /* turquoise */
+    --chart-2: 38 84% 62%; /* Sodium gold */
+    --chart-3: 186 78% 40%; /* cyan */
+    --chart-4: 175 68% 30%; /* teal */
+    --chart-5: 188 50% 33%; /* slate */
+    --sidebar-background: 198 44% 11%; /* #0F2027 */
+    --sidebar-foreground: 195 19% 68%;
+    --sidebar-primary: 176 75% 55%;
+    --sidebar-primary-foreground: 192 75% 9%;
+    --sidebar-accent: 194 44% 15%;
+    --sidebar-accent-foreground: 190 32% 93%;
+    --sidebar-border: 195 39% 17%; /* #1A333B */
+    --sidebar-ring: 176 75% 55%;
   }
 }
 

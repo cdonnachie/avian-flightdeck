@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
+import { Inter, Roboto_Mono } from 'next/font/google';
 import { ThemeProvider } from 'next-themes';
 import './globals.css';
 import './vendor-prefixes.css';
@@ -15,7 +15,8 @@ const ServiceWorkerRegistrar = dynamic(() => import('@/components/ServiceWorkerR
 import ElectrumManagerWrapper from '@/components/ElectrumManagerWrapper';
 import ClientWatchedAddressWrapper from '@/components/ClientWatchedAddressWrapper';
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
+const robotoMono = Roboto_Mono({ subsets: ['latin'], variable: '--font-roboto-mono' });
 
 export const metadata: Metadata = {
   title: 'Avian FlightDeck',
@@ -88,7 +89,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#237a7f',
+  themeColor: '#19827a',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -102,7 +103,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Avian FlightDeck" />
       </head>
-      <body className={inter.className}>
+      <body className={`${inter.variable} ${robotoMono.variable} ${inter.className}`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
