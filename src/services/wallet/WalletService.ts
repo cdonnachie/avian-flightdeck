@@ -1341,11 +1341,16 @@ export class WalletService {
      */
     async validateWalletPassword(password: string): Promise<boolean> {
         try {
-            // First check if wallet is encrypted at all
-            const isEncrypted = await StorageService.getIsEncrypted();
+            // With no wallet there is nothing to validate the password against, so there is no
+            // basis on which to call it valid. This used to fall through to the unencrypted
+            // branch below and answer true for any password at all.
+            const activeWallet = await StorageService.getActiveWallet();
+            if (!activeWallet) {
+                return false;
+            }
 
-            if (!isEncrypted) {
-                // If wallet is not encrypted, any password is valid
+            if (!activeWallet.isEncrypted) {
+                // Nothing is encrypted, so there is no password to get wrong.
                 return true;
             }
 

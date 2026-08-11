@@ -141,16 +141,17 @@ fails, the derivation code changed — work out why before touching the expectat
 
 ### Deliberately pinned defects
 
-Some tests assert behaviour that is wrong, so that fixing it is a conscious act rather than an
-accident. Each says so in a comment at the assertion. When you fix one, update its test in the
-same commit.
+None outstanding. If you ever need to add one — a test that asserts behaviour you know is wrong,
+so that fixing it is a conscious act rather than an accident — say so plainly in a comment at the
+assertion, and change the test in the same commit as the fix.
 
-- **`UTXOSelectionService.test.ts` — "sweeps nothing at the default fee rate".**
-  `CONSOLIDATE_DUST` cannot consolidate anything at default settings, because dust is
-  `value <= 1000` while the sweep gate is `value > feeRate * 0.1`, which is also 1000 at the
-  default fee rate of 10000.
-- **`derivation.test.ts` — "fails open when there is no wallet at all".**
-  `validateWalletPassword` returns `true` for any password when no wallet exists.
+Two were pinned this way and have since been fixed; their tests now assert the corrected
+behaviour and carry a note about what the regression was:
+
+- `CONSOLIDATE_DUST` swept nothing at the default fee rate, because dust was `value <= 1000`
+  while the sweep gate was `value > feeRate * 0.1` — also 1000 at the default fee rate, so the
+  two conditions were complementary.
+- `validateWalletPassword` returned `true` for any password when no wallet existed.
 
 ### Sharp edges pinned by tests
 

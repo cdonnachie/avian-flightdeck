@@ -260,7 +260,7 @@ export class UTXOSelectionService {
     const nonDust = utxos.filter((utxo) => !utxo.isDust).sort((a, b) => b.value - a.value);
     const dust = utxos.filter((utxo) => utxo.isDust).sort((a, b) => b.value - a.value);
 
-    let selected: EnhancedUTXO[] = [];
+    const selected: EnhancedUTXO[] = [];
     let totalInput = 0;
     let remainingInputs = maxInputs;
 
@@ -272,17 +272,27 @@ export class UTXOSelectionService {
       remainingInputs--;
     }
 
-    // Add dust UTXOs if there's room and it's beneficial
+    // Then sweep up the dust, which is the entire point of this strategy.
+    //
+    // This used to be gated on `utxo.value > feeRate * 0.1`, meant as the marginal fee cost of
+    // one more input. That gate never let anything through: dust is `value <= dustThreshold`
+    // (1000 by default) and the gate came to exactly 1000 at the default fee rate, so the two
+    // conditions were complementary and the strategy silently degraded to largest-first.
+    //
+    // It was also modelling a cost that is not charged. `change` below is
+    // `totalInput - targetAmount - feeRate`, a flat fee that does not grow with the number of
+    // inputs, so an extra input costs the user nothing. Consolidation is opt-in, and maxInputs
+    // still bounds how large the transaction can get.
+    //
+    // If a size-based fee model is ever introduced, this is the place to reinstate a real
+    // per-input cost — and the test in UTXOSelectionService.test.ts should move with it.
     for (const utxo of dust) {
       if (remainingInputs <= 0) break;
+      if (utxo.value <= 0) continue;
 
-      // Only add dust if the value is greater than the marginal fee cost
-      const marginalFeeCost = Math.floor(feeRate * 0.1); // Estimate 10% fee increase per input
-      if (utxo.value > marginalFeeCost) {
-        selected.push(utxo);
-        totalInput += utxo.value;
-        remainingInputs--;
-      }
+      selected.push(utxo);
+      totalInput += utxo.value;
+      remainingInputs--;
     }
 
     if (totalInput < targetAmount + feeRate) {

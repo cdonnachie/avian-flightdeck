@@ -212,13 +212,11 @@ describe('dust consolidation', () => {
   ];
 
   it('sweeps dust in alongside the amount being sent', () => {
-    // Dust is only swept when it is worth more than the marginal fee of an extra input,
-    // which the strategy estimates as 10% of the fee rate.
     const utxos = withDust(900, 800);
 
     const result = select(utxos, {
       targetAmount: 100_000,
-      feeRate: 5_000, // marginal cost 500, so 900 and 800 are both worth sweeping
+      feeRate: 5_000,
       includeDust: true,
       strategy: CoinSelectionStrategy.CONSOLIDATE_DUST,
     })!;
@@ -229,25 +227,37 @@ describe('dust consolidation', () => {
     expect(result.strategyUsed).toBe(CoinSelectionStrategy.CONSOLIDATE_DUST);
   });
 
-  it('leaves dust worth less than the marginal fee alone', () => {
-    const utxos = withDust(400);
+  it('never exceeds the input cap while sweeping', () => {
+    const manyDust = Array.from({ length: 40 }, () => makeUTXO({ value: 900, confirmations: 10 }));
+    const utxos = [...pool(200_000), ...manyDust];
 
     const result = select(utxos, {
       targetAmount: 100_000,
-      feeRate: 5_000, // marginal cost 500, so 400 is not worth spending
+      feeRate: FEE,
+      includeDust: true,
+      maxInputs: 6,
+      strategy: CoinSelectionStrategy.CONSOLIDATE_DUST,
+    })!;
+
+    expect(result.selectedUTXOs.length).toBeLessThanOrEqual(6);
+  });
+
+  it('ignores a zero-value output', () => {
+    const utxos = [...pool(200_000), makeUTXO({ value: 0, confirmations: 10 })];
+
+    const result = select(utxos, {
+      targetAmount: 100_000,
+      feeRate: FEE,
       includeDust: true,
       strategy: CoinSelectionStrategy.CONSOLIDATE_DUST,
     })!;
 
-    expect(result.selectedUTXOs.some((utxo) => utxo.value === 400)).toBe(false);
+    expect(result.selectedUTXOs.some((utxo) => utxo.value === 0)).toBe(false);
   });
 
-  it('sweeps nothing at the default fee rate, because the two thresholds cancel out', () => {
-    // DEFECT, pinned deliberately. Dust is `value <= dustThreshold` (1000 by default) while the
-    // sweep gate is `value > feeRate * 0.1` (also 1000 at the default fee rate of 10000). The
-    // conditions are exactly complementary, so at default settings CONSOLIDATE_DUST degrades to
-    // an ordinary largest-first selection and never consolidates anything. Change this test
-    // together with the fix — do not "correct" it on its own.
+  it('sweeps dust at the default fee rate, where the old gate cancelled itself out', () => {
+    // Regression cover. The sweep used to be gated on `value > feeRate * 0.1`, which came to
+    // exactly the dust threshold at the default fee rate, so nothing was ever consolidated.
     const utxos = withDust(900, 800, 1_000);
 
     const result = select(utxos, {
@@ -257,8 +267,44 @@ describe('dust consolidation', () => {
       strategy: CoinSelectionStrategy.CONSOLIDATE_DUST,
     })!;
 
-    expect(result.selectedUTXOs).toHaveLength(1);
-    expect(result.selectedUTXOs[0].value).toBe(200_000);
+    expect(result.selectedUTXOs).toHaveLength(4);
+    expect(result.selectedUTXOs.map((utxo) => utxo.value).sort((a, b) => a - b)).toEqual([
+      800, 900, 1_000, 200_000,
+    ]);
+  });
+
+  it('sweeps dust regardless of the fee rate, since the fee does not grow with inputs', () => {
+    for (const feeRate of [1_000, 5_000, 10_000, 50_000]) {
+      const result = select(withDust(900), {
+        targetAmount: 100_000,
+        feeRate,
+        includeDust: true,
+        strategy: CoinSelectionStrategy.CONSOLIDATE_DUST,
+      })!;
+
+      expect(result.selectedUTXOs.some((utxo) => utxo.value === 900)).toBe(true);
+    }
+  });
+
+  it('charges the same flat fee whether or not dust was swept', () => {
+    // This is why sweeping is free to the user: change is totalInput - amount - feeRate, with no
+    // per-input component. If that ever changes, the sweep needs a real marginal-cost gate.
+    const withoutDust = select(pool(200_000), {
+      targetAmount: 100_000,
+      feeRate: FEE,
+      strategy: CoinSelectionStrategy.CONSOLIDATE_DUST,
+    })!;
+    const swept = select(withDust(900, 800), {
+      targetAmount: 100_000,
+      feeRate: FEE,
+      includeDust: true,
+      strategy: CoinSelectionStrategy.CONSOLIDATE_DUST,
+    })!;
+
+    expect(withoutDust.estimatedFee).toBe(FEE);
+    expect(swept.estimatedFee).toBe(FEE);
+    // The swept dust lands in the change output rather than being burned as fee.
+    expect(swept.change).toBe(withoutDust.change + 900 + 800);
   });
 
   it('returns null when even the dust cannot cover the target', () => {

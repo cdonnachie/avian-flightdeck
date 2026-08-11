@@ -373,9 +373,10 @@ describe('validateWalletPassword', () => {
     expect(await wallet.validateWalletPassword('anything at all')).toBe(true);
   });
 
-  it('fails open when there is no wallet at all', async () => {
-    // Documents current behaviour: with no active wallet getIsEncrypted() is false, so the
-    // check short-circuits to "valid". Callers must not treat this as proof of a password.
-    expect(await wallet.validateWalletPassword('anything at all')).toBe(true);
+  it('refuses any password when there is no wallet to check it against', async () => {
+    // Regression cover: this used to answer true for any password, because with no active
+    // wallet the encryption check read false and short-circuited to "valid".
+    expect(await wallet.validateWalletPassword('anything at all')).toBe(false);
+    expect(await wallet.validateWalletPassword('')).toBe(false);
   });
 });
