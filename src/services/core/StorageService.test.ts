@@ -166,6 +166,19 @@ describe('preferences', () => {
     expect(await StorageService.getCurrency()).toBe('EUR');
   });
 
+  it('keeps a single row per preference even under concurrent writes to the same key', async () => {
+    // The old two-transaction find-then-put could insert duplicate rows for one key when racing.
+    await Promise.all(['USD', 'GBP', 'EUR', 'JPY'].map((c) => StorageService.setCurrency(c)));
+
+    // One value wins, and a subsequent write still overwrites cleanly (no accumulated duplicates
+    // that a later read might pick up instead).
+    const settled = await StorageService.getCurrency();
+    expect(['USD', 'GBP', 'EUR', 'JPY']).toContain(settled);
+
+    await StorageService.setCurrency('CAD');
+    expect(await StorageService.getCurrency()).toBe('CAD');
+  });
+
   it('clamps the change address count to a sane range', async () => {
     await StorageService.setChangeAddressCount(0);
     expect(await StorageService.getChangeAddressCount()).toBe(1);
@@ -180,6 +193,73 @@ describe('preferences', () => {
 
     await StorageService.setSettings(JSON.stringify({ theme: 'light' }));
     expect(await StorageService.getSettings()).toEqual({ theme: 'light' });
+  });
+});
+
+describe('atomic settings mutation', () => {
+  it('merges into the existing settings and returns the result', async () => {
+    await StorageService.setSettings({ theme: 'dark' });
+
+    const result = await StorageService.mutateSettings((current) => ({
+      ...current,
+      currency: 'GBP',
+    }));
+
+    expect(result).toEqual({ theme: 'dark', currency: 'GBP' });
+    expect(await StorageService.getSettings()).toEqual({ theme: 'dark', currency: 'GBP' });
+  });
+
+  it('starts from an empty object when nothing is stored', async () => {
+    const result = await StorageService.mutateSettings((current) => ({ ...current, a: 1 }));
+    expect(result).toEqual({ a: 1 });
+  });
+
+  it('loses no writes when many mutations run concurrently', async () => {
+    // The whole point of the fix: each of these reads-modifies-writes the one settings blob. The
+    // old getSettings→mutate→setSettings pair left a gap in which a concurrent writer read stale
+    // data and clobbered it. With an atomic single-transaction merge, every key survives.
+    const keys = Array.from({ length: 25 }, (_, i) => `key_${i}`);
+
+    await Promise.all(
+      keys.map((key) => StorageService.mutateSettings((current) => ({ ...current, [key]: key }))),
+    );
+
+    const settings = await StorageService.getSettings();
+    for (const key of keys) {
+      expect(settings[key]).toBe(key);
+    }
+    expect(Object.keys(settings)).toHaveLength(keys.length);
+  });
+
+  it('keeps both a security-settings write and a watch-list write when they race', async () => {
+    // The reported failure: SecurityService writes settings.security_settings while
+    // WatchAddressService writes settings.watched_addresses_<addr>, and one clobbers the other.
+    await Promise.all([
+      StorageService.mutateSettings((current) => ({
+        ...current,
+        security_settings: { autoLock: { enabled: true } },
+      })),
+      StorageService.mutateSettings((current) => ({
+        ...current,
+        watched_addresses_RAbc: JSON.stringify([{ watch_address: 'RXyz' }]),
+      })),
+    ]);
+
+    const settings = await StorageService.getSettings();
+    expect(settings.security_settings).toEqual({ autoLock: { enabled: true } });
+    expect(settings.watched_addresses_RAbc).toBe(JSON.stringify([{ watch_address: 'RXyz' }]));
+  });
+
+  it('applies concurrent updates to the same key in some order without corrupting the store', async () => {
+    await Promise.all(
+      [1, 2, 3, 4, 5].map((n) =>
+        StorageService.mutateSettings((current) => ({ ...current, counter: n })),
+      ),
+    );
+
+    const settings = await StorageService.getSettings();
+    // One of the writers wins; the store is a single coherent object, not a lost/duplicated mess.
+    expect([1, 2, 3, 4, 5]).toContain(settings.counter);
   });
 });
 
