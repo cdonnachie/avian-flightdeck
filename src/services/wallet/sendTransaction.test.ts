@@ -3,7 +3,13 @@ import * as bitcoin from 'bitcoinjs-lib';
 import { ECPairFactory } from 'ecpair';
 import * as ecc from 'tiny-secp256k1';
 
-import { WalletService, avianNetwork, deriveAddress, secureEncrypt } from './WalletService';
+import {
+  WalletService,
+  avianNetwork,
+  deriveAddress,
+  resolveSendAmounts,
+  secureEncrypt,
+} from './WalletService';
 import { CoinSelectionStrategy } from './UTXOSelectionService';
 import { StorageService } from '@/services/core/StorageService';
 import { TEST_PASSWORD, resetStorage } from '@/test/helpers';
@@ -96,6 +102,55 @@ beforeEach(() => {
   resetStorage();
 });
 
+describe('resolveSendAmounts', () => {
+  const FEE = 10_000;
+
+  it('leaves the recipient whole and takes the fee from change when the flag is off', () => {
+    const { sendAmount, change } = resolveSendAmounts(100_000, FEE, 500_000, false);
+
+    expect(sendAmount).toBe(100_000);
+    expect(change).toBe(390_000);
+    // Miner fee = inputs - outputs.
+    expect(500_000 - sendAmount - change).toBe(FEE);
+  });
+
+  it('takes the fee from the recipient when the flag is on', () => {
+    const { sendAmount, change } = resolveSendAmounts(100_000, FEE, 500_000, true);
+
+    expect(sendAmount).toBe(90_000);
+    expect(change).toBe(400_000);
+    // Crucially, the miner fee is still exactly the fee rate — the flag moved who pays it, not
+    // how much is paid. This is the incoherence the fix removed.
+    expect(500_000 - sendAmount - change).toBe(FEE);
+  });
+
+  it('charges miners the same fee either way — the toggle only shifts who absorbs it', () => {
+    const off = resolveSendAmounts(100_000, FEE, 500_000, false);
+    const on = resolveSendAmounts(100_000, FEE, 500_000, true);
+
+    const minerFeeOff = 500_000 - off.sendAmount - off.change;
+    const minerFeeOn = 500_000 - on.sendAmount - on.change;
+    expect(minerFeeOff).toBe(minerFeeOn);
+    expect(minerFeeOn).toBe(FEE);
+
+    // With the flag on, the sender's total outlay is exactly `amount`.
+    expect(on.sendAmount + minerFeeOn).toBe(100_000);
+    // With it off, the sender pays amount + fee.
+    expect(off.sendAmount + minerFeeOff).toBe(110_000);
+  });
+
+  it('scales the deduction with the fee rate rather than a fixed fraction of it', () => {
+    // The old code deducted feeRate/4, so the deduction did not match the fee actually paid.
+    expect(resolveSendAmounts(100_000, 25_000, 500_000, true).sendAmount).toBe(75_000);
+    expect(resolveSendAmounts(100_000, 4_000, 500_000, true).sendAmount).toBe(96_000);
+  });
+
+  it('never produces a negative recipient amount', () => {
+    const { sendAmount } = resolveSendAmounts(3_000, FEE, 500_000, true);
+    expect(sendAmount).toBe(0);
+  });
+});
+
 describe('sendTransaction', () => {
   const FEE = 10_000;
 
@@ -147,6 +202,41 @@ describe('sendTransaction', () => {
     const tx = broadcastTx(broadcast);
     const totalOut = tx.outs.reduce((sum, out) => sum + out.value, 0);
     expect(500_000 - totalOut).toBe(25_000);
+  });
+
+  it('pays miners the same fee with subtractFeeFromAmount on as off', async () => {
+    // The built transaction is the real proof: inputs minus outputs is the miner fee, and it
+    // must not depend on who absorbs it. Before the fix this dropped from 10,000 to 2,500.
+    const walletFor = async () => {
+      const { address } = await createActiveWallet();
+      const { electrum, broadcast } = createFakeElectrum(address, [500_000]);
+      return { wallet: new WalletService(electrum as never), broadcast };
+    };
+
+    const off = await walletFor();
+    await off.wallet.sendTransaction(RECIPIENT, 100_000, TEST_PASSWORD, {
+      subtractFeeFromAmount: false,
+    });
+    const txOff = broadcastTx(off.broadcast);
+
+    resetStorage();
+    const on = await walletFor();
+    await on.wallet.sendTransaction(RECIPIENT, 100_000, TEST_PASSWORD, {
+      subtractFeeFromAmount: true,
+    });
+    const txOn = broadcastTx(on.broadcast);
+
+    const feeOff = 500_000 - txOff.outs.reduce((sum, out) => sum + out.value, 0);
+    const feeOn = 500_000 - txOn.outs.reduce((sum, out) => sum + out.value, 0);
+
+    expect(feeOff).toBe(FEE);
+    expect(feeOn).toBe(FEE);
+
+    // And with the flag on, the recipient — not the sender — absorbed the fee.
+    const recipientOut = (tx: bitcoin.Transaction) =>
+      outputsOf(tx).find((out) => out.address === RECIPIENT)!.value;
+    expect(recipientOut(txOff)).toBe(100_000);
+    expect(recipientOut(txOn)).toBe(90_000);
   });
 
   it('omits the change output when there is nothing left over', async () => {
