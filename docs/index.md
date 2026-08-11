@@ -10,7 +10,7 @@ This document serves as a central index for all documentation related to the Avi
 
 ## Deployment
 
-- [Deployment Guide](DEPLOY.md) - How to deploy the application to Vercel
+- [Deployment Guide](DEPLOY.md) - Self-hosting the static build behind nginx
 
 ## Core Features
 

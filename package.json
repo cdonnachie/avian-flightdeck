@@ -6,7 +6,8 @@
     "dev": "next dev",
     "dev:ssl": "next dev --experimental-https",
     "build": "next build",
-    "start": "next start",
+    "start": "serve out --listen 3000",
+    "typecheck": "tsc --noEmit",
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -111,6 +112,7 @@
     "process": "^0.11.10",
     "querystring-es3": "^0.2.1",
     "selfsigned": "^2.4.1",
+    "serve": "^14.2.6",
     "url": "^0.11.4",
     "util": "^0.12.5",
     "vitest": "^3.2.7"

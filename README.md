@@ -293,7 +293,7 @@ See our [Documentation Index](docs/index.md) for comprehensive guides.
 - [Security Features](docs/SECURITY_FEATURES.md): Overview of security features
 - [Privacy](docs/PRIVACY.md): Comprehensive privacy approach
 - [Notifications](docs/NOTIFICATIONS.md): Notification system documentation
-- [Deployment](docs/DEPLOY.md): Guide to deploy on Vercel
+- [Deployment](docs/DEPLOY.md): Self-hosting the static build behind nginx
 
 ## License
 

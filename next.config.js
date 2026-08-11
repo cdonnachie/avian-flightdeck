@@ -39,7 +39,17 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
-  // Optimize for Vercel
+  // The wallet is entirely client-side: no API routes, no server components that need a runtime,
+  // no server-side data fetching. `export` therefore emits a plain folder of static files in
+  // out/, which any web server can serve — see docs/DEPLOY.md.
+  output: 'export',
+  // Image Optimization is a server feature and has no equivalent in a static export.
+  images: {
+    unoptimized: true,
+  },
+  // Emit out/settings/wallet/index.html rather than out/settings/wallet.html, so a plain
+  // `try_files $uri $uri/index.html` serves deep links without per-route rules.
+  trailingSlash: true,
   poweredByHeader: false,
   compress: true,
   // Transpile ESM crypto libraries

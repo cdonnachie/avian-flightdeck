@@ -33,11 +33,11 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 
   webServer: {
-    // A production build is closer to what users run and boots predictably; `pnpm dev` works too
-    // if you would rather iterate against hot reload (E2E_USE_DEV=1).
+    // Serves the static export from out/, which is byte-for-byte what gets deployed. Run
+    // `pnpm build` first. Set E2E_USE_DEV=1 to iterate against the dev server instead.
     command: process.env.E2E_USE_DEV
       ? `pnpm exec next dev --port ${PORT}`
-      : `pnpm exec next start --port ${PORT}`,
+      : `pnpm exec serve out --listen ${PORT} --no-request-logging`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
