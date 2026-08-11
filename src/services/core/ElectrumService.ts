@@ -468,6 +468,19 @@ export class ElectrumService {
     }
   }
 
+  /**
+   * server.features — reports the server's capabilities, including the chain's genesis hash.
+   * Used by Avian Connect to answer getNetwork() without hard-coding a chain constant.
+   */
+  async getServerFeatures(): Promise<Record<string, any>> {
+    try {
+      return await this.makeRequest('server.features', []);
+    } catch (error) {
+      electrumLogger.error('Failed to get server features:', error);
+      throw error;
+    }
+  }
+
   async ping(): Promise<void> {
     try {
       await this.makeRequest('server.ping', []);

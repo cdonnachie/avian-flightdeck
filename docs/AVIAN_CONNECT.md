@@ -1,0 +1,326 @@
+# Avian Connect — Protocol Specification (Phase 1)
+
+Avian Connect is the dApp connection surface of Avian FlightDeck. It lets an external web
+application ask the user's wallet for their address and for a signature over a login challenge,
+without the dApp ever seeing key material.
+
+Phase 1 is **login-grade only**: connect, accounts, message signing, network identification.
+There is no transaction signing, no PSBT signing, and no asset support in this phase — those
+methods return `UNSUPPORTED_METHOD`.
+
+The wallet endpoint is a single URL:
+
+```
+https://flightdeck.avn.network/connect
+```
+
+Two transports share that URL: a **popup** transport (desktop) and a **redirect** transport
+(mobile / in-app browsers where popups are unreliable).
+
+---
+
+## 1. Security model
+
+- **Keys never leave the wallet.** A dApp only ever receives an address, optionally a compressed
+  public key (hex), and base64 signatures. Mnemonics, private keys, xprvs, and decrypted secrets
+  are never placed in a `postMessage` payload or a redirect fragment.
+- **Every signature requires two user actions**: an explicit approval screen showing the origin
+  and the verbatim message, plus wallet authentication (password or biometric). "Remembering" a
+  site skips the *connect* screen only — it never skips the *sign* screen and never skips
+  authentication.
+- **Origins are pinned per request.** In popup mode the wallet learns the origin from
+  `MessageEvent.origin` of the first message from its opener and replies only to that origin —
+  never `"*"`. In redirect mode the wallet requires `req.origin` to equal the origin of
+  `redirect_uri`, so a site can only receive answers at its own origin.
+- **Fragment, not query.** Redirect responses are returned in the URL fragment
+  (`#avianconnect=…`), which browsers do not send to servers, keeping signatures out of server
+  logs, proxies, and `Referer` headers.
+- **The wallet is the source of truth for the origin.** Any `origin` a dApp writes into a request
+  is only used in redirect mode, and only after being matched against `redirect_uri`. It is never
+  trusted in popup mode.
+- **Origins must be `https:`.** Plaintext `http:` is accepted only for `localhost`, `127.0.0.1`
+  and `[::1]` so the demo and local development work. This applies to both transports: a popup
+  message from a plaintext origin is ignored, and a plaintext `redirect_uri` is refused.
+
+### What origin attestation does and does not give you
+
+In popup mode the browser attests the origin: the value comes from `MessageEvent.origin` and
+cannot be forged by page script. In redirect mode there is no equivalent browser attestation —
+the wallet can only guarantee that the response is *delivered to* the origin named in the
+request. A malicious site can therefore truthfully identify itself and receive its own answers,
+but it cannot impersonate another site and receive that site's answers.
+
+---
+
+## 2. Envelopes
+
+All messages are JSON objects carrying the version tag `avianConnect: 1`.
+
+### 2.1 Request (dApp → wallet)
+
+```jsonc
+{
+  "avianConnect": 1,
+  "id": "a3f1c9d2",       // string, 1..128 chars, echoed back verbatim
+  "method": "signMessage",
+  "params": { "message": "…" },  // optional, object
+  "origin": "https://realm.example"  // required in redirect mode, ignored in popup mode
+}
+```
+
+Rules:
+
+- `avianConnect` must be exactly the number `1`.
+- `id` must be a non-empty string of at most 128 characters. Generate a fresh, unguessable id per
+  request; the wallet echoes it so a dApp can match replies.
+- `method` must be a non-empty string of at most 64 characters.
+- `params`, when present, must be a plain object (not an array, not `null`).
+- Anything else is rejected with `INVALID_REQUEST`.
+
+### 2.2 Response (wallet → dApp)
+
+Exactly one of `result` or `error` is present.
+
+```jsonc
+{ "avianConnect": 1, "id": "a3f1c9d2", "result": { "signature": "H9x…" } }
+```
+
+```jsonc
+{ "avianConnect": 1, "id": "a3f1c9d2", "error": { "code": "USER_REJECTED", "message": "User rejected the request" } }
+```
+
+### 2.3 Events (popup transport only)
+
+Events are unsolicited wallet → dApp messages. They carry no `id`.
+
+```jsonc
+{ "avianConnect": 1, "event": "accountsChanged", "data": { "accounts": ["R9…"] } }
+```
+
+| Event             | `data`                                    | Meaning                                                     |
+| ----------------- | ----------------------------------------- | ----------------------------------------------------------- |
+| `accountsChanged` | `{ accounts: string[] }`                  | The accounts exposed to this origin changed (wallet switch, revocation). An empty array means the origin no longer has access. |
+| `networkChanged`  | `{ network: string, genesisHash: string \| null }` | The active network changed. Phase 1 is mainnet-only, so this is emitted for completeness. |
+| `disconnect`      | `{ reason: string }`                      | The wallet is tearing the session down (window closing, permission revoked). |
+
+The redirect transport is single-shot — one request, one navigation back — so it carries no
+events.
+
+---
+
+## 3. Methods (phase 1)
+
+### `connect()`
+
+Requests access to an account.
+
+- **params**: none
+- **result**: `{ address: string, publicKey?: string }`
+
+The first call from an origin shows the connect approval screen, where the user picks which
+wallet to expose and may tick "remember this site". Origins the user chose to remember resolve
+silently on later calls. Origins that were approved without "remember" must approve again on the
+next call.
+
+`publicKey` (compressed, hex) is included only when the wallet already knows it for the exposed
+address. The wallet learns it by recovering it from a signature the user has already authorised,
+so it is typically absent on the first `connect()` and present afterwards. Treat it as optional.
+
+### `getAccounts()`
+
+- **params**: none
+- **result**: `string[]`
+
+Returns exactly the accounts the user exposed to *this* origin, never the wallet's full account
+list. Requires an existing permission; otherwise `ORIGIN_NOT_APPROVED`.
+
+### `signMessage({ message })`
+
+- **params**: `{ message: string }` — non-empty, at most 8192 characters
+- **result**: `{ signature: string }` — base64
+
+Signs with the exposed account using the Avian message prefix
+(`\x16Raven Signed Message:\n`), producing a signature verifiable by Avian Core and by
+FlightDeck's Message Utilities → Verify tab.
+
+Requires an existing permission, an explicit per-signature approval screen showing the origin and
+the full untruncated message, and wallet authentication. There is no way to pre-approve
+signatures.
+
+A dApp login challenge should include the origin, a server nonce, and an expiry, e.g.:
+
+```
+realm.example wants you to sign in with your Avian address:
+R9xy…
+
+Nonce: 6f1a…
+Issued At: 2026-08-10T12:00:00Z
+```
+
+### `getNetwork()`
+
+- **params**: none
+- **result**: `{ network: "mainnet", genesisHash: string | null }`
+
+`genesisHash` is the mainnet genesis block hash as reported by the ElectrumX server the wallet is
+connected to (`server.features` → `genesis_hash`), cached locally once learned. It is `null` when
+the wallet has never been able to reach a server to learn it — dApps that pin a genesis hash
+should treat `null` as "unknown", not as a mismatch.
+
+This method identifies the chain and exposes nothing about the user, so it is the one method that
+does not require a permission.
+
+Phase 1 is mainnet-only; testnet is out of scope.
+
+### `disconnect()`
+
+- **params**: none
+- **result**: `{ disconnected: true }`
+
+Revokes this origin's permission. Idempotent — disconnecting an origin that was never connected
+succeeds. In popup mode the wallet also emits a `disconnect` event.
+
+### Unknown methods
+
+Any method not listed above — including `signPsbt`, `sendTransaction`, and asset operations —
+returns `UNSUPPORTED_METHOD`. These are phase 2+ work.
+
+---
+
+## 4. Errors
+
+| Code                  | When                                                                    |
+| --------------------- | ----------------------------------------------------------------------- |
+| `USER_REJECTED`       | The user declined an approval screen, cancelled authentication, or closed the wallet window. |
+| `ORIGIN_NOT_APPROVED` | The method needs a permission this origin does not have.                |
+| `WALLET_LOCKED`       | The wallet is locked, or has no wallet set up yet.                      |
+| `UNSUPPORTED_METHOD`  | Unknown method, or a method deferred to a later phase.                  |
+| `INVALID_REQUEST`     | Malformed envelope, bad params, or a transport-level mismatch such as `redirect_uri` disagreeing with `req.origin`. |
+
+Error messages are human-readable and may change; branch on `code`, not on `message`.
+
+---
+
+## 5. Popup transport (desktop)
+
+1. The dApp opens `https://flightdeck.avn.network/connect` with `window.open`.
+2. The dApp posts its request to the popup **repeatedly** (e.g. every 250 ms) until it receives a
+   reply. There is no "wallet ready" broadcast, because broadcasting one would require posting to
+   `"*"`; retrying instead keeps every wallet-originated message targeted at a known origin.
+3. The wallet ignores any message whose `source` is not its opener. The first well-formed envelope
+   from the opener pins the session origin to that message's `MessageEvent.origin`. Messages from
+   any other origin are ignored for the lifetime of the window.
+   Resending is safe: requests are deduplicated by `id`, so a retry that arrives while an approval
+   screen is open is dropped, and a retry that arrives after the answer is replayed from the
+   wallet's record rather than re-prompting the user. Reusing an `id` for a *different* request
+   therefore returns the first answer — always generate a fresh one.
+4. The wallet replies with `window.opener.postMessage(response, pinnedOrigin)`.
+5. The dApp keeps the popup open to receive events and to issue further requests, or closes it.
+   If the user closes the wallet window with a request outstanding, the wallet sends
+   `USER_REJECTED` for the pending request and a `disconnect` event where it can.
+
+Minimal client:
+
+```js
+const popup = window.open('https://flightdeck.avn.network/connect', 'avian-connect',
+  'width=460,height=720');
+
+function call(method, params) {
+  const id = crypto.randomUUID();
+  const req = { avianConnect: 1, id, method, params };
+  return new Promise((resolve, reject) => {
+    const onMessage = (e) => {
+      if (e.source !== popup) return;                       // must come from the popup
+      if (e.origin !== 'https://flightdeck.avn.network') return; // must be the wallet's origin
+      const msg = e.data;
+      if (!msg || msg.avianConnect !== 1 || msg.id !== id) return;
+      clearInterval(timer);
+      window.removeEventListener('message', onMessage);
+      msg.error ? reject(msg.error) : resolve(msg.result);
+    };
+    window.addEventListener('message', onMessage);
+    const timer = setInterval(
+      () => popup.postMessage(req, 'https://flightdeck.avn.network'),
+      250,
+    );
+  });
+}
+
+const { address } = await call('connect');
+const { signature } = await call('signMessage', { message: `Login to realm.example\nNonce: ${nonce}` });
+```
+
+A dApp **must** check both `e.source` and `e.origin` on every inbound message, exactly as above.
+
+---
+
+## 6. Redirect transport (mobile)
+
+The dApp navigates the browser to:
+
+```
+https://flightdeck.avn.network/connect?req=<base64url(JSON request)>&redirect_uri=<urlencoded>
+```
+
+- `req` is the base64url encoding (RFC 4648 §5, unpadded) of the UTF-8 JSON request, and **must**
+  include an `origin` field.
+- `redirect_uri` must be an absolute `https:` URL (`http:` is allowed only for `localhost`
+  development) whose origin equals `req.origin`. On mismatch the wallet shows an error and never
+  redirects.
+
+After the user approves or rejects, the wallet navigates to:
+
+```
+<redirect_uri>#avianconnect=<base64url(JSON response)>
+```
+
+Any fragment already present on `redirect_uri` is replaced. The response is the same envelope as
+in popup mode. The dApp reads it on load:
+
+```js
+const raw = new URLSearchParams(location.hash.slice(1)).get('avianconnect');
+if (raw) {
+  const res = JSON.parse(new TextDecoder().decode(
+    Uint8Array.from(atob(raw.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)),
+  ));
+  history.replaceState(null, '', location.pathname + location.search); // scrub the fragment
+}
+```
+
+Each navigation carries exactly one request. To connect and then sign, perform two round trips —
+and the user must choose to **remember** the site on the connect screen, because a one-shot
+approval authorises only the request it was given and cannot outlive the navigation. If they do
+not, the `connect()` still returns an address, but the follow-up `signMessage()` arrives at a
+wallet with no record of the site and fails with `ORIGIN_NOT_APPROVED`. The connect screen says so
+when it is reached over this transport.
+
+---
+
+## 7. Permissions
+
+The wallet stores one record per origin in its local preferences (IndexedDB):
+
+```ts
+{ origin: string, accounts: string[], grantedAt: number, lastUsedAt: number }
+```
+
+- `origin` is a normalised scheme + host + port, lowercased, with no trailing slash.
+- `accounts` holds only the addresses the user chose to expose to that origin.
+- Records exist only for origins the user chose to **remember**. A one-shot approval authorises a
+  single request and is not persisted.
+- The user can review and revoke every record in **Settings → Connected Sites**. Revoking emits
+  `accountsChanged` with an empty array (popup transport) and forces the next `connect()` to prompt
+  again.
+
+Permissions are per-origin, not per-wallet: switching the active wallet does not grant a site
+access to the newly active wallet. The exposed accounts stay exactly as the user set them, and the
+site is told via `accountsChanged`.
+
+---
+
+## 8. Versioning
+
+`avianConnect: 1` is the phase-1 wire version. Additive changes (new methods, new optional result
+fields, new event types) keep version `1`; a dApp must ignore unknown fields and unknown event
+names. A breaking change would bump the number, and the wallet would then accept both for a
+transition period.

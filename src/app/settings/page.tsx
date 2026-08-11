@@ -7,6 +7,7 @@ import {
     Shield,
     Archive,
     Bell,
+    PlugZap,
     Settings,
     HelpCircle,
     ChevronRight
@@ -58,6 +59,14 @@ const settingsCategories: SettingsCategory[] = [
         icon: Bell,
         path: '/settings/notifications',
         color: 'text-purple-600',
+    },
+    {
+        id: 'connected-sites',
+        title: 'Connected Sites',
+        description: 'Review and revoke dApps connected to this wallet',
+        icon: PlugZap,
+        path: '/settings/connected-sites',
+        color: 'text-teal-600',
     },
     {
         id: 'advanced',

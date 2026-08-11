@@ -1,5 +1,6 @@
 // Required imports
 import { SavedAddress } from '../../types/addressBook';
+import { OriginPermission } from '../../types/avianConnect';
 import { toast } from 'sonner';
 import { secureEncrypt, decryptData, type AddressType } from '../wallet/WalletService';
 import { storageLogger } from '@/lib/Logger';
@@ -1139,6 +1140,40 @@ export class StorageService {
     // Validate the count is within reasonable bounds
     const validCount = Math.max(1, Math.min(20, count));
     await this.setPreference('change_address_count', validCount);
+  }
+
+  // Avian Connect methods — see docs/AVIAN_CONNECT.md
+  static async getConnectPermissions(): Promise<OriginPermission[]> {
+    const stored = await this.getPreference('avian_connect_permissions');
+    return Array.isArray(stored) ? stored : [];
+  }
+
+  static async setConnectPermissions(permissions: OriginPermission[]): Promise<void> {
+    await this.setPreference('avian_connect_permissions', permissions);
+  }
+
+  /**
+   * Public keys the wallet has recovered from signatures the user already authorised. Public
+   * keys are not secret; caching them lets connect() answer with one without touching the
+   * private key.
+   */
+  static async getKnownPublicKey(address: string): Promise<string | null> {
+    const keys = await this.getPreference('avian_connect_public_keys');
+    return keys && typeof keys === 'object' ? keys[address] || null : null;
+  }
+
+  static async setKnownPublicKey(address: string, publicKey: string): Promise<void> {
+    const keys = (await this.getPreference('avian_connect_public_keys')) || {};
+    await this.setPreference('avian_connect_public_keys', { ...keys, [address]: publicKey });
+  }
+
+  /** Mainnet genesis hash as learned from an ElectrumX server, cached once known. */
+  static async getCachedGenesisHash(): Promise<string | null> {
+    return (await this.getPreference('genesis_hash')) || null;
+  }
+
+  static async setCachedGenesisHash(genesisHash: string): Promise<void> {
+    await this.setPreference('genesis_hash', genesisHash);
   }
 
   // Settings methods

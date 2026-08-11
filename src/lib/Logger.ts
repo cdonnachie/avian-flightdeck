@@ -179,3 +179,4 @@ export const termsLogger = Logger.getLogger('terms');
 export const walletContextLogger = Logger.getLogger('wallet_context');
 export const routeGuardLogger = Logger.getLogger('route_guard');
 export const dataWipeLogger = Logger.getLogger('data_wipe');
+export const providerLogger = Logger.getLogger('provider');

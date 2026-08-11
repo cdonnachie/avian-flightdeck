@@ -1,0 +1,264 @@
+/**
+ * Avian Connect envelope handling.
+ *
+ * Everything in this module is pure: no storage, no wallet access, no DOM. It is the only place
+ * that decides whether a blob of data arriving from an untrusted page is a well-formed request,
+ * and it is exercised directly by the unit tests.
+ */
+
+import {
+  AVIAN_CONNECT_VERSION,
+  ConnectError,
+  ConnectErrorCode,
+  ConnectEvent,
+  ConnectEventName,
+  ConnectRequest,
+  ConnectResponse,
+  LIMITS,
+} from '@/types/avianConnect';
+
+export interface ParseSuccess {
+  ok: true;
+  request: ConnectRequest;
+}
+
+export interface ParseFailure {
+  ok: false;
+  /** Present when the malformed request still carried a usable id to reply against. */
+  id?: string;
+  error: ConnectError;
+}
+
+export type ParseResult = ParseSuccess | ParseFailure;
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const invalid = (message: string, id?: string): ParseFailure => ({
+  ok: false,
+  id,
+  error: { code: 'INVALID_REQUEST', message },
+});
+
+/**
+ * Validates the shape of an inbound request. Rejects anything we would otherwise have to guess
+ * about — wrong version tag, missing id, non-object params, oversized strings.
+ */
+export function parseRequest(raw: unknown): ParseResult {
+  if (!isPlainObject(raw)) {
+    return invalid('Request must be a JSON object');
+  }
+
+  if (raw.avianConnect !== AVIAN_CONNECT_VERSION) {
+    return invalid(`Unsupported protocol version: expected ${AVIAN_CONNECT_VERSION}`);
+  }
+
+  const { id } = raw;
+  if (typeof id !== 'string' || id.length === 0 || id.length > LIMITS.id) {
+    return invalid(`Request id must be a string of 1..${LIMITS.id} characters`);
+  }
+
+  const { method } = raw;
+  if (typeof method !== 'string' || method.length === 0 || method.length > LIMITS.method) {
+    return invalid(`Request method must be a string of 1..${LIMITS.method} characters`, id);
+  }
+
+  if (raw.params !== undefined && !isPlainObject(raw.params)) {
+    return invalid('Request params must be an object when present', id);
+  }
+
+  if (raw.origin !== undefined && typeof raw.origin !== 'string') {
+    return invalid('Request origin must be a string when present', id);
+  }
+
+  const request: ConnectRequest = {
+    avianConnect: AVIAN_CONNECT_VERSION,
+    id,
+    method,
+  };
+  if (raw.params !== undefined) {
+    request.params = raw.params as Record<string, unknown>;
+  }
+  if (typeof raw.origin === 'string') {
+    request.origin = raw.origin;
+  }
+
+  return { ok: true, request };
+}
+
+/** Extracts and bounds-checks the `message` param of signMessage. */
+export function parseSignMessageParams(
+  params: Record<string, unknown> | undefined,
+): { ok: true; message: string } | { ok: false; error: ConnectError } {
+  const message = params?.message;
+  if (typeof message !== 'string' || message.length === 0) {
+    return {
+      ok: false,
+      error: { code: 'INVALID_REQUEST', message: 'signMessage requires a non-empty message string' },
+    };
+  }
+  if (message.length > LIMITS.message) {
+    return {
+      ok: false,
+      error: {
+        code: 'INVALID_REQUEST',
+        message: `Message exceeds the ${LIMITS.message} character limit`,
+      },
+    };
+  }
+  return { ok: true, message };
+}
+
+export function makeResult(id: string, result: unknown): ConnectResponse {
+  return { avianConnect: AVIAN_CONNECT_VERSION, id, result };
+}
+
+export function makeError(id: string, code: ConnectErrorCode, message: string): ConnectResponse {
+  return { avianConnect: AVIAN_CONNECT_VERSION, id, error: { code, message } };
+}
+
+export function makeEvent(event: ConnectEventName, data: unknown): ConnectEvent {
+  return { avianConnect: AVIAN_CONNECT_VERSION, event, data };
+}
+
+/** True when the value looks like a response envelope (used by dApp-side helpers and the demo). */
+export function isConnectResponse(value: unknown): value is ConnectResponse {
+  return isPlainObject(value) && value.avianConnect === AVIAN_CONNECT_VERSION && 'id' in value;
+}
+
+// ---------------------------------------------------------------------------
+// base64url (RFC 4648 §5, unpadded) over UTF-8 JSON — used by the redirect transport
+// ---------------------------------------------------------------------------
+
+export function base64UrlEncode(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+export function base64UrlDecode(encoded: string): string {
+  if (!/^[A-Za-z0-9_-]*$/.test(encoded)) {
+    throw new Error('Value is not base64url');
+  }
+  const padded = encoded.replace(/-/g, '+').replace(/_/g, '/');
+  const binary = atob(padded + '='.repeat((4 - (padded.length % 4)) % 4));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+export function encodeEnvelope(envelope: ConnectResponse | ConnectRequest | ConnectEvent): string {
+  return base64UrlEncode(JSON.stringify(envelope));
+}
+
+/** Decodes a base64url request from the `req` query parameter. */
+export function decodeRequestParam(param: string): ParseResult {
+  let json: string;
+  try {
+    json = base64UrlDecode(param);
+  } catch {
+    return invalid('The req parameter is not valid base64url');
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return invalid('The req parameter is not valid JSON');
+  }
+
+  return parseRequest(parsed);
+}
+
+// ---------------------------------------------------------------------------
+// Origins
+// ---------------------------------------------------------------------------
+
+const LOCAL_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
+
+/**
+ * Normalises an origin or URL to `scheme://host[:port]`, lowercased and without a trailing slash.
+ * Returns null for anything that is not an origin we are willing to talk to: opaque origins,
+ * and plaintext http outside of local development.
+ */
+export function normalizeOrigin(value: string): string | null {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 2048) {
+    return null;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    return null;
+  }
+  if (url.protocol === 'http:' && !LOCAL_HOSTS.includes(url.hostname.toLowerCase())) {
+    return null;
+  }
+
+  const origin = url.origin;
+  return origin && origin !== 'null' ? origin.toLowerCase() : null;
+}
+
+export interface RedirectCheck {
+  ok: boolean;
+  reason?: string;
+}
+
+/**
+ * The redirect transport's core guarantee: a response may only be delivered to the origin the
+ * request claims to come from.
+ */
+export function validateRedirectUri(redirectUri: string, requestOrigin: unknown): RedirectCheck {
+  if (typeof requestOrigin !== 'string' || requestOrigin.length === 0) {
+    return { ok: false, reason: 'The request is missing an origin' };
+  }
+
+  const claimed = normalizeOrigin(requestOrigin);
+  if (!claimed) {
+    return { ok: false, reason: `The request origin is not a usable origin: ${requestOrigin}` };
+  }
+
+  const target = normalizeOrigin(redirectUri);
+  if (!target) {
+    return { ok: false, reason: 'redirect_uri is not an absolute https URL' };
+  }
+
+  if (target !== claimed) {
+    return {
+      ok: false,
+      reason: `redirect_uri origin (${target}) does not match the request origin (${claimed})`,
+    };
+  }
+
+  return { ok: true };
+}
+
+/** Builds the return navigation, carrying the response in the fragment — never the query string. */
+export function buildRedirectUrl(redirectUri: string, response: ConnectResponse): string {
+  const url = new URL(redirectUri);
+  url.hash = `avianconnect=${encodeEnvelope(response)}`;
+  return url.toString();
+}
+
+/** Reads a response envelope out of a `#avianconnect=…` fragment. Used by dApps and the demo. */
+export function readResponseFromFragment(hash: string): ConnectResponse | null {
+  const raw = new URLSearchParams(hash.replace(/^#/, '')).get('avianconnect');
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(base64UrlDecode(raw));
+    return isConnectResponse(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
