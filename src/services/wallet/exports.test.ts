@@ -141,6 +141,31 @@ describe('exportActiveWalletPrivateKey', () => {
     );
   });
 
+  it('never overwrites a legacy key when the password is wrong', async () => {
+    // The legacy format is unauthenticated, so a wrong password can decrypt to plausible
+    // rubbish. If that rubbish were re-encrypted over the stored key the wallet would be
+    // destroyed by a typo, with no way back. Try repeatedly, since each ciphertext differs.
+    for (let attempt = 0; attempt < 15; attempt++) {
+      resetStorage();
+      const legacyBlob = CryptoJS.AES.encrypt(WIF, TEST_PASSWORD).toString();
+      const created = await StorageService.createWallet({
+        name: 'Legacy',
+        address: ADDRESS,
+        privateKey: legacyBlob,
+        isEncrypted: true,
+      });
+
+      await expect(wallet.exportActiveWalletPrivateKey('wrong-password')).rejects.toThrow(
+        /Invalid password/,
+      );
+
+      // The stored key must be untouched, and must still open with the real password.
+      const stored = await StorageService.getWalletById(created.id!);
+      expect(stored?.privateKey).toBe(legacyBlob);
+      expect(await wallet.exportActiveWalletPrivateKey(TEST_PASSWORD)).toBe(WIF);
+    }
+  });
+
   it('re-encrypts a legacy CryptoJS key to the modern format on export', async () => {
     const created = await StorageService.createWallet({
       name: 'Legacy',

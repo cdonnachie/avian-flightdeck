@@ -185,6 +185,28 @@ export function purposeForAddressType(addressType: AddressType): number {
     return ADDRESS_TYPE_INFO[addressType].purpose;
 }
 
+/**
+ * True when the string is a WIF private key valid on the Avian network.
+ *
+ * This is the only reliable way to tell a correct decryption from a wrong password on the legacy
+ * (CryptoJS AES-CBC) format, which carries no authentication tag — see decryptData. Anything that
+ * decrypts a legacy blob and then *writes* the result must check it with this first.
+ */
+export function isValidWIF(key: string): boolean {
+    try {
+        // WIF keys are base58 and, on Avian, start with '5', 'K' or 'L'.
+        if (!/^[5KL][123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/.test(key)) {
+            return false;
+        }
+
+        const ECPair = ECPairFactory(ecc);
+        ECPair.fromWIF(key, avianNetwork);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 export async function secureEncrypt(data: string, password: string): Promise<string> {
     const salt = randomBytes(SALT_LENGTH);
     const N = 16384,
@@ -230,6 +252,19 @@ export function legacyDecrypt(encryptedData: string, password: string): string {
 
 /**
  * Unified decryption function that handles both new (scrypt) and legacy (CryptoJS) formats.
+ *
+ * IMPORTANT — the two formats give very different guarantees:
+ *
+ * - The current format is AES-GCM, which is authenticated. A wrong password always throws.
+ * - The legacy CryptoJS format is unauthenticated AES-CBC. There is nothing in the ciphertext
+ *   to verify a password against, so a wrong password yields garbage plaintext. Usually that
+ *   garbage is invalid UTF-8 and this function throws, but often enough to matter it decodes
+ *   cleanly and is returned as if it were correct.
+ *
+ * So `wasLegacy: true` means "this value has not been authenticated". Callers must validate it
+ * against what they expected — isValidWIF for a key, bip39.validateMnemonic for a mnemonic —
+ * before trusting it, and certainly before writing it anywhere.
+ *
  * @returns An object containing the decrypted data and a flag indicating if legacy format was used.
  */
 export async function decryptData(
@@ -2143,22 +2178,6 @@ export class WalletService {
             let decryptedKey = params.privateKey;
 
             // Helper function to check if a string is a valid WIF private key
-            const isValidWIF = (key: string): boolean => {
-                try {
-                    // WIF keys should be base58 encoded and start with specific characters
-                    // For Avian network, they typically start with 'K', 'L', or '5'
-                    if (!/^[5KL][123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/.test(key)) {
-                        return false;
-                    }
-
-                    // Try to create ECPair to validate
-                    const ECPair = ECPairFactory(ecc);
-                    ECPair.fromWIF(key, avianNetwork);
-                    return true;
-                } catch {
-                    return false;
-                }
-            };
 
             // Check if the private key is encrypted by trying to parse it as WIF first
             if (!isValidWIF(params.privateKey)) {
@@ -2287,6 +2306,15 @@ export class WalletService {
         if (wallet.isEncrypted && password) {
             try {
                 const { decrypted, wasLegacy } = await decryptData(wallet.privateKey, password);
+
+                // The legacy format is unauthenticated, so a wrong password can decrypt to
+                // plausible-looking rubbish instead of failing. Never treat that as the key, and
+                // above all never write it back — doing so would overwrite the real key and
+                // destroy the wallet.
+                if (!isValidWIF(decrypted)) {
+                    throw new Error('Invalid password');
+                }
+
                 if (wasLegacy) {
                     walletLogger.info(`Upgrading encryption for wallet: ${wallet.name}`);
                     const newEncryptedKey = await secureEncrypt(decrypted, password);
@@ -3532,22 +3560,6 @@ export class WalletService {
             let decryptedKey = privateKeyWIF;
 
             // Helper function to check if a string is a valid WIF private key
-            const isValidWIF = (key: string): boolean => {
-                try {
-                    // WIF keys should be base58 encoded and start with specific characters
-                    // For Avian network, they typically start with 'K', 'L', or '5'
-                    if (!/^[5KL][123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/.test(key)) {
-                        return false;
-                    }
-
-                    // Try to create ECPair to validate
-                    const ECPair = ECPairFactory(ecc);
-                    ECPair.fromWIF(key, avianNetwork);
-                    return true;
-                } catch {
-                    return false;
-                }
-            };
 
             // Check if the private key is encrypted by trying to parse it as WIF first
             if (!isValidWIF(privateKeyWIF)) {
@@ -3713,22 +3725,6 @@ export class WalletService {
             let decryptedKey = recipientPrivateKeyWIF;
 
             // Helper function to check if a string is a valid WIF private key
-            const isValidWIF = (key: string): boolean => {
-                try {
-                    // WIF keys should be base58 encoded and start with specific characters
-                    // For Avian network, they typically start with 'K', 'L', or '5'
-                    if (!/^[5KL][123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/.test(key)) {
-                        return false;
-                    }
-
-                    // Try to create ECPair to validate
-                    const ECPair = ECPairFactory(ecc);
-                    ECPair.fromWIF(key, avianNetwork);
-                    return true;
-                } catch {
-                    return false;
-                }
-            };
 
             // Check if the private key is encrypted by trying to parse it as WIF first
             if (!isValidWIF(recipientPrivateKeyWIF)) {

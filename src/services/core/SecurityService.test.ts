@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as CryptoJS from 'crypto-js';
 
 import { securityService } from './SecurityService';
 import { StorageService } from './StorageService';
-import { secureEncrypt } from '@/services/wallet/WalletService';
-import { TEST_PASSWORD, resetStorage } from '@/test/helpers';
+import { decryptData, secureEncrypt } from '@/services/wallet/WalletService';
+import { TEST_MNEMONIC, TEST_PASSWORD, resetStorage } from '@/test/helpers';
 
 /**
  * SecurityService is a singleton with in-memory state, so each test resets both the database and
@@ -169,6 +170,60 @@ describe('lock state', () => {
     listener.mockClear();
     await securityService.lockWallet('manual');
     expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe('unlocking a wallet still on the legacy encryption format', () => {
+  const createLegacyWallet = async (mnemonic?: string) =>
+    StorageService.createWallet({
+      name: 'Legacy',
+      address: ADDRESS,
+      privateKey: CryptoJS.AES.encrypt(WIF, TEST_PASSWORD).toString(),
+      ...(mnemonic ? { mnemonic: CryptoJS.AES.encrypt(mnemonic, TEST_PASSWORD).toString() } : {}),
+      isEncrypted: true,
+    });
+
+  it('unlocks and upgrades the stored key to the authenticated format', async () => {
+    const created = await createLegacyWallet();
+    await securityService.lockWallet('manual');
+
+    expect(await securityService.unlockWallet(TEST_PASSWORD)).toBe(true);
+
+    const stored = await StorageService.getWalletById(created.id!);
+    // Upgraded blobs are scrypt/AES-GCM hex, not CryptoJS base64.
+    expect(stored?.privateKey).toMatch(/^[0-9a-f]+$/);
+    expect((await decryptData(stored!.privateKey, TEST_PASSWORD)).decrypted).toBe(WIF);
+  });
+
+  it('never overwrites the stored key when the password is wrong', async () => {
+    // The legacy format cannot authenticate a password, so a wrong one can decrypt to
+    // plausible rubbish. Upgrading that over the real key would destroy the wallet with no
+    // way back — the worst outcome this codebase can produce. Repeat, since each ciphertext
+    // is salted differently and only some wrong-password results decode at all.
+    for (let attempt = 0; attempt < 15; attempt++) {
+      resetStorage();
+      securityService.resetFailedAttempts();
+      const created = await createLegacyWallet();
+      const originalKey = (await StorageService.getWalletById(created.id!))!.privateKey;
+      await securityService.lockWallet('manual');
+
+      expect(await securityService.unlockWallet('wrong-password')).toBe(false);
+
+      const stored = await StorageService.getWalletById(created.id!);
+      expect(stored?.privateKey).toBe(originalKey);
+      // And the real password still works afterwards.
+      expect((await decryptData(stored!.privateKey, TEST_PASSWORD)).decrypted).toBe(WIF);
+    }
+  });
+
+  it('never overwrites the stored mnemonic with something that is not a mnemonic', async () => {
+    const created = await createLegacyWallet(TEST_MNEMONIC);
+    await securityService.lockWallet('manual');
+
+    await securityService.unlockWallet(TEST_PASSWORD);
+
+    const stored = await StorageService.getWalletById(created.id!);
+    expect((await decryptData(stored!.mnemonic!, TEST_PASSWORD)).decrypted).toBe(TEST_MNEMONIC);
   });
 });
 

@@ -10,6 +10,7 @@ import {
   avianNetwork,
   decryptData,
   deriveAddress,
+  isValidWIF,
   legacyDecrypt,
   purposeForAddressType,
   recoverPubKey,
@@ -175,17 +176,45 @@ describe('legacy decryption path', () => {
     expect(wasLegacy).toBe(true);
   });
 
-  it('rejects a legacy payload opened with the wrong password', async () => {
-    const legacyBlob = CryptoJS.AES.encrypt('legacy mnemonic', password).toString();
+  it('never returns the real plaintext for a wrong password', async () => {
+    // The legacy format is unauthenticated AES-CBC, so a wrong password cannot be detected
+    // reliably: usually the garbage is invalid UTF-8 and this throws, but sometimes it decodes
+    // and is returned. Both outcomes are acceptable; returning the *correct* plaintext is not.
+    // Each attempt uses a fresh random salt, so this exercises many different ciphertexts.
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const legacyBlob = CryptoJS.AES.encrypt('legacy mnemonic', password).toString();
 
-    await expect(decryptData(legacyBlob, 'wrong')).rejects.toThrow(
-      /Invalid password or corrupted data/,
-    );
+      let result: string | null = null;
+      try {
+        result = (await decryptData(legacyBlob, 'wrong')).decrypted;
+      } catch {
+        // Rejecting is the good case.
+      }
+
+      expect(result).not.toBe('legacy mnemonic');
+    }
   });
 
   it('throws rather than returning an empty string when legacy decryption fails', () => {
-    const legacyBlob = CryptoJS.AES.encrypt('x', password).toString();
-    expect(() => legacyDecrypt(legacyBlob, 'wrong')).toThrow(/Legacy decryption failed/);
+    // Deterministic: this ciphertext is fixed, so the wrong password always yields
+    // undecodable bytes rather than sometimes-valid UTF-8.
+    const legacyBlob = 'U2FsdGVkX1+Nl1rL3dxJ8fZ9pQmKcVhVYqRz3mYQz3E=';
+    expect(() => legacyDecrypt(legacyBlob, 'definitely-the-wrong-password')).toThrow(
+      /Legacy decryption failed/,
+    );
+  });
+
+  it('is documented as unauthenticated, so callers must validate what they get back', async () => {
+    // Pins the contract the upgrade paths depend on: a legacy result carries no proof of
+    // correctness, which is why isValidWIF / validateMnemonic guard every write-back.
+    const legacyBlob = CryptoJS.AES.encrypt('not-a-wif', password).toString();
+
+    const { decrypted, wasLegacy } = await decryptData(legacyBlob, password);
+
+    expect(wasLegacy).toBe(true);
+    expect(decrypted).toBe('not-a-wif');
+    // decryptData happily returns it; only the caller can tell it is not a key.
+    expect(isValidWIF(decrypted)).toBe(false);
   });
 });
 
