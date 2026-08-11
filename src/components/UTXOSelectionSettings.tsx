@@ -176,7 +176,7 @@ export function UTXOSelectionSettings({
                     {s.recommended && (
                       <Badge
                         variant="outline"
-                        className="bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800"
+                        className="bg-primary/10 text-primary border-primary/30"
                       >
                         Recommended
                       </Badge>

@@ -377,16 +377,16 @@ export default function WalletSettingsPage() {
                     </CardHeader>
                     <CardContent className="px-3 sm:px-6 pb-4 sm:pb-6">
                         <div className="space-y-4">
-                            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 sm:p-4">
+                            <div className="bg-caution/10 border border-caution/30 rounded-lg p-3 sm:p-4">
                                 <div className="flex items-start gap-2 sm:gap-3">
-                                    <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-amber-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                    <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-caution flex items-center justify-center flex-shrink-0 mt-0.5">
                                         <AlertTriangle className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white" />
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                        <h4 className="font-medium text-amber-800 dark:text-amber-200 mb-1 text-sm sm:text-base">
+                                        <h4 className="font-medium text-caution mb-1 text-sm sm:text-base">
                                             Security Warning
                                         </h4>
-                                        <p className="text-sm text-amber-700 dark:text-amber-300">
+                                        <p className="text-sm text-caution">
                                             Your recovery phrase grants full access to your wallet. Never share it with anyone and store it securely offline.
                                         </p>
                                     </div>
@@ -482,17 +482,17 @@ export default function WalletSettingsPage() {
 
                             {/* BIP39 Passphrase Section */}
                             {hasBip39Passphrase && (
-                                <div className="space-y-4 border-t border-gray-200 dark:border-gray-700 pt-4">
-                                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
+                                <div className="space-y-4 border-t border-border pt-4">
+                                    <div className="bg-primary/10 border border-primary/30 rounded-lg p-4">
                                         <div className="flex items-start gap-3">
-                                            <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                            <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center flex-shrink-0 mt-0.5">
                                                 <Key className="w-3 h-3 text-white" />
                                             </div>
                                             <div>
-                                                <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-1">
+                                                <h4 className="font-medium text-primary mb-1">
                                                     BIP39 Passphrase (25th Word) Available
                                                 </h4>
-                                                <p className="text-sm text-blue-700 dark:text-blue-300">
+                                                <p className="text-sm text-primary">
                                                     This wallet uses an additional BIP39 passphrase. You need BOTH the recovery phrase above AND the passphrase to fully restore this wallet.
                                                 </p>
                                             </div>
@@ -545,7 +545,7 @@ export default function WalletSettingsPage() {
                                                     </Button>
                                                 </div>
 
-                                                <div className={`bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-4 ${showPassphrase ? '' : 'filter blur-sm'}`}>
+                                                <div className={`bg-caution/10 border border-caution/30 rounded-lg p-4 ${showPassphrase ? '' : 'filter blur-sm'}`}>
                                                     <div className="font-mono text-sm break-all">
                                                         {exportedPassphrase}
                                                     </div>
@@ -575,8 +575,8 @@ export default function WalletSettingsPage() {
                                                 </div>
                                             )}
 
-                                            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3">
-                                                <p className="text-xs text-amber-700 dark:text-amber-300">
+                                            <div className="bg-caution/10 border border-caution/30 rounded-lg p-3">
+                                                <p className="text-xs text-caution">
                                                     🔒 Store this passphrase separately from your recovery phrase for maximum security. You need both to restore your wallet.
                                                 </p>
                                             </div>
@@ -601,16 +601,16 @@ export default function WalletSettingsPage() {
                     </CardHeader>
                     <CardContent className="px-3 sm:px-6 pb-4 sm:pb-6">
                         <div className="space-y-4">
-                            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-3 sm:p-4">
+                            <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-3 sm:p-4">
                                 <div className="flex items-start gap-2 sm:gap-3">
-                                    <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-red-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                    <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-destructive flex items-center justify-center flex-shrink-0 mt-0.5">
                                         <AlertTriangle className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white" />
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                        <h4 className="font-medium text-red-800 dark:text-red-200 mb-1 text-sm sm:text-base">
+                                        <h4 className="font-medium text-destructive mb-1 text-sm sm:text-base">
                                             Critical Security Warning
                                         </h4>
-                                        <p className="text-xs sm:text-sm text-red-700 dark:text-red-300">
+                                        <p className="text-xs sm:text-sm text-destructive">
                                             Your private key provides complete control over your funds. Only export when absolutely necessary and keep it secure.
                                         </p>
                                     </div>
@@ -715,16 +715,16 @@ export default function WalletSettingsPage() {
                     </CardHeader>
                     <CardContent className="px-3 sm:px-6 pb-4 sm:pb-6">
                         <div className="space-y-4">
-                            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-3 sm:p-4">
+                            <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 sm:p-4">
                                 <div className="flex items-start gap-2 sm:gap-3">
-                                    <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                    <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-primary flex items-center justify-center flex-shrink-0 mt-0.5">
                                         <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white" />
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                        <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-1 text-sm sm:text-base">
+                                        <h4 className="font-medium text-primary mb-1 text-sm sm:text-base">
                                             Wallet Encryption Status
                                         </h4>
-                                        <p className="text-xs sm:text-sm text-blue-700 dark:text-blue-300">
+                                        <p className="text-xs sm:text-sm text-primary">
                                             {isEncrypted
                                                 ? 'Your wallet is currently encrypted with a password. This provides additional security for your private keys.'
                                                 : 'Your wallet is not encrypted. Consider encrypting it with a password for additional security.'
@@ -738,12 +738,12 @@ export default function WalletSettingsPage() {
                                 <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
                                     <div className="flex items-center gap-3">
                                         {isEncrypted ? (
-                                            <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                                                <Lock className="w-4 h-4 text-green-600 dark:text-green-400" />
+                                            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                                <Lock className="w-4 h-4 text-primary" />
                                             </div>
                                         ) : (
-                                            <div className="w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-                                                <Unlock className="w-4 h-4 text-orange-600 dark:text-orange-400" />
+                                            <div className="w-8 h-8 rounded-full bg-caution/10 flex items-center justify-center">
+                                                <Unlock className="w-4 h-4 text-caution" />
                                             </div>
                                         )}
                                         <div>
@@ -756,8 +756,8 @@ export default function WalletSettingsPage() {
                                         </div>
                                     </div>
                                     <div className={`px-3 py-1 rounded-full text-xs font-medium ${isEncrypted
-                                        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                                        : 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300'
+                                        ? 'bg-primary/10 text-primary'
+                                        : 'bg-caution/10 text-caution'
                                         }`}>
                                         {isEncrypted ? 'Encrypted' : 'Not Encrypted'}
                                     </div>
@@ -807,16 +807,16 @@ export default function WalletSettingsPage() {
                     <CardContent className="px-3 sm:px-6 pb-4 sm:pb-6">
                         <div className="space-y-4 sm:space-y-6">
                             {currentWalletAddress && (
-                                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-3 sm:p-4">
+                                <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 sm:p-4">
                                     <div className="flex items-start gap-2 sm:gap-3">
-                                        <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                        <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-primary flex items-center justify-center flex-shrink-0 mt-0.5">
                                             <Wallet className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white" />
                                         </div>
                                         <div className="min-w-0 flex-1">
-                                            <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-1 text-sm sm:text-base">
+                                            <h4 className="font-medium text-primary mb-1 text-sm sm:text-base">
                                                 Current Wallet
                                             </h4>
-                                            <p className="text-xs sm:text-sm text-blue-700 dark:text-blue-300 font-mono break-all">
+                                            <p className="text-xs sm:text-sm text-primary font-mono break-all">
                                                 {currentWalletAddress}
                                             </p>
                                         </div>
@@ -824,16 +824,16 @@ export default function WalletSettingsPage() {
                                 </div>
                             )}
 
-                            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-3 sm:p-4">
+                            <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 sm:p-4">
                                 <div className="flex items-start gap-2 sm:gap-3">
-                                    <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                    <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-primary flex items-center justify-center flex-shrink-0 mt-0.5">
                                         <Hash className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white" />
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                        <h4 className="font-medium text-green-800 dark:text-green-200 mb-1 text-sm sm:text-base">
+                                        <h4 className="font-medium text-primary mb-1 text-sm sm:text-base">
                                             HD Wallet Settings
                                         </h4>
-                                        <p className="text-xs sm:text-sm text-green-700 dark:text-green-300">
+                                        <p className="text-xs sm:text-sm text-primary">
                                             Configure how many addresses your HD wallet generates and manages. More addresses provide better privacy but use more resources.
                                         </p>
                                     </div>
@@ -860,10 +860,10 @@ export default function WalletSettingsPage() {
                                         </div>
                                     </div>
                                     <div className="flex items-center justify-center sm:justify-start gap-2 sm:ml-3">
-                                        <Badge className="bg-amber-200 text-amber-900 dark:bg-amber-800 dark:text-amber-100 text-xs">
+                                        <Badge className="bg-caution/10 text-caution dark:bg-caution/10 dark:text-caution text-xs">
                                             ×{addressCount}
                                         </Badge>
-                                        <Badge className="bg-indigo-200 text-indigo-900 dark:bg-indigo-800 dark:text-indigo-100 text-xs">
+                                        <Badge className="bg-primary/10 text-primary dark:bg-primary/10 dark:text-primary text-xs">
                                             ×{addressCount}
                                         </Badge>
                                     </div>
@@ -889,8 +889,8 @@ export default function WalletSettingsPage() {
                     </CardHeader>
                     <CardContent className="px-3 sm:px-6 pb-4 sm:pb-6">
                         <div className="space-y-4">
-                            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-3 sm:p-4">
-                                <p className="text-sm text-blue-800 dark:text-blue-200">
+                            <div className="bg-primary/10 border border-primary/30 rounded-lg p-3 sm:p-4">
+                                <p className="text-sm text-primary">
                                     A BIP380 output script descriptor encodes your wallet&apos;s public key derivation policy.
                                     It can be imported into <strong>Avian Core v5.0.0</strong> (or compatible wallets) to create a watch-only descriptor wallet.
                                     It contains only your <em>public</em> key — no private key material is exposed.
@@ -941,7 +941,7 @@ export default function WalletSettingsPage() {
 
                                     <div className="flex flex-col items-center gap-2">
                                         <Label>QR Code</Label>
-                                        <div className="p-4 bg-white rounded-xl border">
+                                        <div className="p-4 bg-card rounded-xl border">
                                             <QRCodeSVG value={exportedDescriptor} size={200} />
                                         </div>
                                         <p className="text-xs text-muted-foreground text-center">

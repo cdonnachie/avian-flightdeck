@@ -61,7 +61,7 @@ export default function AddressBookButton({
         <div className="flex gap-2">
           <button
             onClick={handleOpenDrawer}
-            className={`p-2 text-gray-400 hover:text-avian-500 transition-colors ${className}`}
+            className={`p-2 text-muted-foreground hover:text-avian-500 transition-colors ${className}`}
             title="Address Book"
             type="button"
           >
@@ -70,7 +70,7 @@ export default function AddressBookButton({
           {showQRScanner && (
             <button
               onClick={handleOpenScanner}
-              className={`p-2 text-gray-400 hover:text-avian-500 transition-colors ${className}`}
+              className={`p-2 text-muted-foreground hover:text-avian-500 transition-colors ${className}`}
               title="Scan QR Code"
               type="button"
             >
@@ -103,7 +103,7 @@ export default function AddressBookButton({
         <div className="flex gap-1">
           <button
             onClick={handleOpenDrawer}
-            className={`px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded transition-colors ${className}`}
+            className={`px-2 py-1 text-xs bg-muted/40 dark:bg-card hover:bg-muted/40 dark:hover:bg-card text-muted-foreground rounded transition-colors ${className}`}
             type="button"
           >
             <Book className="w-3 h-3 inline mr-1" />
@@ -112,7 +112,7 @@ export default function AddressBookButton({
           {showQRScanner && (
             <button
               onClick={handleOpenScanner}
-              className={`px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded transition-colors ${className}`}
+              className={`px-2 py-1 text-xs bg-muted/40 dark:bg-card hover:bg-muted/40 dark:hover:bg-card text-muted-foreground rounded transition-colors ${className}`}
               type="button"
             >
               <QrCode className="w-3 h-3" />
@@ -153,7 +153,7 @@ export default function AddressBookButton({
         {showQRScanner && (
           <button
             onClick={handleOpenScanner}
-            className={`flex items-center px-3 py-2 text-sm bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors ${className}`}
+            className={`flex items-center px-3 py-2 text-sm bg-card hover:bg-card text-white rounded-lg transition-colors ${className}`}
             type="button"
           >
             <QrCode className="w-4 h-4 mr-2" />

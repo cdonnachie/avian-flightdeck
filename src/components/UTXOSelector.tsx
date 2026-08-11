@@ -348,7 +348,7 @@ export function UTXOSelector({
 
         {targetAmount > 0 && (
           <Card
-            className={`${enoughSelected ? 'border-green-500 dark:border-green-500' : 'border-orange-500 dark:border-orange-500'}`}
+            className={`${enoughSelected ? 'border-primary/30' : 'border-caution/30'}`}
           >
             <CardContent className="p-4 space-y-2">
               <div className="flex items-center justify-between">
@@ -361,8 +361,8 @@ export function UTXOSelector({
                   variant={enoughSelected ? 'default' : 'outline'}
                   className={
                     enoughSelected
-                      ? 'bg-green-500 hover:bg-green-600'
-                      : 'text-orange-500 border-orange-500'
+                      ? 'bg-primary hover:bg-primary'
+                      : 'text-caution border-caution/30'
                   }
                 >
                   {enoughSelected ? 'Sufficient' : 'Insufficient'}
@@ -450,8 +450,8 @@ export function UTXOSelector({
 
       {/* HD Wallet Warning */}
       {isHdWallet && !allAddressesLoaded && (
-        <Alert className="mb-4 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
-          <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+        <Alert className="mb-4 bg-caution/10 border-caution/30 text-caution">
+          <AlertCircle className="h-4 w-4 text-caution" />
           <AlertTitle>HD Wallet Detected</AlertTitle>
           <AlertDescription className="space-y-3">
             <p>
@@ -463,7 +463,7 @@ export function UTXOSelector({
               size="sm"
               onClick={loadAllHDUTXOs}
               disabled={loadingHdAddresses}
-              className="bg-amber-100 dark:bg-amber-900/40 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-900/60"
+              className="bg-caution/10 border-caution/30 text-caution hover:bg-caution/10 dark:hover:bg-caution/10"
             >
               {loadingHdAddresses ? (
                 <>
@@ -482,8 +482,8 @@ export function UTXOSelector({
       )}
 
       {allAddressesLoaded && (
-        <Alert className="mb-4 bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200">
-          <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+        <Alert className="mb-4 bg-primary/10 border-primary/30 text-primary">
+          <Check className="h-4 w-4 text-primary" />
           <AlertTitle>All HD Addresses Loaded</AlertTitle>
           <AlertDescription className="space-y-3">
             <p>
@@ -495,7 +495,7 @@ export function UTXOSelector({
               size="sm"
               onClick={loadAllHDUTXOs}
               disabled={loadingHdAddresses}
-              className="bg-green-100 dark:bg-green-900/40 border-green-300 dark:border-green-700 text-green-800 dark:text-green-200 hover:bg-green-200 dark:hover:bg-green-900/60"
+              className="bg-primary/10 border-primary/30 text-primary hover:bg-primary/10 dark:hover:bg-primary/10"
             >
               {loadingHdAddresses ? (
                 <>
@@ -579,7 +579,7 @@ export function UTXOSelector({
                         variant={utxo.isDust ? 'outline' : 'secondary'}
                         className={
                           utxo.isDust
-                            ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border-amber-200 dark:border-amber-800'
+                            ? 'bg-caution/10 text-caution border-caution/30'
                             : ''
                         }
                       >

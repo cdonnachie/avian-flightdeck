@@ -242,7 +242,7 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
     <div className="space-y-4 mx-2 my-2 flex flex-col min-h-0">
       {/* Header */}
       <div className="flex items-center justify-between flex-shrink-0">
-        <h3 className="text-sm font-medium text-gray-900 dark:text-white">
+        <h3 className="text-sm font-medium text-foreground dark:text-white">
           Address Book ({addresses.length})
         </h3>
         <div className="flex gap-2">
@@ -274,7 +274,7 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
       {addresses.length > 0 && (
         <div className="space-y-3 flex-shrink-0">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               type="text"
               placeholder="Search addresses..."
@@ -288,7 +288,7 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
           <div className="flex flex-wrap gap-2">
             {/* Sort Options */}
             <div className="flex items-center">
-              <span className="text-xs text-gray-500 dark:text-gray-400 mr-2">Sort:</span>
+              <span className="text-xs text-muted-foreground mr-2">Sort:</span>
               <select
                 value={sortOrder}
                 onChange={(e) => setSortOrder(e.target.value as any)}
@@ -302,7 +302,7 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
 
             {/* Category Filter */}
             <div className="flex items-center">
-              <span className="text-xs text-gray-500 dark:text-gray-400 mr-2">Category:</span>
+              <span className="text-xs text-muted-foreground mr-2">Category:</span>
               <select
                 value={selectedCategory || ''}
                 onChange={(e) => setSelectedCategory(e.target.value || null)}
@@ -320,7 +320,7 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
             {/* Tag Filter */}
             {allTags.length > 0 && (
               <div className="flex items-center flex-wrap gap-1 ml-auto">
-                <span className="text-xs text-gray-500 dark:text-gray-400 mr-1">
+                <span className="text-xs text-muted-foreground mr-1">
                   Filter by tag:
                 </span>
                 <Button
@@ -438,7 +438,7 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="ml-1 h-4 w-4 p-0 hover:text-red-600 transition-colors"
+                        className="ml-1 h-4 w-4 p-0 hover:text-destructive transition-colors"
                         onClick={() =>
                           setNewAddress({
                             ...newAddress,
@@ -490,7 +490,7 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
                 </div>
 
                 {allTags.length > 0 && (
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                  <div className="text-xs text-muted-foreground">
                     Existing tags:{' '}
                     {allTags.map((tag, i) => (
                       <Button
@@ -606,7 +606,7 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
                   address={editAddress.address || 'contact'}
                   size="lg"
                 />
-                <div className="text-sm text-gray-600 dark:text-gray-400">
+                <div className="text-sm text-muted-foreground">
                   Avatar is automatically generated from the address
                 </div>
               </div>
@@ -626,7 +626,7 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="ml-1 h-4 w-4 p-0 hover:text-red-600"
+                      className="ml-1 h-4 w-4 p-0 hover:text-destructive"
                       onClick={() =>
                         setEditAddress({
                           ...editAddress,
@@ -677,7 +677,7 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
                 </Button>
               </div>
               {allTags.length > 0 && (
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <div className="text-xs text-muted-foreground mt-1">
                   Existing tags:{' '}
                   {allTags.map((tag, i) => (
                     <Button
@@ -721,8 +721,8 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
 
       {/* Delete Confirmation */}
       {showDeleteConfirm && (
-        <div className="p-4 border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 rounded-lg mb-4 flex-shrink-0">
-          <p className="text-sm text-red-600 dark:text-red-400 mb-3">
+        <div className="p-4 border border-destructive/30 bg-destructive/10 rounded-lg mb-4 flex-shrink-0">
+          <p className="text-sm text-destructive mb-3">
             Are you sure you want to delete this address? This cannot be undone.
           </p>
           <div className="flex gap-2">
@@ -743,7 +743,7 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
         className={`space-y-2 ${isAddingNew || editingId ? 'max-h-64 overflow-y-auto' : 'flex-1 overflow-y-auto'} min-h-0 border-t border-avian-100 dark:border-avian-800 pt-2`}
       >
         {filteredAddresses.length === 0 ? (
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+          <div className="text-center py-8 text-muted-foreground">
             {searchQuery ? 'No addresses match your search' : 'No saved addresses'}
           </div>
         ) : (
@@ -773,7 +773,7 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
                         </span>
                       )
                     )}
-                    <span className="font-medium text-sm text-gray-900 dark:text-white truncate">
+                    <span className="font-medium text-sm text-foreground dark:text-white truncate">
                       {address.name}
                     </span>
                     {address.isOwnWallet && (
@@ -782,21 +782,21 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
                       </span>
                     )}
                     {address.category && !address.isOwnWallet && (
-                      <span className="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full">
+                      <span className="text-xs px-2 py-1 bg-muted/40 dark:bg-card text-muted-foreground rounded-full">
                         {DEFAULT_CATEGORIES.find((cat) => cat.id === address.category)?.name}
                       </span>
                     )}
                     {address.useCount > 0 && (
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                      <span className="text-xs text-muted-foreground">
                         ({address.useCount} uses)
                       </span>
                     )}
                   </div>
-                  <div className="text-xs font-mono text-gray-600 dark:text-gray-300 truncate">
+                  <div className="text-xs font-mono text-muted-foreground truncate">
                     {address.address}
                   </div>
                   {address.description && (
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">
+                    <div className="text-xs text-muted-foreground mt-1 truncate">
                       {address.description}
                     </div>
                   )}
@@ -820,7 +820,7 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
                   )}
 
                   {address.lastUsed && (
-                    <div className="flex items-center gap-1 mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
                       <Clock className="w-3 h-3" />
                       Last used: {new Date(address.lastUsed).toLocaleDateString()}
                     </div>
@@ -835,7 +835,7 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
                       e.stopPropagation();
                       showQRCode(address);
                     }}
-                    className="h-8 w-8 p-0 text-gray-400 hover:text-avian-500"
+                    className="h-8 w-8 p-0 text-muted-foreground hover:text-avian-500"
                     title="Show QR Code"
                   >
                     <Share2 className="w-4 h-4" />
@@ -847,7 +847,7 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
                       e.stopPropagation();
                       handleStartEdit(address);
                     }}
-                    className="h-8 w-8 p-0 text-gray-400 hover:text-blue-500"
+                    className="h-8 w-8 p-0 text-muted-foreground hover:text-primary"
                     title="Edit"
                   >
                     <Edit className="w-4 h-4" />
@@ -859,7 +859,7 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
                       e.stopPropagation();
                       setShowDeleteConfirm(address.id);
                     }}
-                    className="h-8 w-8 p-0 text-gray-400 hover:text-red-500"
+                    className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
                     title="Delete"
                   >
                     <Trash2 className="w-4 h-4" />

@@ -108,9 +108,9 @@ export function UTXOOverview({ isOpen, onClose, onConsolidateUTXOs, maxInputs = 
   };
 
   const getConfirmationIcon = (confirmations: number) => {
-    if (confirmations === 0) return <Clock className="w-4 h-4 text-yellow-500" />;
-    if (confirmations < 6) return <AlertCircle className="w-4 h-4 text-orange-500" />;
-    return <Check className="w-4 h-4 text-green-500" />;
+    if (confirmations === 0) return <Clock className="w-4 h-4 text-caution" />;
+    if (confirmations < 6) return <AlertCircle className="w-4 h-4 text-caution" />;
+    return <Check className="w-4 h-4 text-primary" />;
   };
 
   const getConfirmationStatus = (confirmations: number) => {
@@ -231,7 +231,7 @@ export function UTXOOverview({ isOpen, onClose, onConsolidateUTXOs, maxInputs = 
               {isDust && (
                 <Badge
                   variant="outline"
-                  className="bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800"
+                  className="bg-destructive/10 text-destructive border-destructive/30"
                 >
                   Dust
                 </Badge>
@@ -239,7 +239,7 @@ export function UTXOOverview({ isOpen, onClose, onConsolidateUTXOs, maxInputs = 
               {!isDust && isSmall && (
                 <Badge
                   variant="outline"
-                  className="bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800"
+                  className="bg-caution/10 text-caution border-caution/30"
                 >
                   Small
                 </Badge>
@@ -512,7 +512,7 @@ export function UTXOOverview({ isOpen, onClose, onConsolidateUTXOs, maxInputs = 
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+            <div className="text-2xl font-bold text-primary">
               {confirmedUTXOs}
             </div>
             <div className="text-sm text-muted-foreground">Confirmed</div>
@@ -520,7 +520,7 @@ export function UTXOOverview({ isOpen, onClose, onConsolidateUTXOs, maxInputs = 
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+            <div className="text-2xl font-bold text-caution">
               {smallUTXOs}
             </div>
             <div className="text-sm text-muted-foreground">Small UTXOs</div>
@@ -528,7 +528,7 @@ export function UTXOOverview({ isOpen, onClose, onConsolidateUTXOs, maxInputs = 
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <div className="text-2xl font-bold text-red-600 dark:text-red-400">{dustUTXOs}</div>
+            <div className="text-2xl font-bold text-destructive">{dustUTXOs}</div>
             <div className="text-sm text-muted-foreground">Dust UTXOs</div>
           </CardContent>
         </Card>
@@ -558,8 +558,8 @@ export function UTXOOverview({ isOpen, onClose, onConsolidateUTXOs, maxInputs = 
 
       {/* HD Wallet Warning */}
       {isHdWallet && !allAddressesLoaded && (
-        <Alert className="mb-4 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
-          <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+        <Alert className="mb-4 bg-caution/10 border-caution/30 text-caution">
+          <AlertCircle className="h-4 w-4 text-caution" />
           <AlertTitle>HD Wallet Detected</AlertTitle>
           <AlertDescription className="space-y-3">
             <p>
@@ -571,7 +571,7 @@ export function UTXOOverview({ isOpen, onClose, onConsolidateUTXOs, maxInputs = 
               size="sm"
               onClick={loadAllHDUTXOs}
               disabled={loadingHdAddresses}
-              className="bg-amber-100 dark:bg-amber-900/40 border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-200 dark:hover:bg-amber-900/60"
+              className="bg-caution/10 border-caution/30 text-caution hover:bg-caution/10 dark:hover:bg-caution/10"
             >
               {loadingHdAddresses ? (
                 <>
@@ -590,8 +590,8 @@ export function UTXOOverview({ isOpen, onClose, onConsolidateUTXOs, maxInputs = 
       )}
 
       {allAddressesLoaded && (
-        <Alert className="mb-4 bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200">
-          <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+        <Alert className="mb-4 bg-primary/10 border-primary/30 text-primary">
+          <Check className="h-4 w-4 text-primary" />
           <AlertTitle>All HD Addresses Loaded</AlertTitle>
           <AlertDescription className="space-y-3">
             <p>
@@ -603,7 +603,7 @@ export function UTXOOverview({ isOpen, onClose, onConsolidateUTXOs, maxInputs = 
               size="sm"
               onClick={loadAllHDUTXOs}
               disabled={loadingHdAddresses}
-              className="bg-green-100 dark:bg-green-900/40 border-green-300 dark:border-green-700 text-green-800 dark:text-green-200 hover:bg-green-200 dark:hover:bg-green-900/60"
+              className="bg-primary/10 border-primary/30 text-primary hover:bg-primary/10 dark:hover:bg-primary/10"
             >
               {loadingHdAddresses ? (
                 <>
@@ -782,8 +782,8 @@ export function UTXOOverview({ isOpen, onClose, onConsolidateUTXOs, maxInputs = 
 
           {/* Recommendations */}
           {(dustUTXOs > 0 || smallUTXOs > 3) && (
-            <Alert className="bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-200">
-              <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+            <Alert className="bg-caution/10 border-caution/30 text-caution">
+              <AlertCircle className="h-4 w-4 text-caution" />
               <AlertTitle>UTXO Consolidation Recommended</AlertTitle>
               <AlertDescription className="space-y-3">
                 {dustUTXOs > 0 && (
@@ -804,7 +804,7 @@ export function UTXOOverview({ isOpen, onClose, onConsolidateUTXOs, maxInputs = 
                     variant="outline"
                     size="sm"
                     onClick={handleConsolidateClick}
-                    className="bg-yellow-100 dark:bg-yellow-900/40 border-yellow-300 dark:border-yellow-700 text-yellow-800 dark:text-yellow-200 hover:bg-yellow-200 dark:hover:bg-yellow-900/60"
+                    className="bg-caution/10 border-caution/30 text-caution hover:bg-caution/10 dark:hover:bg-caution/10"
                   >
                     <Shuffle className="h-4 w-4 mr-2" />
                     Consolidate UTXOs {(dustUTXOs + smallUTXOs) > maxInputs && `(${maxInputs} max)`}

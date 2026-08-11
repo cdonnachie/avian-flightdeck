@@ -84,7 +84,7 @@ const AddressDetailsDialog = ({
         <div className="space-y-6">
             {/* QR Code */}
             <div className="flex justify-center">
-                <div className="p-4 bg-white rounded-lg shadow-sm border border-gray-100 dark:border-gray-600">
+                <div className="p-4 bg-card rounded-lg shadow-sm border border-border">
                     <QRCodeSVG
                         value={addressDetails.address}
                         size={isMobile ? 160 : 180}
@@ -99,16 +99,16 @@ const AddressDetailsDialog = ({
             <div className="grid gap-4">
                 {/* Address */}
                 <div className="space-y-1.5">
-                    <Label className="text-sm font-medium text-gray-600 dark:text-gray-300">Address</Label>
+                    <Label className="text-sm font-medium text-muted-foreground">Address</Label>
                     <div className="relative">
-                        <div className="p-3 pr-10 bg-gray-100 dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700 font-mono text-sm break-all">
+                        <div className="p-3 pr-10 bg-muted/40 dark:bg-card rounded-md border border-border font-mono text-sm break-all">
                             {addressDetails.address}
                         </div>
                         <Button
                             variant="ghost"
                             size="icon"
                             onClick={() => onCopy(addressDetails.address)}
-                            className="absolute right-1.5 top-1.5 h-7 w-7 opacity-70 hover:opacity-100 bg-gray-100/50 dark:bg-gray-800/50 backdrop-blur-sm"
+                            className="absolute right-1.5 top-1.5 h-7 w-7 opacity-70 hover:opacity-100 bg-muted/40 dark:bg-card backdrop-blur-sm"
                             title="Copy address"
                         >
                             <Copy className="h-4 w-4" />
@@ -118,16 +118,16 @@ const AddressDetailsDialog = ({
 
                 {/* Balance */}
                 <div className="space-y-1.5">
-                    <Label className="text-sm font-medium text-gray-600 dark:text-gray-300">Balance</Label>
+                    <Label className="text-sm font-medium text-muted-foreground">Balance</Label>
                     <div
-                        className={`p-3 bg-gray-100 dark:bg-gray-800 rounded-md border ${addressDetails.balance > 0
-                            ? 'border-emerald-300 dark:border-emerald-700'
-                            : 'border-gray-200 dark:border-gray-700'
+                        className={`p-3 bg-muted/40 dark:bg-card rounded-md border ${addressDetails.balance > 0
+                            ? 'border-primary/30'
+                            : 'border-border'
                             }`}
                     >
                         <span
                             className={`font-mono text-lg ${addressDetails.balance > 0
-                                ? 'text-emerald-600 dark:text-emerald-400'
+                                ? 'text-primary'
                                 : 'text-muted-foreground'
                                 }`}
                         >
@@ -138,7 +138,7 @@ const AddressDetailsDialog = ({
                                 })
                                 : '0.00000000'}
                         </span>
-                        <span className="ml-1.5 font-medium text-gray-600 dark:text-gray-400">AVN</span>
+                        <span className="ml-1.5 font-medium text-muted-foreground">AVN</span>
                     </div>
                 </div>
 
@@ -146,15 +146,15 @@ const AddressDetailsDialog = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {/* Type */}
                     <div className="space-y-1.5">
-                        <Label className="text-sm font-medium text-gray-600 dark:text-gray-300">Type</Label>
+                        <Label className="text-sm font-medium text-muted-foreground">Type</Label>
                         <div>
                             {addressDetails.path.includes('(receiving)') ? (
-                                <Badge className="px-3 py-1.5 bg-amber-200 dark:bg-amber-800/60 text-amber-900 dark:text-amber-100 border-amber-300 dark:border-amber-700 font-medium">
+                                <Badge className="px-3 py-1.5 bg-caution/10 text-caution border-caution/30 font-medium">
                                     <ArrowDownLeft className="w-3.5 h-3.5 mr-1.5" />
                                     Receiving
                                 </Badge>
                             ) : (
-                                <Badge className="px-3 py-1.5 bg-indigo-200 dark:bg-indigo-800/60 text-indigo-900 dark:text-indigo-100 border-indigo-300 dark:border-indigo-700 font-medium">
+                                <Badge className="px-3 py-1.5 bg-primary/10 text-primary border-primary/30 font-medium">
                                     <ArrowUpRight className="w-3.5 h-3.5 mr-1.5" />
                                     Change
                                 </Badge>
@@ -164,17 +164,17 @@ const AddressDetailsDialog = ({
 
                     {/* Transaction History */}
                     <div className="space-y-1.5 mb-4">
-                        <Label className="text-sm font-medium text-gray-600 dark:text-gray-300">Status</Label>
+                        <Label className="text-sm font-medium text-muted-foreground">Status</Label>
                         <div>
                             {addressDetails.hasTransactions ? (
-                                <Badge className="px-3 py-1.5 bg-blue-200 dark:bg-blue-800/60 text-blue-900 dark:text-blue-100 border-blue-300 dark:border-blue-700 font-medium">
+                                <Badge className="px-3 py-1.5 bg-primary/10 text-primary border-primary/30 font-medium">
                                     <Activity className="w-3.5 h-3.5 mr-1.5" />
                                     Has Transactions
                                 </Badge>
                             ) : (
                                 <Badge
                                     variant="outline"
-                                    className="px-3 py-1.5 bg-gray-200 dark:bg-gray-800 text-gray-800 dark:text-gray-300 border-gray-300 dark:border-gray-700 font-medium"
+                                    className="px-3 py-1.5 bg-muted/40 dark:bg-card text-foreground dark:text-muted-foreground border-border font-medium"
                                 >
                                     <Ban className="w-3.5 h-3.5 mr-1.5" />
                                     No Transactions
@@ -233,7 +233,7 @@ const AddressDetailsDialog = ({
 
                     <div className="px-4 overflow-y-auto">{dialogContent}</div>
 
-                    <DrawerFooter className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                    <DrawerFooter className="border-t border-border pt-4">
                         {actionButtons}
                     </DrawerFooter>
                 </DrawerContent>
@@ -256,7 +256,7 @@ const AddressDetailsDialog = ({
 
                 <div className="py-4">{dialogContent}</div>
 
-                <DialogFooter className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                <DialogFooter className="border-t border-border pt-4">
                     {actionButtons}
                 </DialogFooter>
             </DialogContent>
@@ -268,7 +268,7 @@ const LoadingIndicator = ({ isLoading }: { isLoading: boolean }) => {
     if (!isLoading) return null;
 
     return (
-        <Card className="bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-100 dark:border-blue-800 mb-4">
+        <Card className="bg-primary/10 text-primary border-primary/30 mb-4">
             <CardContent className="flex items-center p-2">
                 <svg
                     className="animate-spin -ml-1 mr-3 h-5 w-5"
@@ -720,22 +720,22 @@ export default function DerivedAddressesPanel() {
     if (!isHdWallet) {
         return (
             <div
-                className={`mt-4 rounded-lg shadow-md bg-white dark:bg-gray-800 ${isMobile ? 'p-4' : 'p-4'}`}
+                className={`mt-4 rounded-lg shadow-md bg-card ${isMobile ? 'p-4' : 'p-4'}`}
             >
                 <div className="flex items-center justify-between">
                     <h2
-                        className={`font-semibold text-gray-800 dark:text-gray-200 ${isMobile ? 'text-lg' : 'text-lg'}`}
+                        className={`font-semibold text-foreground dark:text-muted-foreground ${isMobile ? 'text-lg' : 'text-lg'}`}
                     >
                         HD Wallet Addresses
                     </h2>
                 </div>
                 <div
-                    className={`mt-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-center ${isMobile ? 'p-3' : 'p-4'}`}
+                    className={`mt-2 rounded-md border border-caution/30 bg-caution/10 text-center ${isMobile ? 'p-3' : 'p-4'}`}
                 >
-                    <p className="text-sm text-amber-700 dark:text-amber-300">
+                    <p className="text-sm text-caution">
                         This wallet was not created with HD (hierarchical deterministic) capabilities.
                     </p>
-                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                    <p className="text-xs text-caution mt-1">
                         Only wallets created with a seed phrase support derived addresses.
                     </p>
                 </div>
@@ -828,10 +828,10 @@ export default function DerivedAddressesPanel() {
                                         </div>
                                     </div>
                                     <div className="flex items-center justify-center sm:justify-start gap-2">
-                                        <Badge className="bg-amber-200 text-amber-900 dark:bg-amber-800 dark:text-amber-100">
+                                        <Badge className="bg-caution/10 text-caution dark:bg-caution/10 dark:text-caution">
                                             ×{addressCount}
                                         </Badge>
-                                        <Badge className="bg-indigo-200 text-indigo-900 dark:bg-indigo-800 dark:text-indigo-100">
+                                        <Badge className="bg-primary/10 text-primary dark:bg-primary/10 dark:text-primary">
                                             ×{addressCount}
                                         </Badge>
                                     </div>
@@ -861,7 +861,7 @@ export default function DerivedAddressesPanel() {
                                         This value is automatically determined by your wallet. Different coin types generate completely different addresses.
                                     </p>
                                     {coinType === 175 && (
-                                        <p className="text-amber-600 dark:text-amber-400 font-medium">
+                                        <p className="text-caution font-medium">
                                             ⚠️ Using Ravencoin compatibility mode
                                         </p>
                                     )}
@@ -901,12 +901,12 @@ export default function DerivedAddressesPanel() {
                                         onValueChange={(val: string) =>
                                             setActiveTab(val as 'all' | 'receiving' | 'change' | 'with-balance')
                                         }
-                                        className="w-full border-b border-gray-200 dark:border-gray-700"
+                                        className="w-full border-b border-border"
                                     >
                                         <TabsList className="flex h-auto bg-transparent p-0 w-full">
                                             <TabsTrigger
                                                 value="all"
-                                                className={`flex-1 flex items-center justify-center ${isMobile ? 'px-2 py-3' : 'px-6 py-4'} data-[state=active]:border-b-1 data-[state=active]:border-avian-400 data-[state=active]:text-avian-400 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-avian-400 data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:w-full bg-transparent rounded-none text-gray-500 dark:text-gray-400 h-auto relative`}
+                                                className={`flex-1 flex items-center justify-center ${isMobile ? 'px-2 py-3' : 'px-6 py-4'} data-[state=active]:border-b-1 data-[state=active]:border-avian-400 data-[state=active]:text-avian-400 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-avian-400 data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:w-full bg-transparent rounded-none text-muted-foreground h-auto relative`}
                                             >
                                                 <Wallet className={`${isMobile ? 'w-3 h-3 mr-1' : 'w-4 h-4 mr-2'}`} />
                                                 <span className={isMobile ? 'text-xs' : ''}>
@@ -915,7 +915,7 @@ export default function DerivedAddressesPanel() {
                                             </TabsTrigger>
                                             <TabsTrigger
                                                 value="receiving"
-                                                className={`flex-1 flex items-center justify-center ${isMobile ? 'px-2 py-3' : 'px-6 py-4'} data-[state=active]:border-b-1 data-[state=active]:border-avian-400 data-[state=active]:text-avian-400 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-avian-400 data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:w-full bg-transparent rounded-none text-gray-500 dark:text-gray-400 h-auto relative`}
+                                                className={`flex-1 flex items-center justify-center ${isMobile ? 'px-2 py-3' : 'px-6 py-4'} data-[state=active]:border-b-1 data-[state=active]:border-avian-400 data-[state=active]:text-avian-400 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-avian-400 data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:w-full bg-transparent rounded-none text-muted-foreground h-auto relative`}
                                             >
                                                 <ArrowDownLeft className={`${isMobile ? 'w-3 h-3 mr-1' : 'w-4 h-4 mr-2'}`} />
                                                 <span className={isMobile ? 'text-xs' : ''}>
@@ -924,14 +924,14 @@ export default function DerivedAddressesPanel() {
                                             </TabsTrigger>
                                             <TabsTrigger
                                                 value="change"
-                                                className={`flex-1 flex items-center justify-center ${isMobile ? 'px-2 py-3' : 'px-6 py-4'} data-[state=active]:border-b-1 data-[state=active]:border-avian-400 data-[state=active]:text-avian-400 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-avian-400 data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:w-full bg-transparent rounded-none text-gray-500 dark:text-gray-400 h-auto relative`}
+                                                className={`flex-1 flex items-center justify-center ${isMobile ? 'px-2 py-3' : 'px-6 py-4'} data-[state=active]:border-b-1 data-[state=active]:border-avian-400 data-[state=active]:text-avian-400 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-avian-400 data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:w-full bg-transparent rounded-none text-muted-foreground h-auto relative`}
                                             >
                                                 <ArrowUpRight className={`${isMobile ? 'w-3 h-3 mr-1' : 'w-4 h-4 mr-2'}`} />
                                                 <span className={isMobile ? 'text-xs' : ''}>Change</span>
                                             </TabsTrigger>
                                             <TabsTrigger
                                                 value="with-balance"
-                                                className={`flex-1 flex items-center justify-center ${isMobile ? 'px-2 py-3' : 'px-6 py-4'} data-[state=active]:border-b-1 data-[state=active]:border-avian-400 data-[state=active]:text-avian-400 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-avian-400 data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:w-full bg-transparent rounded-none text-gray-500 dark:text-gray-400 h-auto relative`}
+                                                className={`flex-1 flex items-center justify-center ${isMobile ? 'px-2 py-3' : 'px-6 py-4'} data-[state=active]:border-b-1 data-[state=active]:border-avian-400 data-[state=active]:text-avian-400 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-avian-400 data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:w-full bg-transparent rounded-none text-muted-foreground h-auto relative`}
                                             >
                                                 <Banknote className={`${isMobile ? 'w-3 h-3 mr-1' : 'w-4 h-4 mr-2'}`} />
                                                 <span className={isMobile ? 'text-xs' : ''}>
@@ -962,22 +962,22 @@ export default function DerivedAddressesPanel() {
                                 </div>
                             )}{' '}
                             {filteredAddresses.length > 0 && (
-                                <div className="p-3 mb-4 bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 rounded-md">
-                                    <h3 className="text-sm font-medium mb-2 text-gray-700 dark:text-gray-200">
+                                <div className="p-3 mb-4 bg-muted/40 dark:bg-card border border-border rounded-md">
+                                    <h3 className="text-sm font-medium mb-2 text-muted-foreground">
                                         Legend
                                     </h3>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         {/* Row indicators - Enhanced contrast */}
                                         <div className="space-y-2">
                                             <div className="flex items-center">
-                                                <div className="w-5 h-5 bg-emerald-200 dark:bg-emerald-800/60 border border-emerald-300 dark:border-emerald-600 mr-3 rounded"></div>
-                                                <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+                                                <div className="w-5 h-5 bg-primary/10 border border-primary/30 mr-3 rounded"></div>
+                                                <span className="text-sm text-muted-foreground font-medium">
                                                     Address with balance
                                                 </span>
                                             </div>
                                             <div className="flex items-center">
-                                                <div className="w-5 h-5 bg-blue-200 dark:bg-blue-800/60 border border-blue-300 dark:border-blue-600 mr-3 rounded"></div>
-                                                <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+                                                <div className="w-5 h-5 bg-primary/10 border border-primary/30 mr-3 rounded"></div>
+                                                <span className="text-sm text-muted-foreground font-medium">
                                                     Address with transaction history
                                                 </span>
                                             </div>
@@ -986,14 +986,14 @@ export default function DerivedAddressesPanel() {
                                         {/* Type indicators - Enhanced contrast */}
                                         <div className="space-y-2">
                                             <div className="flex items-center">
-                                                <div className="w-5 h-5 border-l-4 border-amber-500 dark:border-amber-400 bg-amber-100/50 dark:bg-amber-900/30 mr-3 rounded"></div>
-                                                <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+                                                <div className="w-5 h-5 border-l-4 border-caution bg-caution/10 mr-3 rounded"></div>
+                                                <span className="text-sm text-muted-foreground font-medium">
                                                     Receiving address (m/{walletAddressType === 'p2wpkh' ? 84 : walletAddressType === 'p2sh-p2wpkh' ? 49 : 44}&apos;/{coinType}&apos;/0&apos;/0/x)
                                                 </span>
                                             </div>
                                             <div className="flex items-center">
-                                                <div className="w-5 h-5 border-l-4 border-indigo-500 dark:border-indigo-400 bg-indigo-100/50 dark:bg-indigo-900/30 mr-3 rounded"></div>
-                                                <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+                                                <div className="w-5 h-5 border-l-4 border-primary bg-primary/10 mr-3 rounded"></div>
+                                                <span className="text-sm text-muted-foreground font-medium">
                                                     Change address (m/{walletAddressType === 'p2wpkh' ? 84 : walletAddressType === 'p2sh-p2wpkh' ? 49 : 44}&apos;/{coinType}&apos;/0&apos;/1/x)
                                                 </span>
                                             </div>
@@ -1009,8 +1009,8 @@ export default function DerivedAddressesPanel() {
                     <div className="mt-2 sm:overflow-visible overflow-x-auto">
                         {/* Mobile hint */}
                         {isMobile && (
-                            <div className="mb-3 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md sm:hidden">
-                                <p className="text-xs text-blue-700 dark:text-blue-300 flex items-center">
+                            <div className="mb-3 px-3 py-2 bg-primary/10 border border-primary/30 rounded-md sm:hidden">
+                                <p className="text-xs text-primary flex items-center">
                                     <svg className="w-3 h-3 mr-1.5" fill="currentColor" viewBox="0 0 20 20">
                                         <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                                     </svg>
@@ -1018,45 +1018,45 @@ export default function DerivedAddressesPanel() {
                                 </p>
                             </div>
                         )}
-                        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-600">
-                            <thead className="bg-gray-50 dark:bg-gray-700 dark:bg-opacity-80">
+                        <table className="min-w-full divide-y divide-border">
+                            <thead className="bg-muted/40 dark:bg-card dark:bg-opacity-80">
                                 <tr>
-                                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-200 uppercase tracking-wider w-1/4">
+                                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider w-1/4">
                                         Details
                                     </th>
                                     {/* Address column - hidden on mobile */}
-                                    <th className="hidden sm:table-cell px-3 py-3 text-left text-xs font-medium text-gray-600 dark:text-gray-200 uppercase tracking-wider">
+                                    <th className="hidden sm:table-cell px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                                         Address
                                     </th>
-                                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-600 dark:text-gray-200 uppercase tracking-wider w-[120px]">
+                                    <th className="px-3 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider w-[120px]">
                                         Balance
                                     </th>
                                     {/* Actions column - hidden on mobile */}
-                                    <th className="hidden sm:table-cell px-3 py-3 text-center text-xs font-medium text-gray-600 dark:text-gray-200 uppercase tracking-wider w-[140px]">
+                                    <th className="hidden sm:table-cell px-3 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider w-[140px]">
                                         Actions
                                     </th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
+                            <tbody className="divide-y divide-border">
                                 {filteredAddresses.map((item, index) => {
                                     // Build comprehensive class string
                                     const baseClasses = isMobile
-                                        ? 'transition-colors bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer'
-                                        : 'transition-colors bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700';
+                                        ? 'transition-colors bg-card hover:bg-muted/40 dark:hover:bg-card cursor-pointer'
+                                        : 'transition-colors bg-card hover:bg-muted/40 dark:hover:bg-card';
 
                                     // Background color classes based on balance/transaction status
                                     const backgroundClasses =
                                         item.balance > 0
-                                            ? 'bg-emerald-200/60 dark:bg-emerald-800/40 hover:bg-emerald-200/80 dark:hover:bg-emerald-800/50'
+                                            ? 'bg-primary/10 hover:bg-primary/20 dark:hover:bg-primary/20'
                                             : item.hasTransactions && item.balance <= 0
-                                                ? 'bg-blue-200/60 dark:bg-blue-800/40 hover:bg-blue-200/80 dark:hover:bg-blue-800/50'
+                                                ? 'bg-muted/50 hover:bg-muted dark:hover:bg-muted'
                                                 : '';
 
                                     // Border classes based on address type - ensure specificity
                                     const borderClasses = item.path.includes('(receiving)')
-                                        ? '!border-l-4 !border-amber-500 dark:!border-amber-400'
+                                        ? '!border-l-4 !border-caution'
                                         : item.path.includes('(change)')
-                                            ? '!border-l-4 !border-indigo-500 dark:!border-indigo-400'
+                                            ? '!border-l-4 !border-primary'
                                             : '';
 
                                     const rowClasses = [baseClasses, backgroundClasses, borderClasses]
@@ -1081,7 +1081,7 @@ export default function DerivedAddressesPanel() {
                                             }}
                                         >
                                             <td
-                                                className="px-3 py-2 text-xs font-mono text-gray-700 dark:text-gray-300"
+                                                className="px-3 py-2 text-xs font-mono text-muted-foreground"
                                                 title={item.path}
                                             >
                                                 <div className="flex flex-wrap items-center gap-2">
@@ -1092,7 +1092,7 @@ export default function DerivedAddressesPanel() {
                                                     {item.path.includes('(receiving)') && (
                                                         <Badge
                                                             variant="outline"
-                                                            className="bg-amber-200 dark:bg-amber-800/60 text-amber-900 dark:text-amber-100 border-amber-300 dark:border-amber-700 font-medium whitespace-nowrap"
+                                                            className="bg-caution/10 text-caution border-caution/30 font-medium whitespace-nowrap"
                                                         >
                                                             Receive
                                                         </Badge>
@@ -1101,7 +1101,7 @@ export default function DerivedAddressesPanel() {
                                                     {item.path.includes('(change)') && (
                                                         <Badge
                                                             variant="outline"
-                                                            className="bg-indigo-200 dark:bg-indigo-800/60 text-indigo-900 dark:text-indigo-100 border-indigo-300 dark:border-indigo-700 font-medium whitespace-nowrap"
+                                                            className="bg-primary/10 text-primary border-primary/30 font-medium whitespace-nowrap"
                                                         >
                                                             Change
                                                         </Badge>
@@ -1109,15 +1109,15 @@ export default function DerivedAddressesPanel() {
                                                 </div>
                                             </td>
                                             {/* Address column - hidden on mobile */}
-                                            <td className="hidden sm:table-cell px-3 py-2 text-sm font-mono text-gray-700 dark:text-gray-300">
+                                            <td className="hidden sm:table-cell px-3 py-2 text-sm font-mono text-muted-foreground">
                                                 <div className="flex items-center" title={item.address}>
-                                                    <div className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded w-full max-w-full">
+                                                    <div className="bg-muted/40 dark:bg-card px-2 py-1 rounded w-full max-w-full">
                                                         <span className="hidden sm:inline font-medium tracking-wide break-all">
                                                             {item.address}
                                                         </span>
                                                         <span className="sm:hidden font-medium tracking-wide">
                                                             {item.address.substring(0, 6)}
-                                                            <span className="text-gray-400 dark:text-gray-500 px-1">...</span>
+                                                            <span className="text-muted-foreground px-1">...</span>
                                                             {item.address.substring(item.address.length - 6)}
                                                         </span>
                                                     </div>
@@ -1125,17 +1125,17 @@ export default function DerivedAddressesPanel() {
                                             </td>
                                             <td className="px-3 py-2 text-center">
                                                 {item.balance > 0 ? (
-                                                    <Badge className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-200 dark:hover:bg-emerald-800/60 transition-colors">
+                                                    <Badge className="bg-primary/10 text-primary border-primary/30 hover:bg-primary/10 dark:hover:bg-primary/10 transition-colors">
                                                         {(item.balance / 100000000).toFixed(8)} AVN
                                                     </Badge>
                                                 ) : item.hasTransactions ? (
-                                                    <Badge className="bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 hover:bg-blue-200 dark:hover:bg-blue-800/60 transition-colors">
+                                                    <Badge className="bg-primary/10 text-primary border-primary/30 hover:bg-primary/10 dark:hover:bg-primary/10 transition-colors">
                                                         0 AVN
                                                     </Badge>
                                                 ) : (
                                                     <Badge
                                                         variant="outline"
-                                                        className="text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                                                        className="text-muted-foreground hover:bg-muted/40 dark:hover:bg-card transition-colors"
                                                     >
                                                         0 AVN
                                                     </Badge>
@@ -1148,11 +1148,11 @@ export default function DerivedAddressesPanel() {
                                                         onClick={() => openAddressDetails(item)}
                                                         size="icon"
                                                         variant="ghost"
-                                                        className="text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 group relative transition-colors h-8 w-8"
+                                                        className="text-primary hover:text-primary dark:hover:text-primary group relative transition-colors h-8 w-8"
                                                         aria-label="View address details"
                                                     >
                                                         <Info className="w-4 h-4" />
-                                                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none transition-opacity shadow-lg">
+                                                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-card text-white px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none transition-opacity shadow-lg">
                                                             View Details
                                                         </span>
                                                     </Button>
@@ -1161,15 +1161,15 @@ export default function DerivedAddressesPanel() {
                                                         onClick={() => copyAddressWithFeedback(item.address)}
                                                         size="icon"
                                                         variant="ghost"
-                                                        className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 group relative transition-colors h-8 w-8"
+                                                        className="text-muted-foreground hover:text-muted-foreground dark:hover:text-muted-foreground group relative transition-colors h-8 w-8"
                                                         aria-label="Copy address to clipboard"
                                                     >
                                                         {copiedAddress === item.address ? (
-                                                            <CheckCircle className="w-4 h-4 text-green-500" />
+                                                            <CheckCircle className="w-4 h-4 text-primary" />
                                                         ) : (
                                                             <Copy className="w-4 h-4" />
                                                         )}
-                                                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none transition-opacity shadow-lg">
+                                                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-card text-white px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none transition-opacity shadow-lg">
                                                             {copiedAddress === item.address ? 'Copied!' : 'Copy Address'}
                                                         </span>
                                                     </Button>
@@ -1187,7 +1187,7 @@ export default function DerivedAddressesPanel() {
                                                             aria-label="Open address in Avian Explorer (opens in new tab)"
                                                         >
                                                             <ExternalLink className="w-4 h-4" />
-                                                            <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none transition-opacity shadow-lg">
+                                                            <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-card text-white px-2 py-1 text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none transition-opacity shadow-lg">
                                                                 View on Explorer
                                                             </span>
                                                         </a>
@@ -1202,9 +1202,9 @@ export default function DerivedAddressesPanel() {
                     </div>
                 ) : (
                     !isLoading && (
-                        <div className="p-6 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-center">
+                        <div className="p-6 rounded-md border border-border bg-muted/40 dark:bg-card text-center">
                             <div className="flex flex-col items-center justify-center space-y-4">
-                                <div className="rounded-full p-3 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400">
+                                <div className="rounded-full p-3 bg-primary/10 text-primary">
                                     <svg
                                         className="w-6 h-6"
                                         xmlns="http://www.w3.org/2000/svg"
@@ -1218,17 +1218,17 @@ export default function DerivedAddressesPanel() {
                                         <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
                                     </svg>
                                 </div>
-                                <h3 className="text-base font-medium text-gray-700 dark:text-gray-300">
+                                <h3 className="text-base font-medium text-muted-foreground">
                                     No Addresses Loaded
                                 </h3>
-                                <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
+                                <p className="text-sm text-muted-foreground max-w-md">
                                     Click the button below to authenticate and load your wallet&apos;s derived
                                     addresses.
                                 </p>
                                 <Button
                                     onClick={loadDerivedAddresses}
                                     size="lg"
-                                    className="bg-emerald-500 hover:bg-emerald-600 dark:bg-emerald-600 dark:hover:bg-emerald-700 mt-2"
+                                    className="bg-primary hover:bg-primary dark:hover:bg-primary mt-2"
                                 >
                                     <svg
                                         className="w-5 h-5 mr-2"

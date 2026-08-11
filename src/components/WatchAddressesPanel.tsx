@@ -290,8 +290,8 @@ export default function WatchAddressesPanel() {
   // Validate if notifications are enabled
   if (!isEnabled) {
     return (
-      <Alert className="bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-700">
-        <AlertDescription className="text-orange-800 dark:text-orange-200">
+      <Alert className="bg-caution/10 border-caution/30">
+        <AlertDescription className="text-caution">
           Enable notifications to monitor other wallet addresses.
         </AlertDescription>
       </Alert>
