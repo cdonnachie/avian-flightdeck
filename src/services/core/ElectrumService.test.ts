@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import * as bitcoin from 'bitcoinjs-lib';
 
 import { ElectrumService } from './ElectrumService';
+import { StorageService } from './StorageService';
 import { avianNetwork } from '@/services/wallet/WalletService';
+import { resetStorage } from '@/test/helpers';
 
 /**
  * Only the pure, offline part of the Electrum client is covered here: the address-to-scripthash
@@ -55,6 +57,53 @@ describe('addressToScriptHash', () => {
     const scriptHash = service.addressToScriptHash('not-an-address');
     expect(scriptHash).toMatch(/^[0-9a-f]{64}$/);
     expect(scriptHash).not.toBe(service.addressToScriptHash(P2PKH));
+  });
+});
+
+describe('balance provenance while offline', () => {
+  it('reports unknown when there is nothing to go on — never a confident zero', async () => {
+    resetStorage();
+    const fresh = new ElectrumService();
+
+    const detailed = await fresh.getBalanceDetailed(P2PKH);
+
+    expect(detailed).toEqual({ balance: 0, source: 'unknown' });
+  });
+
+  it('falls back to a balance a subscription pushed earlier in the session', async () => {
+    const fresh = new ElectrumService();
+    fresh.updateRealBalance(P2PKH, 123_456);
+
+    const detailed = await fresh.getBalanceDetailed(P2PKH);
+
+    expect(detailed).toEqual({ balance: 123_456, source: 'cache' });
+  });
+
+  it('falls back to a balance persisted by a previous session, marked as stored', async () => {
+    resetStorage();
+    await StorageService.setLastBalance(777_000);
+    const fresh = new ElectrumService();
+
+    const detailed = await fresh.getBalanceDetailed(P2PKH);
+
+    expect(detailed).toEqual({ balance: 777_000, source: 'stored' });
+  });
+
+  it('treats a stored zero as unknown, since storage cannot tell zero from absent', async () => {
+    resetStorage();
+    await StorageService.setLastBalance(0);
+    const fresh = new ElectrumService();
+
+    const detailed = await fresh.getBalanceDetailed(P2PKH);
+
+    expect(detailed.source).toBe('unknown');
+  });
+
+  it('keeps the plain getBalance shape for callers that only want a number', async () => {
+    resetStorage();
+    const fresh = new ElectrumService();
+
+    await expect(fresh.getBalance(P2PKH)).resolves.toBe(0);
   });
 });
 

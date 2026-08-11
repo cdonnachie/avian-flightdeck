@@ -36,7 +36,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function Home() {
     const router = useRouter();
-    const { wallet, balance, address, isLoading, processingProgress, updateBalance } = useWallet();
+    const { wallet, balance, balanceStatus, address, isLoading, processingProgress, updateBalance } = useWallet();
     const { lockWallet, isLocked } = useSecurity();
     const [activeTab, setActiveTab] = useState<'send' | 'receive' | 'history'>('send');
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -255,9 +255,25 @@ export default function Home() {
                         <div className="text-xl md:text-2xl lg:text-3xl font-bold mb-2 flex items-center flex-wrap text-white">
                             {isLoading && !processingProgress.isProcessing ? (
                                 'Loading...'
+                            ) : balanceStatus === 'unknown' ? (
+                                // No confirmed or cached figure exists; showing 0 here would
+                                // read as "your funds are gone" on a flaky connection.
+                                <span data-testid="balance-unavailable" className="flex items-baseline">
+                                    —
+                                    <span className="ml-2 text-xs font-normal opacity-80">balance unavailable</span>
+                                </span>
                             ) : (
                                 <>
                                     {`${formatBalance(balance)} AVN`}
+                                    {balanceStatus === 'stale' && (
+                                        <span
+                                            data-testid="balance-stale"
+                                            className="ml-2 text-xs font-normal opacity-80"
+                                            title="Shown from the last successful update; the server has not confirmed it yet"
+                                        >
+                                            last known
+                                        </span>
+                                    )}
                                     {processingProgress.isProcessing && (
                                         <Loader className="w-4 h-4 md:w-5 md:h-5 ml-2 animate-spin opacity-70" />
                                     )}
@@ -386,11 +402,25 @@ export default function Home() {
                         <div className="text-2xl lg:text-3xl font-bold mb-2 flex items-center text-white">
                             {isLoading && !processingProgress.isProcessing ? (
                                 'Loading...'
+                            ) : balanceStatus === 'unknown' ? (
+                                <span data-testid="balance-unavailable" className="flex items-baseline">
+                                    —
+                                    <span className="ml-2 text-xs font-normal opacity-80">balance unavailable</span>
+                                </span>
                             ) : (
                                 <>
                                     <span className="break-all whitespace-normal overflow-hidden">
                                         {`${formatBalance(balance)} AVN`}
                                     </span>
+                                    {balanceStatus === 'stale' && (
+                                        <span
+                                            data-testid="balance-stale"
+                                            className="ml-2 text-xs font-normal opacity-80"
+                                            title="Shown from the last successful update; the server has not confirmed it yet"
+                                        >
+                                            last known
+                                        </span>
+                                    )}
                                     {processingProgress.isProcessing && (
                                         <Loader className="w-5 h-5 ml-2 flex-shrink-0 animate-spin opacity-70" />
                                     )}
