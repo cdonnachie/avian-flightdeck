@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { StorageService } from '@/services/core/StorageService';
-import { WalletService } from '@/services/wallet/WalletService';
+import { openTransactionInExplorer } from '@/lib/explorer';
 import { useWallet } from '@/contexts/WalletContext';
 import {
   ArrowUpRight,
@@ -350,7 +350,7 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
 
   const openExplorer = (txid: string) => {
     // Open the transaction in the Avian block explorer
-    WalletService.openTransactionInExplorer(txid);
+    openTransactionInExplorer(txid);
   };
 
   return (

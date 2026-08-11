@@ -18,7 +18,16 @@ import { useWallet } from '@/contexts/WalletContext';
 import { useSecurity } from '@/contexts/SecurityContext';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import SendForm from '@/components/SendForm';
+import dynamic from 'next/dynamic';
+// SendForm builds and signs transactions, so it pulls the ~1.7 MB secp256k1 build. Loading it
+// lazily keeps the crypto out of the home page's initial bundle — the balance and history render
+// immediately, and the send UI (and its crypto) loads when the user opens the Send tab.
+const SendForm = dynamic(() => import('@/components/SendForm'), {
+    ssr: false,
+    loading: () => (
+        <div className="p-6 text-center text-sm text-muted-foreground">Loading send form…</div>
+    ),
+});
 import ReceiveContent from '@/components/ReceiveContent';
 import WalletSettingsDashboard from '@/components/WalletSettingsDashboard';
 import { TransactionHistory } from '@/components/TransactionHistory';

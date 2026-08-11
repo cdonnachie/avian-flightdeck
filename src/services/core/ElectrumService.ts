@@ -46,12 +46,7 @@ interface ElectrumNotification {
 }
 
 import * as bitcoin from 'bitcoinjs-lib';
-import { ECPairFactory } from 'ecpair';
-import * as ecc from 'tiny-secp256k1';
 import { electrumLogger } from '@/lib/Logger';
-
-// ECPair factory for working with key pairs
-const ECPair = ECPairFactory(ecc);
 
 // Avian network configuration (same as in WalletService)
 const avianNetwork: bitcoin.Network = {
@@ -842,6 +837,13 @@ export class ElectrumService {
    */
   async getPublicKeyForAddress(address: string): Promise<string | null> {
     try {
+      // ecpair + tiny-secp256k1 are loaded lazily here — this is the only method in the service
+      // that needs them, and it is rarely called, so keeping them out of the module's static
+      // imports removes ~1.7 MB from the read-only balance path that every route mounts.
+      const { ECPairFactory } = await import('ecpair');
+      const ecc = await import('tiny-secp256k1');
+      const ECPair = ECPairFactory(ecc);
+
       // Make sure we're connected
       if (!this.isConnected || !this.websocket) {
         await this.connect();

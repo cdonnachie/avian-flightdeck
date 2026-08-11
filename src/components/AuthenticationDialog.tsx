@@ -3,7 +3,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { securityService } from '@/services/core/SecurityService';
 import { StorageService } from '@/services/core/StorageService';
-import { WalletService } from '@/services/wallet/WalletService';
+// WalletService is loaded lazily in the submit handler below. Importing it statically would pull
+// the ~1.7 MB secp256k1 build into the initial bundle, and this dialog is mounted app-wide by
+// SecurityProvider.
 import { Fingerprint, Lock, X, Eye, EyeOff } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
@@ -172,6 +174,7 @@ export default function AuthenticationDialog({
 
     try {
       // Verify the password against the wallet
+      const { WalletService } = await import('@/services/wallet/WalletService');
       const walletService = new WalletService();
 
       const isValid = await walletService.validateWalletPassword(password);

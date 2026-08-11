@@ -2,7 +2,10 @@
 import { SavedAddress } from '../../types/addressBook';
 import { OriginPermission } from '../../types/avianConnect';
 import { toast } from 'sonner';
-import { secureEncrypt, decryptData, type AddressType } from '../wallet/WalletService';
+import { secureEncrypt, decryptData } from '../wallet/encryption';
+// Type-only: erased at compile time, so it does not pull WalletService (and its secp256k1
+// dependency) into the bundle.
+import type { AddressType } from '../wallet/WalletService';
 import { storageLogger } from '@/lib/Logger';
 
 interface WalletData {
