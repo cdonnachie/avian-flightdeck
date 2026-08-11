@@ -949,7 +949,7 @@ export default function SendForm() {
               utxoOptions.feeRate !== 10000 ||
               utxoOptions.maxInputs !== 100 ||
               utxoOptions.minConfirmations !== 6) && (
-                <span className="absolute -top-1 -right-1 h-2 w-2 bg-amber-500 rounded-full"></span>
+                <span className="absolute -top-1 -right-1 h-2 w-2 bg-caution rounded-full"></span>
               )}
           </Button>
         </div>
@@ -964,7 +964,7 @@ export default function SendForm() {
             <div className="mb-4 p-3 bg-secondary/30 border rounded-lg">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="flex items-center">
-                  <Settings className="h-4 w-4 mr-2 text-blue-600 dark:text-blue-400" />
+                  <Settings className="h-4 w-4 mr-2 text-primary" />
                   <span className="text-sm font-medium">Custom Settings Active</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1022,10 +1022,10 @@ export default function SendForm() {
         {success && (
           <Alert
             variant="default"
-            className="mb-4 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/50"
+            className="mb-4 border-primary/20 bg-primary/5"
           >
-            <Check className="h-4 w-4 text-green-600 dark:text-green-500" />
-            <AlertTitle className="text-green-800 dark:text-green-500">{success}</AlertTitle>
+            <Check className="h-4 w-4 text-primary" />
+            <AlertTitle className="text-foreground">{success}</AlertTitle>
             {successTxId && (
               <AlertDescription>
                 <div className="space-y-2">
@@ -1039,7 +1039,7 @@ export default function SendForm() {
                     variant="link"
                     size="sm"
                     onClick={() => openExplorer(successTxId)}
-                    className="h-6 p-0 text-green-700 dark:text-green-500 hover:text-green-800"
+                    className="h-6 p-0 text-primary hover:text-primary/80"
                   >
                     <ExternalLink className="h-3 w-3 mr-1" />
                     View on Explorer
@@ -1240,9 +1240,9 @@ export default function SendForm() {
 
           {/* Show derived address info if sending from one */}
           {fromDerivedAddress && derivationPath && (
-            <Alert className="mb-4 border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/50">
-              <Coins className="h-4 w-4 text-orange-600 dark:text-orange-500" />
-              <AlertTitle className="text-orange-800 dark:text-orange-500">
+            <Alert className="mb-4 border-caution/30 bg-caution/10">
+              <Coins className="h-4 w-4 text-caution" />
+              <AlertTitle className="text-caution">
                 Sending From Derived Address
               </AlertTitle>
               <AlertDescription className="space-y-2">
@@ -1281,9 +1281,9 @@ export default function SendForm() {
 
           {/* Display authentication requirement for encrypted wallets */}
           {isEncrypted && (
-            <Alert className="mb-4 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50">
-              <Lock className="h-4 w-4 text-blue-600 dark:text-blue-500" />
-              <AlertTitle className="text-blue-800 dark:text-blue-500">
+            <Alert className="mb-4 border-primary/20 bg-primary/5">
+              <Lock className="h-4 w-4 text-primary" />
+              <AlertTitle className="text-foreground">
                 {biometricsRequired
                   ? 'Biometric Authentication Required'
                   : 'Wallet Authentication Required'}
@@ -1303,16 +1303,16 @@ export default function SendForm() {
 
         {/* Save Address Prompt */}
         {askToSaveAddress && (
-          <Alert className="mt-4 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/50">
-            <AlertTitle className="text-green-800 dark:text-green-400">
+          <Alert className="mt-4 border-primary/20 bg-primary/5">
+            <AlertTitle className="text-foreground">
               💾 Save this address to your address book?
             </AlertTitle>
             <AlertDescription>
-              <div className="text-sm mb-3 text-green-700 dark:text-green-300">
+              <div className="text-sm mb-3 text-muted-foreground">
                 Address: <span className="font-mono break-all">{toAddress}</span>
               </div>
               <div className="mt-3 mb-3">
-                <Label htmlFor="contactName" className="text-green-700 dark:text-green-300">
+                <Label htmlFor="contactName" className="text-muted-foreground">
                   Contact Name
                 </Label>
                 <Input
@@ -1335,7 +1335,7 @@ export default function SendForm() {
                     const input = document.getElementById('contactName') as HTMLInputElement;
                     handleSaveAddressFromTransaction(input.value || 'Contact');
                   }}
-                  className="bg-green-600 hover:bg-green-700"
+                  className="bg-primary hover:bg-primary/90"
                 >
                   💾 Save Address
                 </Button>
@@ -1365,12 +1365,12 @@ export default function SendForm() {
 
         {/* Dust Consolidation Notice */}
         {isConsolidatingToSelf && (
-          <Alert className="my-4 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50">
-            <Coins className="h-4 w-4 text-blue-600 dark:text-blue-500" />
-            <AlertTitle className="text-blue-800 dark:text-blue-500">
+          <Alert className="my-4 border-primary/20 bg-primary/5">
+            <Coins className="h-4 w-4 text-primary" />
+            <AlertTitle className="text-foreground">
               Dust Consolidation Mode
             </AlertTitle>
-            <AlertDescription className="text-blue-700 dark:text-blue-300 text-sm">
+            <AlertDescription className="text-muted-foreground text-sm">
               You are consolidating small UTXOs (dust) back to your own wallet address. This helps
               clean up your wallet and may improve performance. Change address selection is disabled
               during consolidation.
@@ -1414,7 +1414,7 @@ export default function SendForm() {
 
         {/* Manual UTXO Selection Notice */}
         {utxoOptions.strategy === CoinSelectionStrategy.MANUAL && (
-          <div className="mt-3 p-3 bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-800 rounded-lg">
+          <div className="mt-3 p-3 bg-caution/10 border border-caution/30 rounded-lg">
             <div className="font-medium mb-2 flex items-center">
               <UserCheck className="w-4 h-4 mr-2" />
               Manual UTXO Selection Active
@@ -1431,13 +1431,13 @@ export default function SendForm() {
                       </span>
                     </p>
                     {isConsolidatingToSelf && (
-                      <p className="text-amber-700 dark:text-amber-300">
+                      <p className="text-caution">
                         💰 Consolidation mode: All selected UTXOs will be combined into your wallet
                       </p>
                     )}
                   </div>
                 ) : (
-                  <p className="text-amber-700 dark:text-amber-300">No UTXOs selected</p>
+                  <p className="text-caution">No UTXOs selected</p>
                 )}
               </div>
               <div className="flex flex-col sm:flex-row gap-2">

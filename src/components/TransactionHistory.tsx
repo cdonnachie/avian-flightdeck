@@ -295,10 +295,9 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
 
   const formatAmount = (amount: number, type: 'send' | 'receive') => {
     const sign = type === 'send' ? '-' : '+';
-    const color =
-      type === 'send' ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400';
+    const color = type === 'send' ? 'text-foreground' : 'text-primary';
     return (
-      <span className={`font-medium ${color}`}>
+      <span className={`font-medium font-mono tabular-nums ${color}`}>
         {sign}
         {amount.toFixed(8)} AVN
       </span>
@@ -332,11 +331,11 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
   const getStatusIcon = (confirmations: number | undefined) => {
     const numConfirmations = Number(confirmations) || 0;
     if (numConfirmations === 0) {
-      return <Clock className="w-4 h-4 text-yellow-500" />;
+      return <Clock className="w-4 h-4 text-muted-foreground" />;
     } else if (numConfirmations < 6) {
-      return <AlertCircle className="w-4 h-4 text-orange-500" />;
+      return <AlertCircle className="w-4 h-4 text-caution" />;
     } else {
-      return <Check className="w-4 h-4 text-green-500" />;
+      return <Check className="w-4 h-4 text-primary" />;
     }
   };
 
@@ -376,7 +375,7 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
       </CardHeader>
 
       {/* Filter Controls */}
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+      <div className="p-4 border-b border-border flex-shrink-0">
         <Tabs
           defaultValue={filter}
           onValueChange={(value) => setFilter(value as 'all' | 'send' | 'receive')}
@@ -392,7 +391,7 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
               value="receive"
               className="flex-1 data-[state=active]:after:bg-primary relative rounded-none py-2 after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
             >
-              <span className="text-green-600 dark:text-green-400">
+              <span className="text-primary">
                 Received ({transactions.filter((tx) => tx.type === 'receive').length})
               </span>
             </TabsTrigger>
@@ -400,7 +399,7 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
               value="send"
               className="flex-1 data-[state=active]:after:bg-primary relative rounded-none py-2 after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 data-[state=active]:bg-transparent data-[state=active]:shadow-none"
             >
-              <span className="text-red-600 dark:text-red-400">
+              <span className="text-sodium">
                 Sent ({transactions.filter((tx) => tx.type === 'send').length})
               </span>
             </TabsTrigger>
@@ -409,12 +408,12 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
 
         {/* Processing Progress */}
         {processingProgress.isProcessing && processingProgress.total > 0 && (
-          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 mt-4 border border-blue-200 dark:border-blue-700">
+          <div className="bg-primary/5 rounded-lg p-3 mt-4 border border-primary/20">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-blue-900 dark:text-blue-200">
+              <span className="text-sm font-medium text-foreground">
                 Processing transaction history...
               </span>
-              <span className="text-xs text-blue-700 dark:text-blue-300">
+              <span className="text-xs text-muted-foreground">
                 {processingProgress.processed}/{processingProgress.total}
               </span>
             </div>
@@ -426,11 +425,11 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
               }
               className="h-2"
             />
-            <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+            <div className="text-xs text-muted-foreground mt-1">
               New transactions will appear as they&apos;re processed
             </div>
             {processingProgress.currentTx && (
-              <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 font-mono">
+              <div className="text-xs text-muted-foreground mt-1 font-mono">
                 Processing: {processingProgress.currentTx.slice(0, 16)}...
               </div>
             )}
@@ -443,12 +442,12 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
         <div className="max-h-[500px] overflow-y-auto">
           {isLoading ? (
             <div className="flex items-center justify-center p-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              <span className="ml-2 text-gray-600 dark:text-gray-300">Loading transactions...</span>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <span className="ml-2 text-muted-foreground">Loading transactions...</span>
             </div>
           ) : paginatedTransactions.length === 0 ? (
             <div className="text-center py-12">
-              <div className="text-gray-400 dark:text-gray-500 mb-2">
+              <div className="text-muted-foreground mb-2">
                 <svg
                   className="w-16 h-16 mx-auto"
                   fill="none"
@@ -463,49 +462,49 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
                   />
                 </svg>
               </div>
-              <p className="text-gray-600 dark:text-gray-400 text-lg">
+              <p className="text-muted-foreground text-lg">
                 {filter === 'all' ? 'No transactions found' : `No ${filter} transactions found`}
               </p>
-              <p className="text-gray-500 dark:text-gray-500 text-sm mt-1">
+              <p className="text-muted-foreground text-sm mt-1">
                 Transactions will appear here once you start using your wallet
               </p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-200 dark:divide-gray-700">
+            <div className="divide-y divide-border">
               {paginatedTransactions.map((tx) => (
                 <div
                   key={`${tx.id || tx.txid}-${tx.type}${tx.isVirtual ? '-virtual' : ''}`}
-                  className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                  className="p-4 hover:bg-muted/50"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-start gap-3 min-w-0 flex-1">
                       {/* Transaction Icon */}
                       <div
                         className={`flex-shrink-0 p-2 rounded-full ${tx.type === 'send'
-                          ? 'bg-red-100 dark:bg-red-900/20'
-                          : 'bg-green-100 dark:bg-green-900/20'
+                          ? 'bg-sodium/10'
+                          : 'bg-primary/10'
                           }`}
                       >
                         {tx.type === 'send' ? (
-                          <ArrowUpRight className="w-4 h-4 text-red-600 dark:text-red-400" />
+                          <ArrowUpRight className="w-4 h-4 text-sodium" />
                         ) : (
-                          <ArrowDownLeft className="w-4 h-4 text-green-600 dark:text-green-400" />
+                          <ArrowDownLeft className="w-4 h-4 text-primary" />
                         )}
                       </div>
 
                       {/* Transaction Details */}
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="font-medium text-gray-900 dark:text-white capitalize">
+                          <span className="font-medium text-foreground capitalize">
                             {tx.type}
                           </span>
                           {getStatusIcon(tx.confirmations)}
-                          <span className="text-sm text-gray-500 dark:text-gray-400">
+                          <span className="text-sm text-muted-foreground">
                             {getStatusText(tx.confirmations)}
                           </span>
                         </div>
 
-                        <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                        <div className="text-sm text-muted-foreground mb-1">
                           {tx.type === 'send' ? 'To: ' : 'From: '}
                           <span className="font-mono break-all">
                             {(() => {
@@ -519,12 +518,12 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
                         </div>
 
                         <div className="flex items-center gap-3">
-                          <span className="text-sm text-gray-500 dark:text-gray-400">
+                          <span className="text-sm text-muted-foreground">
                             {formatDate(tx.timestamp)}
                           </span>
                           <button
                             onClick={() => openExplorer(tx.txid)}
-                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                            className="text-xs text-primary hover:underline flex items-center gap-1"
                           >
                             <ExternalLink className="w-3 h-3" />
                             View Details
@@ -537,7 +536,7 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
                     <div className="flex-shrink-0 text-right">
                       {formatAmount(tx.amount, tx.type)}
                       {tx.blockHeight && (
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        <div className="text-xs text-muted-foreground mt-1">
                           Block #{tx.blockHeight}
                         </div>
                       )}
@@ -551,8 +550,8 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
       </CardContent>
 
       {/* Footer with Pagination */}
-      <CardFooter className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
-        <div className="flex flex-col sm:flex-row justify-between items-center w-full gap-3 text-sm text-gray-600 dark:text-gray-400">
+      <CardFooter className="p-4 border-t border-border bg-muted/40">
+        <div className="flex flex-col sm:flex-row justify-between items-center w-full gap-3 text-sm text-muted-foreground">
           <span>
             Showing {startIndex + 1}-{Math.min(endIndex, filteredTransactions.length)} of{' '}
             {filteredTransactions.length}{' '}
