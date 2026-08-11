@@ -20,5 +20,13 @@
     "@typescript-eslint/no-unsafe-function-type": "warn",
     "@typescript-eslint/ban-ts-comment": "warn",
     "prefer-const": "warn"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["e2e/**/*.ts", "playwright.config.ts"],
+      "rules": {
+        "react-hooks/rules-of-hooks": "off"
+      }
+    }
+  ]
 }

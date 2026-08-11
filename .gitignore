@@ -52,3 +52,9 @@ public/sw.js.map
 public/workbox-*.js.map
 CLAUDE.md
 ai-comment-analysis.md
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
