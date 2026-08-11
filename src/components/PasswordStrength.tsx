@@ -7,11 +7,11 @@ export type PasswordStrength = 'weak' | 'medium' | 'strong' | null;
 
 const strengthLabels = ['Too weak', 'Weak', 'Fair', 'Good', 'Strong'];
 const strengthColors = [
-  'bg-red-500',
-  'bg-orange-500',
-  'bg-yellow-400',
-  'bg-blue-500',
-  'bg-green-600',
+  'bg-destructive',
+  'bg-caution',
+  'bg-caution',
+  'bg-sodium',
+  'bg-primary',
 ];
 
 interface PasswordStrengthProps {
@@ -55,7 +55,7 @@ export default function PasswordStrengthChecker({
   return (
     <div className={`space-y-1 ${className}`}>
       {/* Strength Bar */}
-      <div className="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden">
+      <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
         <div
           className={`h-full transition-all duration-300 ${strengthColors[score]}`}
           style={{ width: `${(score + 1) * 20}%` }}
@@ -65,7 +65,7 @@ export default function PasswordStrengthChecker({
       {/* Strength Label */}
       <div className="flex justify-between items-center">
         <p
-          className={`text-xs font-medium ${score >= 3 ? 'text-green-600' : score >= 2 ? 'text-yellow-600' : 'text-red-600'}`}
+          className={`text-xs font-medium ${score >= 3 ? 'text-primary' : score >= 2 ? 'text-caution' : 'text-destructive'}`}
         >
           {strengthLabels[score]}
         </p>
@@ -73,7 +73,7 @@ export default function PasswordStrengthChecker({
 
       {/* Suggestions */}
       {showSuggestions && result.feedback.suggestions.length > 0 && (
-        <ul className="text-xs text-gray-600 list-disc pl-4 mt-1">
+        <ul className="text-xs text-muted-foreground list-disc pl-4 mt-1">
           {result.feedback.suggestions.map((s, i) => (
             <li key={i}>{s}</li>
           ))}

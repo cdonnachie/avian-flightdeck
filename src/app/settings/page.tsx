@@ -34,7 +34,7 @@ const settingsCategories: SettingsCategory[] = [
         description: 'Manage wallets, addresses, and encryption',
         icon: Wallet,
         path: '/settings/wallet',
-        color: 'text-blue-600',
+        color: 'text-primary',
     },
     {
         id: 'security',
@@ -42,7 +42,7 @@ const settingsCategories: SettingsCategory[] = [
         description: 'Authentication, biometrics, and security features',
         icon: Shield,
         path: '/settings/security',
-        color: 'text-green-600',
+        color: 'text-primary',
     },
     {
         id: 'backup',
@@ -50,7 +50,7 @@ const settingsCategories: SettingsCategory[] = [
         description: 'Export, import, and backup your wallet data',
         icon: Archive,
         path: '/settings/backup',
-        color: 'text-orange-600',
+        color: 'text-primary',
     },
     {
         id: 'notifications',
@@ -58,7 +58,7 @@ const settingsCategories: SettingsCategory[] = [
         description: 'Configure alerts and notification preferences',
         icon: Bell,
         path: '/settings/notifications',
-        color: 'text-purple-600',
+        color: 'text-primary',
     },
     {
         id: 'connected-sites',
@@ -66,7 +66,7 @@ const settingsCategories: SettingsCategory[] = [
         description: 'Review and revoke dApps connected to this wallet',
         icon: PlugZap,
         path: '/settings/connected-sites',
-        color: 'text-teal-600',
+        color: 'text-primary',
     },
     {
         id: 'advanced',
@@ -74,7 +74,7 @@ const settingsCategories: SettingsCategory[] = [
         description: 'Developer tools, logs, and advanced configuration',
         icon: Settings,
         path: '/settings/advanced',
-        color: 'text-gray-600',
+        color: 'text-primary',
     },
     {
         id: 'help',
@@ -82,7 +82,7 @@ const settingsCategories: SettingsCategory[] = [
         description: 'Documentation, support, and app information',
         icon: HelpCircle,
         path: '/settings/help',
-        color: 'text-indigo-600',
+        color: 'text-primary',
     },
 ];
 

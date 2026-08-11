@@ -482,7 +482,7 @@ export default function WalletCreationForm({
           </CardHeader>
         )}
         <CardContent className="space-y-4 pt-4">
-          <p className="text-gray-700 dark:text-gray-300">
+          <p className="text-muted-foreground">
             Set a password to encrypt your new wallet. Make sure to remember this password as it
             cannot be recovered.
           </p>
@@ -516,7 +516,7 @@ export default function WalletCreationForm({
                   Creative bird-themed name! You can keep it or customize your own.
                 </p>
               )}
-              {nameError && <p className="text-red-500 text-sm mt-1">{nameError}</p>}
+              {nameError && <p className="text-destructive text-sm mt-1">{nameError}</p>}
             </div>
 
             {/* Mnemonic Length Selection */}
@@ -551,12 +551,12 @@ export default function WalletCreationForm({
                 </div>
 
                 {mnemonicLength === '24' && (
-                  <Alert className="bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700">
+                  <Alert className="bg-caution/10 border-caution/30">
                     <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle className="text-amber-800 dark:text-amber-200">
+                    <AlertTitle className="text-caution">
                       Compatibility Warning
                     </AlertTitle>
-                    <AlertDescription className="text-amber-700 dark:text-amber-300">
+                    <AlertDescription className="text-muted-foreground">
                       <div className="space-y-2">
                         <p>
                           24-word recovery phrases provide enhanced security but may not be
@@ -601,9 +601,9 @@ export default function WalletCreationForm({
                   disabled={isSubmitting}
                 >
                   {showPassword ? (
-                    <EyeOff className="h-4 w-4 text-gray-500" />
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
                   ) : (
-                    <Eye className="h-4 w-4 text-gray-500" />
+                    <Eye className="h-4 w-4 text-muted-foreground" />
                   )}
                 </Button>
               </div>
@@ -638,9 +638,9 @@ export default function WalletCreationForm({
                   disabled={isSubmitting}
                 >
                   {showConfirmPassword ? (
-                    <EyeOff className="h-4 w-4 text-gray-500" />
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
                   ) : (
-                    <Eye className="h-4 w-4 text-gray-500" />
+                    <Eye className="h-4 w-4 text-muted-foreground" />
                   )}
                 </Button>
               </div>
@@ -691,11 +691,11 @@ export default function WalletCreationForm({
           </CardHeader>
         )}
         <CardContent className="space-y-4 pt-4">
-          <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 p-4 rounded-md">
-            <p className="text-yellow-800 dark:text-yellow-200 text-sm font-medium mb-2">
+          <div className="bg-caution/10 border border-caution/30 p-4 rounded-md">
+            <p className="text-caution text-sm font-medium mb-2">
               IMPORTANT: Write down your recovery phrase
             </p>
-            <p className="text-yellow-700 dark:text-yellow-300 text-xs">
+            <p className="text-muted-foreground text-xs">
               This {mnemonicLength}-word phrase is the ONLY way to recover your wallet if you lose
               access. Write it down and keep it in a secure location. Never share it with anyone.
             </p>
@@ -705,7 +705,7 @@ export default function WalletCreationForm({
             <div className="relative">
               <Label htmlFor="mnemonic-display">Recovery Phrase</Label>
               <div className="mt-1 relative">
-                <div className="bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded p-4 font-mono text-sm relative">
+                <div className="bg-muted border border-border rounded p-4 font-mono text-sm relative">
                   {generatedMnemonic}
                 </div>
               </div>
@@ -731,7 +731,7 @@ export default function WalletCreationForm({
               </div>
 
               {showAdvancedOptions && (
-                <div className="pt-2 space-y-3 border-t border-gray-200 dark:border-gray-800 mt-2">
+                <div className="pt-2 space-y-3 border-t border-border mt-2">
                   <div className="space-y-2">
                     <Label htmlFor="passphrase" className="flex items-center">
                       <span>BIP39 Passphrase (Optional &quot;25th Word&quot;)</span>
@@ -755,9 +755,9 @@ export default function WalletCreationForm({
                         disabled={isSubmitting}
                       >
                         {showPassphrase ? (
-                          <EyeOff className="h-4 w-4 text-gray-500" />
+                          <EyeOff className="h-4 w-4 text-muted-foreground" />
                         ) : (
-                          <Eye className="h-4 w-4 text-gray-500" />
+                          <Eye className="h-4 w-4 text-muted-foreground" />
                         )}
                       </Button>
                     </div>
@@ -838,7 +838,7 @@ export default function WalletCreationForm({
                   Creative bird-themed name! You can keep it or customize your own.
                 </p>
               )}
-              {nameError && <p className="text-red-500 text-sm mt-1">{nameError}</p>}
+              {nameError && <p className="text-destructive text-sm mt-1">{nameError}</p>}
             </div>
 
             <div className="space-y-2">
@@ -859,12 +859,12 @@ export default function WalletCreationForm({
 
               {/* Show compatibility warning for 24-word imports */}
               {mnemonic.trim() && mnemonic.trim().split(/\s+/).length === 24 && (
-                <Alert className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700">
+                <Alert className="bg-primary/5 border-primary/20">
                   <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle className="text-blue-800 dark:text-blue-200">
+                  <AlertTitle className="text-foreground">
                     24-Word Recovery Phrase Detected
                   </AlertTitle>
-                  <AlertDescription className="text-blue-700 dark:text-blue-300">
+                  <AlertDescription className="text-muted-foreground">
                     <p>
                       You&apos;re importing a 24-word recovery phrase. This provides enhanced
                       security but may not be compatible with other Avian wallet software.
@@ -900,7 +900,7 @@ export default function WalletCreationForm({
               </div>
 
               {showAdvancedOptions && (
-                <div className="pt-2 space-y-3 border-t border-gray-200 dark:border-gray-800 mt-2">
+                <div className="pt-2 space-y-3 border-t border-border mt-2">
                   <div className="space-y-2">
                     <Label htmlFor="passphrase" className="flex items-center">
                       <span>BIP39 Passphrase (Optional &quot;25th Word&quot;)</span>
@@ -924,9 +924,9 @@ export default function WalletCreationForm({
                         disabled={isSubmitting}
                       >
                         {showPassphrase ? (
-                          <EyeOff className="h-4 w-4 text-gray-500" />
+                          <EyeOff className="h-4 w-4 text-muted-foreground" />
                         ) : (
-                          <Eye className="h-4 w-4 text-gray-500" />
+                          <Eye className="h-4 w-4 text-muted-foreground" />
                         )}
                       </Button>
                     </div>
@@ -956,10 +956,10 @@ export default function WalletCreationForm({
                       ))}
                     </div>
                     {addressType !== 'p2pkh' && (
-                      <Alert className="bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700">
+                      <Alert className="bg-caution/10 border-caution/30">
                         <AlertTriangle className="h-4 w-4" />
-                        <AlertTitle className="text-amber-800 dark:text-amber-200">Asset Transfers Not Supported</AlertTitle>
-                        <AlertDescription className="text-amber-700 dark:text-amber-300">
+                        <AlertTitle className="text-caution">Asset Transfers Not Supported</AlertTitle>
+                        <AlertDescription className="text-muted-foreground">
                           Avian asset operations (issue, transfer) require a Legacy (P2PKH) address.
                           SegWit addresses can only send and receive AVN.
                         </AlertDescription>
@@ -1000,12 +1000,12 @@ export default function WalletCreationForm({
                       </div>
 
                       {coinType === 175 && (
-                        <Alert className="bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700">
+                        <Alert className="bg-caution/10 border-caution/30">
                           <AlertTriangle className="h-4 w-4" />
-                          <AlertTitle className="text-amber-800 dark:text-amber-200">
+                          <AlertTitle className="text-caution">
                             Legacy Compatibility Mode
                           </AlertTitle>
-                          <AlertDescription className="text-amber-700 dark:text-amber-300">
+                          <AlertDescription className="text-muted-foreground">
                             <p>
                               You&apos;re importing a wallet that may have been created with
                               Ravencoin&apos;s coin type (175). This setting affects the derivation
@@ -1053,9 +1053,9 @@ export default function WalletCreationForm({
                   disabled={isSubmitting}
                 >
                   {showPassword ? (
-                    <EyeOff className="h-4 w-4 text-gray-500" />
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
                   ) : (
-                    <Eye className="h-4 w-4 text-gray-500" />
+                    <Eye className="h-4 w-4 text-muted-foreground" />
                   )}
                 </Button>
               </div>
@@ -1089,9 +1089,9 @@ export default function WalletCreationForm({
                   disabled={isSubmitting}
                 >
                   {showConfirmPassword ? (
-                    <EyeOff className="h-4 w-4 text-gray-500" />
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
                   ) : (
-                    <Eye className="h-4 w-4 text-gray-500" />
+                    <Eye className="h-4 w-4 text-muted-foreground" />
                   )}
                 </Button>
               </div>
@@ -1171,7 +1171,7 @@ export default function WalletCreationForm({
                   Creative bird-themed name! You can keep it or customize your own.
                 </p>
               )}
-              {nameError && <p className="text-red-500 text-sm mt-1">{nameError}</p>}
+              {nameError && <p className="text-destructive text-sm mt-1">{nameError}</p>}
             </div>
 
             <div className="space-y-2">
@@ -1189,7 +1189,7 @@ export default function WalletCreationForm({
                   <AlertDescription>{privateKeyError}</AlertDescription>
                 </Alert>
               )}
-              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              <p className="mt-2 text-xs text-muted-foreground">
                 A WIF key typically starts with a &apos;5&apos;, &apos;K&apos;, or &apos;L&apos; and
                 is 51-52 characters long. Keep this key secure and never share it.
               </p>
@@ -1217,9 +1217,9 @@ export default function WalletCreationForm({
                   disabled={isSubmitting}
                 >
                   {showPassword ? (
-                    <EyeOff className="h-4 w-4 text-gray-500" />
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
                   ) : (
-                    <Eye className="h-4 w-4 text-gray-500" />
+                    <Eye className="h-4 w-4 text-muted-foreground" />
                   )}
                 </Button>
               </div>
@@ -1253,9 +1253,9 @@ export default function WalletCreationForm({
                   disabled={isSubmitting}
                 >
                   {showConfirmPassword ? (
-                    <EyeOff className="h-4 w-4 text-gray-500" />
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
                   ) : (
-                    <Eye className="h-4 w-4 text-gray-500" />
+                    <Eye className="h-4 w-4 text-muted-foreground" />
                   )}
                 </Button>
               </div>
@@ -1309,9 +1309,9 @@ export default function WalletCreationForm({
           </CardHeader>
         )}
         <CardContent className="space-y-4 pt-4">
-          <Alert className="border-blue-200 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-700">
-            <AlertDescription className="text-sm text-blue-800 dark:text-blue-200">
-              In Avian Core v5, run: <code className="font-mono text-xs bg-blue-100 dark:bg-blue-800 px-1 rounded">listdescriptors true</code> — then paste the descriptor for the address type you want to import.
+          <Alert className="border-primary/20 bg-primary/5">
+            <AlertDescription className="text-sm text-foreground">
+              In Avian Core v5, run: <code className="font-mono text-xs bg-primary/10 px-1 rounded">listdescriptors true</code> — then paste the descriptor for the address type you want to import.
             </AlertDescription>
           </Alert>
 
@@ -1339,7 +1339,7 @@ export default function WalletCreationForm({
                   <RefreshCw className="h-4 w-4" />
                 </Button>
               </div>
-              {nameError && <p className="text-red-500 text-sm mt-1">{nameError}</p>}
+              {nameError && <p className="text-destructive text-sm mt-1">{nameError}</p>}
             </div>
 
             <div className="space-y-2">
@@ -1383,7 +1383,7 @@ export default function WalletCreationForm({
                   onClick={() => setShowPassword(!showPassword)}
                   disabled={isSubmitting}
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4 text-gray-500" /> : <Eye className="h-4 w-4 text-gray-500" />}
+                  {showPassword ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
                 </Button>
               </div>
               {passwordStrength && <PasswordStrengthChecker password={password} onStrengthChange={handlePasswordStrengthChange} className="mt-2" />}
@@ -1410,7 +1410,7 @@ export default function WalletCreationForm({
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   disabled={isSubmitting}
                 >
-                  {showConfirmPassword ? <EyeOff className="h-4 w-4 text-gray-500" /> : <Eye className="h-4 w-4 text-gray-500" />}
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
                 </Button>
               </div>
             </div>
