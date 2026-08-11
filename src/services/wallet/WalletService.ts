@@ -207,6 +207,32 @@ export function isValidWIF(key: string): boolean {
     }
 }
 
+/**
+ * Splits a spend into its recipient amount and change, given the inputs already selected.
+ *
+ * The fee paid to miners is always `feeRate`; `subtractFeeFromAmount` only decides who absorbs it:
+ * - off: the recipient receives `amount`, and the sender's total outlay is `amount + feeRate`.
+ * - on:  the recipient receives `amount - feeRate`, and the sender's total outlay is `amount`.
+ *
+ * Either way the miner fee is `totalInput - sendAmount - change = feeRate`. `totalInput` is
+ * expected to already cover the sender's outlay — UTXO selection guarantees that upstream — so
+ * change is non-negative in practice; callers still apply their own dust threshold before
+ * emitting a change output.
+ *
+ * Shared by every send path so the three cannot drift apart again, which is exactly how the fee
+ * became inconsistent in the first place.
+ */
+export function resolveSendAmounts(
+    amount: number,
+    feeRate: number,
+    totalInput: number,
+    subtractFeeFromAmount: boolean,
+): { sendAmount: number; change: number } {
+    const sendAmount = subtractFeeFromAmount ? Math.max(0, amount - feeRate) : amount;
+    const change = totalInput - sendAmount - feeRate;
+    return { sendAmount, change };
+}
+
 export async function secureEncrypt(data: string, password: string): Promise<string> {
     const salt = randomBytes(SALT_LENGTH);
     const N = 16384,
@@ -732,20 +758,17 @@ export class WalletService {
                 throw new Error('Unable to select suitable UTXOs for transaction');
             }
 
-            const { selectedUTXOs, change } = selectionResult;
+            const { selectedUTXOs } = selectionResult;
 
-            // Calculate final amounts based on subtractFeeFromAmount option
-            let finalSendAmount = amount;
-            let finalChange = change;
-
-            if (options?.subtractFeeFromAmount) {
-                // Subtract the estimated fee from the send amount
-                const estimatedFee = (feeRate * 250) / 1000; // Rough estimate based on typical transaction size
-                finalSendAmount = Math.max(0, amount - estimatedFee);
-                // Recalculate change with the reduced send amount
-                const totalInput = selectedUTXOs.reduce((sum, utxo) => sum + utxo.value, 0);
-                finalChange = totalInput - finalSendAmount - estimatedFee;
-            }
+            // Split into recipient and change. The miner fee stays feeRate either way;
+            // subtractFeeFromAmount only moves it from the sender onto the recipient.
+            const totalSelected = selectedUTXOs.reduce((sum, utxo) => sum + utxo.value, 0);
+            const { sendAmount: finalSendAmount, change: finalChange } = resolveSendAmounts(
+                amount,
+                feeRate,
+                totalSelected,
+                options?.subtractFeeFromAmount ?? false,
+            );
 
             // Determine change address - use custom address if provided, otherwise sender's address
             const changeAddress =
@@ -1089,10 +1112,14 @@ export class WalletService {
                 tx.addInput(Buffer.from(utxo.txid, 'hex').reverse(), utxo.vout);
             }
 
-            // Calculate actual amount and change
-            const actualAmount = options?.subtractFeeFromAmount ? amount - feeRate : amount;
+            // Split into recipient and change via the shared rule (fee stays feeRate either way).
             const totalInput = manualUTXOs.reduce((sum, utxo) => sum + utxo.value, 0);
-            const change = totalInput - actualAmount - feeRate;
+            const { sendAmount: actualAmount, change } = resolveSendAmounts(
+                amount,
+                feeRate,
+                totalInput,
+                options?.subtractFeeFromAmount ?? false,
+            );
 
             // Add outputs
             tx.addOutput(bitcoin.address.toOutputScript(toAddress, avianNetwork), actualAmount);
@@ -3958,20 +3985,16 @@ export class WalletService {
                 throw new Error('Unable to select suitable UTXOs for transaction');
             }
 
-            const { selectedUTXOs, change: changeAmount } = selectionResult;
+            const { selectedUTXOs } = selectionResult;
 
-            // Calculate final amounts based on subtractFeeFromAmount option
-            let finalSendAmount = amount;
-            let finalChangeAmount = changeAmount;
-
-            if (options?.subtractFeeFromAmount) {
-                // Subtract the estimated fee from the send amount
-                const estimatedFee = (feeRate * 250) / 1000; // Rough estimate based on typical transaction size
-                finalSendAmount = Math.max(0, amount - estimatedFee);
-                // Recalculate change with the reduced send amount
-                const totalInput = selectedUTXOs.reduce((sum, utxo) => sum + utxo.value, 0);
-                finalChangeAmount = totalInput - finalSendAmount - estimatedFee;
-            }
+            // Split into recipient and change via the shared rule (fee stays feeRate either way).
+            const totalSelected = selectedUTXOs.reduce((sum, utxo) => sum + utxo.value, 0);
+            const { sendAmount: finalSendAmount, change: finalChangeAmount } = resolveSendAmounts(
+                amount,
+                feeRate,
+                totalSelected,
+                options?.subtractFeeFromAmount ?? false,
+            );
 
             // Determine change address - use custom address if provided, otherwise sender's address
             const changeAddress =
