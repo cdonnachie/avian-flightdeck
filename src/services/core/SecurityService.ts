@@ -1025,9 +1025,7 @@ export class SecurityService {
 
   async updateSecuritySettings(settings: Partial<SecuritySettings>): Promise<void> {
     try {
-      // Get current settings without calling getSecuritySettings to avoid recursion
-      const allSettings = await StorageService.getSettings();
-      const currentSettings = allSettings?.security_settings || {
+      const defaults = {
         autoLock: {
           enabled: true,
           timeout: 300000, // 5 minutes
@@ -1051,7 +1049,16 @@ export class SecurityService {
         },
       };
 
-      const newSettings = { ...currentSettings, ...settings };
+      // Merge inside a single transaction so a concurrent settings write — e.g. a watched-address
+      // save landing at the same moment — cannot read stale settings and clobber this change, or
+      // be clobbered by it. Capture the before/after here for the side effects below.
+      let currentSettings: any = defaults;
+      let newSettings: any = defaults;
+      await StorageService.mutateSettings((all) => {
+        currentSettings = all?.security_settings || defaults;
+        newSettings = { ...currentSettings, ...settings };
+        return { ...all, security_settings: newSettings };
+      });
 
       // Track if biometric settings are changing
       const biometricStatusChanged =
@@ -1059,8 +1066,6 @@ export class SecurityService {
         settings.biometric.enabled !== undefined &&
         settings.biometric.enabled !== currentSettings.biometric.enabled;
 
-      // Save the updated settings
-      await StorageService.setSettings({ ...allSettings, security_settings: newSettings });
       await this.logSecurityEvent('settings_change', 'Security settings updated', true);
 
       // If biometric settings changed, update the standalone biometric setting

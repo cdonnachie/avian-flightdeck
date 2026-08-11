@@ -97,58 +97,23 @@ export class WatchAddressService {
     userWalletAddress: string,
     watches: WatchAddress[],
   ): Promise<boolean> {
-    const maxRetries = 5;
-    let retries = 0;
-    let lastError = null;
+    try {
+      const storageKey = this.getStorageKey(userWalletAddress);
 
-    while (retries < maxRetries) {
-      try {
-        // Wait a bit to ensure any ongoing DB operations are complete
-        // Increase wait time with each retry
-        await new Promise((resolve) => setTimeout(resolve, 50 * (retries + 1)));
+      // Merge this wallet's watch list into the settings blob atomically. A concurrent write to
+      // another key — the security settings, or another wallet's watch list — can no longer be
+      // lost by racing this one. This replaces the previous read-modify-write with retries and
+      // fixed sleeps, which was a timing band-aid for that very race.
+      await StorageService.mutateSettings((settings) => ({
+        ...settings,
+        [storageKey]: JSON.stringify(watches),
+      }));
 
-        const settings = await StorageService.getSettings();
-        const storageKey = this.getStorageKey(userWalletAddress);
-
-        settings[storageKey] = JSON.stringify(watches);
-
-        await StorageService.setSettings(settings);
-        return true;
-      } catch (error) {
-        lastError = error;
-        retries++;
-
-        // Special handling for version change transaction errors
-        const isVersionChangeError =
-          error instanceof Error &&
-          (error.name === 'AbortError' || error.message.includes('Version change'));
-
-        if (isVersionChangeError) {
-          watchAddressLogger.warn(
-            `IndexedDB version change detected during save, retry ${retries}/${maxRetries}`,
-          );
-          // Wait a bit longer for version changes
-          await new Promise((resolve) => setTimeout(resolve, 400 * retries));
-        } else {
-          watchAddressLogger.warn(
-            `Error saving watched addresses, retry ${retries}/${maxRetries}:`,
-            error,
-          );
-          // Standard backoff for other errors
-          await new Promise((resolve) => setTimeout(resolve, 200 * retries));
-        }
-
-        if (retries >= maxRetries) {
-          watchAddressLogger.error(
-            'Max retries reached when saving watched addresses to storage:',
-            lastError,
-          );
-          return false;
-        }
-      }
+      return true;
+    } catch (error) {
+      watchAddressLogger.error('Failed to save watched addresses to storage:', error);
+      return false;
     }
-
-    return false; // This should never be reached due to the retry logic
   }
 
   /**

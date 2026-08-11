@@ -551,10 +551,90 @@ export class StorageService {
     const request = operation(store);
 
     return new Promise((resolve, reject) => {
-      request.onsuccess = () => resolve(request.result);
+      let result: T;
+      // request.onsuccess fires when the individual request completes, which for a write is
+      // BEFORE the transaction is durably committed. Capture the value here but resolve on the
+      // transaction's oncomplete, so a caller that navigates away or reads immediately after a
+      // write cannot race an uncommitted (and potentially discarded) change.
+      request.onsuccess = () => {
+        result = request.result;
+      };
       request.onerror = () =>
         reject(new Error(`Database operation failed: ${request.error?.message}`));
+      transaction.oncomplete = () => resolve(result);
+      transaction.onabort = () =>
+        reject(transaction.error ?? new Error('Database transaction aborted'));
+      transaction.onerror = () =>
+        reject(transaction.error ?? new Error('Database transaction failed'));
     });
+  }
+
+  /**
+   * Atomically read-modify-write a single preference within one IndexedDB transaction.
+   *
+   * IndexedDB serialises readwrite transactions that touch the same object store, so two
+   * concurrent mutations run one after the other and the second sees the first's committed
+   * result — which the plain getPreference/setPreference pair (two separate transactions with a
+   * gap between them) does not guarantee. That gap is how concurrent settings updates lost each
+   * other's changes.
+   *
+   * `mutator` must be synchronous: an IndexedDB transaction closes as soon as control returns to
+   * the event loop, so it cannot span an await.
+   */
+  private static async mutatePreference<T>(
+    key: string,
+    mutator: (current: unknown) => T,
+  ): Promise<T> {
+    const db = await this.initDB();
+    return new Promise<T>((resolve, reject) => {
+      const transaction = db.transaction(['preferences'], 'readwrite');
+      const store = transaction.objectStore('preferences');
+      const getRequest = store.index('key').get(key);
+      let nextValue: T;
+
+      getRequest.onsuccess = () => {
+        const existing = getRequest.result as PreferenceData | undefined;
+        nextValue = mutator(existing?.value ?? null);
+        const prefData: PreferenceData = {
+          key,
+          value: nextValue,
+          updatedAt: new Date(),
+          ...(existing ? { id: existing.id } : {}),
+        };
+        store.put(prefData);
+      };
+      getRequest.onerror = () =>
+        reject(new Error(`Database operation failed: ${getRequest.error?.message}`));
+      transaction.oncomplete = () => resolve(nextValue);
+      transaction.onabort = () =>
+        reject(transaction.error ?? new Error('Database transaction aborted'));
+      transaction.onerror = () =>
+        reject(transaction.error ?? new Error('Database transaction failed'));
+    });
+  }
+
+  /**
+   * Atomically merge into the settings blob. The merge is applied inside a single transaction, so
+   * concurrent updaters — SecurityService and WatchAddressService in particular — cannot clobber
+   * each other. The stored settings value is a JSON string; this handles parse and stringify so
+   * the mutator works with a plain object.
+   */
+  static async mutateSettings(
+    mutator: (current: Record<string, any>) => Record<string, any>,
+  ): Promise<Record<string, any>> {
+    return this.mutatePreference('settings', (raw) => {
+      let current: Record<string, any> = {};
+      if (typeof raw === 'string') {
+        try {
+          current = JSON.parse(raw);
+        } catch {
+          current = {};
+        }
+      } else if (raw && typeof raw === 'object') {
+        current = raw as Record<string, any>;
+      }
+      return JSON.stringify(mutator(current));
+    }).then((stored) => (typeof stored === 'string' ? JSON.parse(stored) : {}));
   }
 
   // Wallet data operations
@@ -1063,21 +1143,11 @@ export class StorageService {
 
   private static async setPreference(key: string, value: any): Promise<void> {
     try {
-      const existing = await this.performTransaction('preferences', 'readonly', (store) =>
-        store.index('key').get(key),
-      );
-
-      const prefData: PreferenceData = {
-        key,
-        value,
-        updatedAt: new Date(),
-      };
-
-      if (existing) {
-        prefData.id = existing.id;
-      }
-
-      await this.performTransaction('preferences', 'readwrite', (store) => store.put(prefData));
+      // Find-existing-then-put used to span two transactions; a concurrent setPreference for the
+      // same key could read no existing row in the gap and insert a duplicate, which getPreference
+      // would then read arbitrarily. mutatePreference does the find and put in one transaction, so
+      // the id is always reused and there is never more than one row per key.
+      await this.mutatePreference(key, () => value);
     } catch (error) {
       storageLogger.error('Failed to set preference:', error);
       throw new Error('Storage operation failed');
