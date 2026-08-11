@@ -266,6 +266,36 @@
   animation-name: slide-in-right;
 }
 
+/* Flight-deck instrument primitives — reusable across the refreshed UI.
+   These describe the always-dark "cockpit surface" look (balance readout,
+   annunciators, horizon) and are theme-independent by design. */
+@layer components {
+  .fd-label {
+    font-family: var(--font-roboto-mono), ui-monospace, monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-size: 0.64rem;
+    line-height: 1.4;
+  }
+  .fd-readout {
+    font-family: var(--font-roboto-mono), ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .fd-glow-teal {
+    text-shadow: 0 0 22px rgba(52, 226, 213, 0.32);
+  }
+  .fd-lamp {
+    box-shadow:
+      0 0 0 2px rgba(52, 245, 198, 0.15),
+      0 0 10px 1px rgba(52, 245, 198, 0.85);
+  }
+  .fd-lamp-amber {
+    box-shadow:
+      0 0 0 2px rgba(239, 138, 60, 0.15),
+      0 0 10px 1px rgba(239, 138, 60, 0.85);
+  }
+}
+
 @layer base {
   * {
     @apply border-border;

@@ -193,7 +193,7 @@ export function AppSidebar({ children, ...props }: AppSidebarProps & React.Compo
                             size="lg"
                             className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                         >
-                            <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                            <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#34F5C6] to-[#17A7B6] text-[#06232A]">
                                 <svg
                                     className="size-6"
                                     viewBox="0 0 64 64"
