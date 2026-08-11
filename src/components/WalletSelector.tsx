@@ -125,7 +125,7 @@ const WalletAvatar = ({ name, address, size = 'lg' }: { name: string; address: s
     }, [identiconSvg, size, canvasDataUrl, isIOS, imageError, sizePx]);
 
     return (
-        <Avatar className={`${sizeClasses[size]} bg-gray-100 dark:bg-gray-800 flex-shrink-0`}>
+        <Avatar className={`${sizeClasses[size]} bg-muted/40 dark:bg-card flex-shrink-0`}>
             {!isIOS && svgDataUrl && !imageError ? (
                 <img
                     src={svgDataUrl}
@@ -378,7 +378,7 @@ export function WalletSelector() {
                             )}
                         </div>
                         {copiedAddress === currentWallet.address ? (
-                            <Check className="w-4 h-4 text-green-600" />
+                            <Check className="w-4 h-4 text-primary" />
                         ) : (
                             <Copy className="w-4 h-4" />
                         )}
