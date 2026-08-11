@@ -543,3 +543,85 @@ describe('getRecommendedStrategy', () => {
     );
   });
 });
+
+describe('best fit on large wallets', () => {
+  const FEE = 10_000;
+
+  /** A wallet with `count` confirmed UTXOs of varied value. */
+  const largeWallet = (count: number) =>
+    Array.from({ length: count }, (_, i) =>
+      makeUTXO({ value: 20_000 + ((i * 7919) % 900_000), confirmations: 10 }),
+    );
+
+  it('selects from a 1000-UTXO wallet quickly instead of freezing', () => {
+    // The exhaustive C(n,4) search over 1000 UTXOs is ~41 billion combinations. Capped, this is
+    // a few tens of thousands and returns in milliseconds. A generous ceiling avoids CI flakiness
+    // while still failing loudly if the cap is ever removed.
+    const utxos = largeWallet(1_000);
+
+    const start = Date.now();
+    const result = select(utxos, {
+      targetAmount: 250_000,
+      feeRate: FEE,
+      strategy: CoinSelectionStrategy.BEST_FIT,
+    });
+    const elapsed = Date.now() - start;
+
+    expect(result).not.toBeNull();
+    expect(elapsed).toBeLessThan(1_000);
+    expect(result!.totalInput).toBeGreaterThanOrEqual(250_000 + FEE);
+    expect(UTXOSelectionService.validateSelection(result!, 250_000)).toBe(true);
+  });
+
+  it('still returns tight change on a large wallet', () => {
+    // A UTXO sized just above amount + fee exists in the pool; the boundary rule keeps it, so
+    // best-fit should pick it as a near-exact single-input match rather than a sprawl of inputs.
+    const target = 250_000;
+    const utxos = [
+      ...largeWallet(500),
+      makeUTXO({ value: target + FEE + 300, confirmations: 10 }), // change of exactly 300
+    ];
+
+    const result = select(utxos, {
+      targetAmount: target,
+      feeRate: FEE,
+      strategy: CoinSelectionStrategy.BEST_FIT,
+    })!;
+
+    expect(result.change).toBe(300);
+    expect(result.selectedUTXOs).toHaveLength(1);
+  });
+
+  it('finds a covering selection even when every UTXO is smaller than the target', () => {
+    // All building blocks below target, hundreds of them: the cap keeps the largest, which still
+    // combine to cover a multiple-input target.
+    const utxos = Array.from({ length: 400 }, () =>
+      makeUTXO({ value: 80_000, confirmations: 10 }),
+    );
+
+    const result = select(utxos, {
+      targetAmount: 250_000,
+      feeRate: FEE,
+      strategy: CoinSelectionStrategy.BEST_FIT,
+    })!;
+
+    expect(result).not.toBeNull();
+    expect(result.totalInput).toBeGreaterThanOrEqual(260_000);
+    for (const utxo of result.selectedUTXOs) {
+      expect(utxos.some((u) => u.txid === utxo.txid && u.vout === utxo.vout)).toBe(true);
+    }
+  });
+
+  it('returns null when a large wallet genuinely cannot cover the spend', () => {
+    const utxos = Array.from({ length: 300 }, () => makeUTXO({ value: 1_100, confirmations: 10 }));
+
+    const result = select(utxos, {
+      targetAmount: 1_000_000,
+      feeRate: FEE,
+      strategy: CoinSelectionStrategy.BEST_FIT,
+      maxInputs: 4,
+    });
+
+    expect(result).toBeNull();
+  });
+});
