@@ -129,7 +129,7 @@ export default function ConnectApprovalDialog({
         <Switch id="connect-remember" checked={remember} onCheckedChange={setRemember} />
       </div>
 
-      <Alert className="bg-muted/50">
+      <Alert className="border-primary/25 bg-primary/5 [&>svg]:text-primary">
         <ShieldCheck className="h-4 w-4" />
         <AlertDescription className="text-xs">
           The site will see your address only. Your private keys, mnemonic and balance history stay

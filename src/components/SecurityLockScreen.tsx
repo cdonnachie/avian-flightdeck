@@ -511,9 +511,9 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
   const getLockReasonIcon = () => {
     switch (lockReason) {
       case 'timeout':
-        return <Clock className="w-6 h-6 text-amber-500 dark:text-amber-400" />;
+        return <Clock className="w-6 h-6 text-caution" />;
       case 'failed_auth':
-        return <Shield className="w-6 h-6 text-red-500 dark:text-red-400" />;
+        return <Shield className="w-6 h-6 text-destructive" />;
       default:
         return <Lock className="w-6 h-6 text-avian-600 dark:text-avian-400" />;
     }
@@ -544,16 +544,16 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
             <CardContent className="space-y-4">
               {/* Active Wallet Info */}
               {activeWallet && (
-                <Card className="mb-5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                <Card className="mb-5 bg-muted/40 border border-border">
                   <CardHeader className="pb-2">
                     <div className="flex items-center">
                       <Wallet className="w-4 h-4 mr-2 text-avian-600 dark:text-avian-400" />
-                      <CardTitle className="text-sm font-medium text-gray-900 dark:text-white">
+                      <CardTitle className="text-sm font-medium text-foreground">
                         Active Wallet
                       </CardTitle>
                     </div>
                   </CardHeader>
-                  <CardContent className="text-sm text-gray-600 dark:text-gray-300 space-y-2 pt-0">
+                  <CardContent className="text-sm text-muted-foreground space-y-2 pt-0">
                     <div className="flex flex-wrap justify-between">
                       <span className="mr-2">Name:</span>
                       <span className="font-medium break-all">{activeWallet.name}</span>
@@ -567,7 +567,7 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
                     <div className="flex flex-wrap justify-between">
                       <span className="mr-2">Protection:</span>
                       <span
-                        className={`font-medium ${activeWallet.isEncrypted ? 'text-avian-600 dark:text-avian-400' : 'text-amber-600 dark:text-amber-400'}`}
+                        className={`font-medium ${activeWallet.isEncrypted ? 'text-avian-600 dark:text-avian-400' : 'text-caution'}`}
                       >
                         {activeWallet.isEncrypted ? 'Password Protected' : 'No Password'}
                       </span>
@@ -579,14 +579,14 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
               {/* Biometric Authentication - Available and Set Up */}
               {biometricAvailable && (
                 <div className="mb-5">
-                  <Card className="mb-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                  <Card className="mb-4 bg-card border border-border">
                     <CardContent className="p-4">
                       <div className="flex flex-col gap-3">
                         <Button
                           variant="outline"
                           onClick={handleBiometricUnlock}
                           disabled={isLoading || isLockedOut}
-                          className="w-full justify-center border-avian-500 dark:border-blue-500 hover:bg-avian-50 dark:hover:bg-blue-900/30 text-avian-600 dark:text-white hover:text-avian-600 dark:hover:text-white"
+                          className="w-full justify-center border-primary hover:bg-primary/10 text-primary hover:text-primary"
                         >
                           {getBiometricIcon()}
                           <span className="truncate">
@@ -602,7 +602,7 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
                           variant="ghost"
                           onClick={handleBiometricDisable}
                           disabled={isLoading}
-                          className="text-sm text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-100/50 dark:hover:bg-red-900/20"
+                          className="text-sm text-destructive hover:text-destructive hover:bg-destructive/10"
                         >
                           <span>Disable biometric authentication</span>
                         </Button>
@@ -611,9 +611,9 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
                   </Card>
 
                   <div className="flex items-center my-4">
-                    <div className="flex-1 border-t border-gray-300 dark:border-gray-700"></div>
-                    <span className="px-3 text-sm text-gray-500 dark:text-gray-400">OR</span>
-                    <div className="flex-1 border-t border-gray-300 dark:border-gray-700"></div>
+                    <div className="flex-1 border-t border-border"></div>
+                    <span className="px-3 text-sm text-muted-foreground">OR</span>
+                    <div className="flex-1 border-t border-border"></div>
                   </div>
                 </div>
               )}
@@ -621,15 +621,15 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
               {/* Biometric Setup Option - When supported but not set up */}
               {biometricSupported && !biometricAvailable && activeWallet && (
                 <div className="mb-5">
-                  <Card className="mb-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                  <Card className="mb-4 bg-card border border-border">
                     <CardHeader className="pb-2">
                       <div className="flex items-center">
-                        <Fingerprint className="w-5 h-5 text-avian-600 dark:text-blue-400 mr-2" />
-                        <CardTitle className="text-base font-medium text-gray-900 dark:text-white">
+                        <Fingerprint className="w-5 h-5 text-primary mr-2" />
+                        <CardTitle className="text-base font-medium text-foreground">
                           Biometric Authentication
                         </CardTitle>
                       </div>
-                      <CardDescription className="text-sm text-gray-600 dark:text-gray-300">
+                      <CardDescription className="text-sm text-muted-foreground">
                         You can set up biometric authentication for this wallet for faster, more
                         secure access.
                       </CardDescription>
@@ -647,15 +647,15 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
                             }, 500);
                           }
                         }}
-                        className="w-full bg-white dark:bg-transparent border border-avian-500 dark:border-blue-500 hover:bg-avian-50 dark:hover:bg-blue-900/30 text-avian-600 dark:text-white py-3"
+                        className="w-full bg-card dark:bg-transparent border border-primary hover:bg-primary/10 text-avian-600 dark:text-white py-3"
                       />
                     </CardContent>
                   </Card>
 
                   <div className="flex items-center my-4">
-                    <div className="flex-1 border-t border-gray-300 dark:border-gray-700"></div>
-                    <span className="px-3 text-sm text-gray-500 dark:text-gray-400">OR</span>
-                    <div className="flex-1 border-t border-gray-300 dark:border-gray-700"></div>
+                    <div className="flex-1 border-t border-border"></div>
+                    <span className="px-3 text-sm text-muted-foreground">OR</span>
+                    <div className="flex-1 border-t border-border"></div>
                   </div>
                 </div>
               )}
@@ -664,7 +664,7 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
               {activeWallet?.isEncrypted ? (
                 <div className="space-y-4">
                   <div className="grid gap-2">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <label className="text-sm font-medium text-muted-foreground">
                       Wallet Password
                     </label>
                     <div className="relative">
@@ -676,14 +676,14 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
                           e.key === 'Enter' && !isLockedOut && handlePasswordUnlock()
                         }
                         placeholder="Enter your wallet password"
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring bg-white dark:bg-gray-800 text-gray-900 dark:text-white pr-10"
+                        className="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring bg-background text-foreground pr-10"
                         disabled={isLoading || isLockedOut}
                       />
                       <Button
                         type="button"
                         variant="ghost"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-0 top-0 h-full px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                        className="absolute right-0 top-0 h-full px-3 text-muted-foreground hover:text-foreground"
                       >
                         {showPassword ? (
                           <EyeOff className="w-4 h-4" />
@@ -697,9 +697,9 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
                   {error && (
                     <Alert
                       variant="destructive"
-                      className="bg-red-100 dark:bg-red-900/20 border-red-300 dark:border-red-700"
+                      className="bg-destructive/10 border-destructive/30"
                     >
-                      <AlertDescription className="text-sm text-red-700 dark:text-red-200">
+                      <AlertDescription className="text-sm text-destructive">
                         {error}
                       </AlertDescription>
                     </Alert>
@@ -708,7 +708,7 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
                   <Button
                     onClick={handlePasswordUnlock}
                     disabled={isLoading || isLockedOut || (activeWallet?.isEncrypted && !password)}
-                    className="w-full bg-avian-500 hover:bg-avian-600 text-white dark:bg-avian-600 dark:hover:bg-avian-700 disabled:opacity-50"
+                    className="w-full disabled:opacity-50"
                   >
                     <Lock className="w-5 h-5 mr-2" />
                     {isLoading
@@ -721,15 +721,15 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
               ) : (
                 /* No Password Required */
                 <div className="space-y-4">
-                  <Card className="bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700">
+                  <Card className="bg-caution/10 border-caution/30">
                     <CardContent className="p-4">
                       <div className="flex items-center">
-                        <Shield className="w-5 h-5 text-amber-600 dark:text-amber-400 mr-2" />
+                        <Shield className="w-5 h-5 text-caution mr-2" />
                         <div className="text-sm">
-                          <p className="font-medium text-amber-800 dark:text-amber-200">
+                          <p className="font-medium text-caution">
                             No Password Required
                           </p>
-                          <p className="text-amber-700 dark:text-amber-300">
+                          <p className="text-muted-foreground">
                             This wallet is not password protected
                           </p>
                         </div>
@@ -740,9 +740,9 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
                   {error && (
                     <Alert
                       variant="destructive"
-                      className="bg-red-100 dark:bg-red-900/20 border-red-300 dark:border-red-700"
+                      className="bg-destructive/10 border-destructive/30"
                     >
-                      <AlertDescription className="text-sm text-red-700 dark:text-red-200">
+                      <AlertDescription className="text-sm text-destructive">
                         {error}
                       </AlertDescription>
                     </Alert>
@@ -751,7 +751,7 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
                   <Button
                     onClick={handlePasswordUnlock}
                     disabled={isLoading || isLockedOut}
-                    className="w-full bg-avian-500 hover:bg-avian-600 text-white dark:bg-avian-600 dark:hover:bg-avian-700 disabled:opacity-50"
+                    className="w-full disabled:opacity-50"
                   >
                     <Lock className="w-5 h-5 mr-2" />
                     {isLoading
@@ -764,9 +764,9 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
               )}
 
               {/* Security Notice */}
-              <Alert className="mt-6 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700">
-                <Shield className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                <AlertDescription className="text-xs text-amber-800 dark:text-amber-200">
+              <Alert className="mt-6 bg-caution/10 border-caution/30">
+                <Shield className="h-4 w-4 text-caution" />
+                <AlertDescription className="text-xs text-caution">
                   <p className="font-medium">Security Notice</p>
                   <p>
                     Your wallet is protected by advanced security features. All access attempts are
