@@ -9,7 +9,8 @@ import {
   SecurityState,
 } from '@/types/security';
 import { StorageService } from './StorageService';
-import { secureEncrypt, decryptData, legacyDecrypt } from '../wallet/WalletService';
+import { secureEncrypt, decryptData, isValidWIF, legacyDecrypt } from '../wallet/WalletService';
+import * as bip39 from 'bip39';
 import { securityLogger } from '@/lib/Logger';
 import { isBrowser } from '@/lib/utils';
 
@@ -763,9 +764,13 @@ export class SecurityService {
           // Validate password by attempting to decrypt the private key
           const { decrypted, wasLegacy } = await decryptData(activeWallet.privateKey, password);
 
-          // If decryption returns an empty string or fails, the password was incorrect
-          if (!decrypted) {
-            throw new Error('Decryption resulted in empty key, password likely incorrect.');
+          // The legacy format carries no authentication tag, so a wrong password does not
+          // reliably fail — it can decrypt to plausible-looking rubbish. Checking that the
+          // result is a usable key is the only way to tell the two apart, and it has to happen
+          // before anything is written back: re-encrypting rubbish over the stored key would
+          // destroy the wallet outright.
+          if (!isValidWIF(decrypted)) {
+            throw new Error('Decrypted value is not a valid private key, password incorrect.');
           }
 
           // If the key was using legacy encryption, upgrade it now.
@@ -779,7 +784,9 @@ export class SecurityService {
               try {
                 // We can use the legacy decrypt directly since we know it's an old format
                 const decryptedMnemonic = legacyDecrypt(activeWallet.mnemonic, password);
-                if (decryptedMnemonic) {
+                // Same reasoning as the key above: only store something that is demonstrably
+                // a real mnemonic, or the user's recovery phrase is lost.
+                if (decryptedMnemonic && bip39.validateMnemonic(decryptedMnemonic)) {
                   newEncryptedMnemonic = await secureEncrypt(decryptedMnemonic, password);
                 }
               } catch (mnemonicError) {

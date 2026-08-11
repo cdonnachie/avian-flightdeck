@@ -1,0 +1,572 @@
+'use client';
+
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { AlertTriangle, ArrowRight, CheckCircle2, Globe, Loader2, ShieldCheck } from 'lucide-react';
+
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import GradientBackground from '@/components/GradientBackground';
+import ConnectApprovalDialog, {
+  ConnectAccountOption,
+} from '@/components/connect/ConnectApprovalDialog';
+import SignMessageApprovalDialog from '@/components/connect/SignMessageApprovalDialog';
+
+import { useWallet } from '@/contexts/WalletContext';
+import { useSecurity } from '@/contexts/SecurityContext';
+import { StorageService } from '@/services/core/StorageService';
+import { WalletService } from '@/services/wallet/WalletService';
+import { providerLogger } from '@/lib/Logger';
+import {
+  ConnectApprovalDecision,
+  ProviderHost,
+  ProviderService,
+  buildRedirectUrl,
+  decodeRequestParam,
+  getNetworkDescriptor,
+  makeError,
+  makeEvent,
+  normalizeOrigin,
+  validateRedirectUri,
+} from '@/services/provider';
+import { ConnectEventName, ConnectResponse } from '@/types/avianConnect';
+
+type Transport = 'idle' | 'popup' | 'redirect' | 'standalone';
+
+interface SignPrompt {
+  origin: string;
+  account: string;
+  message: string;
+}
+
+/** Channel used by Settings → Connected Sites to tell a live session its grants changed. */
+const PERMISSION_CHANNEL = 'avian-connect';
+
+function ConnectClient() {
+  const searchParams = useSearchParams();
+  const { electrum } = useWallet();
+  const { requireAuth } = useSecurity();
+
+  const [walletService] = useState(() => new WalletService());
+  const [transport, setTransport] = useState<Transport>('idle');
+  const [status, setStatus] = useState<string>('Waiting for the site to send a request…');
+  const [fatalError, setFatalError] = useState<string | null>(null);
+  const [pinnedOrigin, setPinnedOrigin] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<ConnectAccountOption[]>([]);
+  const [activeAddress, setActiveAddress] = useState<string>('');
+  const [hasWallet, setHasWallet] = useState<boolean | null>(null);
+  const [connectPromptOrigin, setConnectPromptOrigin] = useState<string | null>(null);
+  const [signPrompt, setSignPrompt] = useState<SignPrompt | null>(null);
+  const [completed, setCompleted] = useState<{ origin: string; method: string } | null>(null);
+
+  // Live values the (stable) provider host closures read from.
+  const electrumRef = useRef(electrum);
+  const requireAuthRef = useRef(requireAuth);
+  const hasWalletRef = useRef<boolean | null>(null);
+  const pinnedOriginRef = useRef<string | null>(null);
+  electrumRef.current = electrum;
+  requireAuthRef.current = requireAuth;
+
+  const connectResolverRef = useRef<((decision: ConnectApprovalDecision) => void) | null>(null);
+  const signResolverRef = useRef<((approved: boolean) => void) | null>(null);
+  const providerRef = useRef<ProviderService | null>(null);
+  const pendingIdsRef = useRef<Set<string>>(new Set());
+  const answeredRef = useRef<Map<string, ConnectResponse>>(new Map());
+  const queueRef = useRef<Promise<void>>(Promise.resolve());
+  const startedRef = useRef(false);
+
+  /** Keeps a bounded record of answers so a resent request is replayed, not re-prompted. */
+  const rememberAnswer = useCallback((id: string, response: ConnectResponse) => {
+    const answered = answeredRef.current;
+    answered.set(id, response);
+    if (answered.size > 50) {
+      answered.delete(answered.keys().next().value as string);
+    }
+  }, []);
+
+  // ---------------------------------------------------------------------
+  // Wallet inventory
+  // ---------------------------------------------------------------------
+
+  const loadAccounts = useCallback(async () => {
+    try {
+      const wallets = await StorageService.getAllWallets();
+      const options = wallets.map((wallet) => ({
+        name: wallet.name,
+        address: wallet.address,
+      }));
+      const active = wallets.find((wallet) => wallet.isActive);
+
+      setAccounts(options);
+      setActiveAddress(active?.address || options[0]?.address || '');
+      setHasWallet(options.length > 0);
+      hasWalletRef.current = options.length > 0;
+    } catch (error) {
+      providerLogger.error('Failed to load wallets for Avian Connect:', error);
+      setHasWallet(false);
+      hasWalletRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAccounts();
+  }, [loadAccounts]);
+
+  // ---------------------------------------------------------------------
+  // Approval prompts, surfaced to the engine as promises
+  // ---------------------------------------------------------------------
+
+  const requestConnectApproval = useCallback(
+    (origin: string) =>
+      new Promise<ConnectApprovalDecision>((resolve) => {
+        connectResolverRef.current = resolve;
+        setConnectPromptOrigin(origin);
+      }),
+    [],
+  );
+
+  const resolveConnectPrompt = useCallback((decision: ConnectApprovalDecision) => {
+    setConnectPromptOrigin(null);
+    const resolver = connectResolverRef.current;
+    connectResolverRef.current = null;
+    resolver?.(decision);
+  }, []);
+
+  const requestSignApproval = useCallback(
+    (origin: string, message: string, account: string) =>
+      new Promise<boolean>((resolve) => {
+        signResolverRef.current = resolve;
+        setSignPrompt({ origin, message, account });
+      }),
+    [],
+  );
+
+  const resolveSignPrompt = useCallback((approved: boolean) => {
+    setSignPrompt(null);
+    const resolver = signResolverRef.current;
+    signResolverRef.current = null;
+    resolver?.(approved);
+  }, []);
+
+  // ---------------------------------------------------------------------
+  // Provider host
+  // ---------------------------------------------------------------------
+
+  const emit = useCallback((event: ConnectEventName, data: unknown) => {
+    const origin = pinnedOriginRef.current;
+    // Events only exist on the popup transport, and only ever go to the pinned origin.
+    if (!origin || !window.opener) return;
+    try {
+      window.opener.postMessage(makeEvent(event, data), origin);
+    } catch (error) {
+      providerLogger.warn('Failed to emit Avian Connect event:', error);
+    }
+  }, []);
+
+  const host = useMemo<ProviderHost>(
+    () => ({
+      isLocked: () => hasWalletRef.current !== true,
+
+      requestConnectApproval,
+
+      requestSignApproval,
+
+      signMessage: async (account: string, message: string) => {
+        const wallet = await StorageService.getWalletByAddress(account);
+        if (!wallet?.privateKey) {
+          providerLogger.warn('No private key available for the requested account');
+          return null;
+        }
+
+        // Every signature is authenticated afresh — remembering a site never skips this.
+        const auth = await requireAuthRef.current(
+          `Authenticate to sign a message for ${pinnedOriginRef.current || 'this site'}`,
+        );
+        if (!auth.success) return null;
+
+        const signature = await walletService.signMessage(wallet.privateKey, message, auth.password);
+
+        // Recover and cache the public key so later connect() calls can include it. The public
+        // key is not secret and is derived from a signature the user just authorised.
+        try {
+          const verified = await walletService.verifyMessage(account, message, signature, true);
+          if (typeof verified === 'object' && verified.publicKey) {
+            await StorageService.setKnownPublicKey(account, verified.publicKey);
+          }
+        } catch (error) {
+          providerLogger.warn('Could not cache the public key for this account:', error);
+        }
+
+        return signature;
+      },
+
+      getPublicKey: async (account: string) => {
+        const publicKey = await StorageService.getKnownPublicKey(account);
+        return publicKey || undefined;
+      },
+
+      getNetwork: () => getNetworkDescriptor(electrumRef.current),
+
+      emit,
+    }),
+    [emit, requestConnectApproval, requestSignApproval, walletService],
+  );
+
+  const pinOrigin = useCallback(
+    (origin: string) => {
+      pinnedOriginRef.current = origin;
+      setPinnedOrigin(origin);
+      providerRef.current = new ProviderService(origin, host);
+      return providerRef.current;
+    },
+    [host],
+  );
+
+  // ---------------------------------------------------------------------
+  // Popup transport
+  // ---------------------------------------------------------------------
+
+  const respondToOpener = useCallback((response: ConnectResponse) => {
+    const origin = pinnedOriginRef.current;
+    if (!origin || !window.opener) return;
+    try {
+      // Never "*": responses go to the origin the browser attested on the first message.
+      window.opener.postMessage(response, origin);
+    } catch (error) {
+      providerLogger.warn('Failed to deliver an Avian Connect response:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (transport !== 'popup') return;
+
+    const handleMessage = (event: MessageEvent) => {
+      // Only the window that opened us may talk to us.
+      if (!window.opener || event.source !== window.opener) return;
+
+      const data = event.data;
+      if (typeof data !== 'object' || data === null || (data as { avianConnect?: unknown }).avianConnect !== 1) {
+        return;
+      }
+
+      const messageOrigin = normalizeOrigin(event.origin);
+      if (!messageOrigin) return;
+
+      let provider = providerRef.current;
+      if (!provider) {
+        provider = pinOrigin(messageOrigin);
+        setStatus('Reviewing the request…');
+      } else if (messageOrigin !== pinnedOriginRef.current) {
+        // The session is pinned to the first origin for the lifetime of this window.
+        providerLogger.warn('Ignoring an Avian Connect message from an unexpected origin');
+        return;
+      }
+
+      const id = typeof (data as { id?: unknown }).id === 'string' ? (data as { id: string }).id : null;
+      if (id) {
+        // dApps resend a request until it is answered, so the same id arrives repeatedly while
+        // an approval screen is open. Answer from the record, never open a second dialog.
+        const answered = answeredRef.current.get(id);
+        if (answered) {
+          respondToOpener(answered);
+          return;
+        }
+        if (pendingIdsRef.current.has(id)) return;
+        pendingIdsRef.current.add(id);
+      }
+
+      const boundProvider = provider;
+      queueRef.current = queueRef.current
+        .then(async () => {
+          const response = await boundProvider.handle(data);
+          if (id) {
+            pendingIdsRef.current.delete(id);
+            rememberAnswer(id, response);
+          }
+          respondToOpener(response);
+          const method = (data as { method?: unknown }).method;
+          setCompleted({
+            origin: boundProvider.getOrigin(),
+            method: typeof method === 'string' ? method : 'request',
+          });
+          setStatus('Waiting for the site to send a request…');
+        })
+        .catch((error) => {
+          providerLogger.error('Avian Connect popup request failed:', error);
+          if (id) {
+            pendingIdsRef.current.delete(id);
+            const failure = makeError(
+              id,
+              'INVALID_REQUEST',
+              'The wallet could not complete this request',
+            );
+            rememberAnswer(id, failure);
+            respondToOpener(failure);
+          }
+        });
+    };
+
+    // A closed wallet window must not leave the dApp hanging.
+    const handlePageHide = () => {
+      pendingIdsRef.current.forEach((id) => {
+        respondToOpener(makeError(id, 'USER_REJECTED', 'The wallet window was closed'));
+      });
+      pendingIdsRef.current.clear();
+      emit('disconnect', { reason: 'Wallet window closed' });
+    };
+
+    window.addEventListener('message', handleMessage);
+    window.addEventListener('pagehide', handlePageHide);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      window.removeEventListener('pagehide', handlePageHide);
+    };
+  }, [transport, pinOrigin, respondToOpener, emit, rememberAnswer]);
+
+  // ---------------------------------------------------------------------
+  // Redirect transport
+  // ---------------------------------------------------------------------
+
+  const runRedirectFlow = useCallback(
+    async (reqParam: string, redirectUri: string) => {
+      const parsed = decodeRequestParam(reqParam);
+      if (!parsed.ok) {
+        setFatalError(parsed.error.message);
+        return;
+      }
+
+      const check = validateRedirectUri(redirectUri, parsed.request.origin);
+      if (!check.ok) {
+        // Nothing is sent anywhere: a mismatch is exactly the case we must not redirect on.
+        setFatalError(check.reason || 'redirect_uri does not match the request origin');
+        return;
+      }
+
+      const origin = normalizeOrigin(parsed.request.origin as string)!;
+      const provider = pinOrigin(origin);
+      setStatus('Reviewing the request…');
+
+      const response = await provider.handle(parsed.request);
+      setStatus(`Returning to ${origin}…`);
+      setCompleted({ origin, method: parsed.request.method });
+      window.location.replace(buildRedirectUrl(redirectUri, response));
+    },
+    [pinOrigin],
+  );
+
+  // ---------------------------------------------------------------------
+  // Transport selection
+  // ---------------------------------------------------------------------
+
+  useEffect(() => {
+    if (startedRef.current || hasWallet === null) return;
+    startedRef.current = true;
+
+    const reqParam = searchParams.get('req');
+    const redirectUri = searchParams.get('redirect_uri');
+
+    if (reqParam) {
+      setTransport('redirect');
+      if (!redirectUri) {
+        setFatalError('This request is missing a redirect_uri parameter');
+        return;
+      }
+      runRedirectFlow(reqParam, redirectUri).catch((error) => {
+        providerLogger.error('Avian Connect redirect flow failed:', error);
+        setFatalError('The wallet could not complete this request');
+      });
+      return;
+    }
+
+    if (typeof window !== 'undefined' && window.opener) {
+      setTransport('popup');
+      return;
+    }
+
+    setTransport('standalone');
+  }, [searchParams, hasWallet, runRedirectFlow]);
+
+  // ---------------------------------------------------------------------
+  // Keep a live session in step with wallet switches and revocations
+  // ---------------------------------------------------------------------
+
+  useEffect(() => {
+    const refresh = async () => {
+      await loadAccounts();
+      await providerRef.current?.refreshAccounts();
+    };
+
+    const handleWalletSwitched = () => {
+      refresh().catch((error) => providerLogger.error('Failed to refresh after wallet switch:', error));
+    };
+
+    window.addEventListener('wallet-switched', handleWalletSwitched);
+
+    let channel: BroadcastChannel | null = null;
+    if (typeof BroadcastChannel !== 'undefined') {
+      channel = new BroadcastChannel(PERMISSION_CHANNEL);
+      channel.onmessage = (event) => {
+        if (event.data?.type === 'permissions-changed') {
+          providerRef.current
+            ?.refreshAccounts()
+            .catch((error) => providerLogger.error('Failed to refresh permissions:', error));
+        }
+      };
+    }
+
+    return () => {
+      window.removeEventListener('wallet-switched', handleWalletSwitched);
+      channel?.close();
+    };
+  }, [loadAccounts]);
+
+  // ---------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------
+
+  const heading = (
+    <div className="flex items-center gap-3">
+      <Image src="/icons/icon-192x192.png" alt="" width={40} height={40} className="rounded-lg" />
+      <div>
+        <CardTitle className="text-lg">Avian Connect</CardTitle>
+        <CardDescription>FlightDeck wallet connection</CardDescription>
+      </div>
+    </div>
+  );
+
+  const body = () => {
+    if (fatalError) {
+      return (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription className="break-words">{fatalError}</AlertDescription>
+        </Alert>
+      );
+    }
+
+    if (hasWallet === false) {
+      return (
+        <div className="space-y-4">
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              This wallet has no accounts yet. Create or restore a wallet before connecting a site.
+            </AlertDescription>
+          </Alert>
+          <Button asChild className="w-full">
+            <Link href="/onboarding">Set up a wallet</Link>
+          </Button>
+        </div>
+      );
+    }
+
+    if (transport === 'standalone') {
+      return (
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            This page is the connection endpoint dApps use to ask for your address and for signed
+            login challenges. It does nothing on its own — open it from a site, or try the demo.
+          </p>
+          <Alert className="bg-muted/50">
+            <ShieldCheck className="h-4 w-4" />
+            <AlertDescription className="text-xs">
+              Only an address, an optional public key and signatures ever leave this wallet. Keys,
+              mnemonics and passwords never do.
+            </AlertDescription>
+          </Alert>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button asChild variant="outline" className="flex-1">
+              <Link href="/settings/connected-sites">Connected sites</Link>
+            </Button>
+            <Button asChild className="flex-1">
+              <Link href="/connect/demo">
+                Open the demo
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        {pinnedOrigin && (
+          <div className="rounded-lg border bg-muted/40 p-3">
+            <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+              <Globe className="h-3.5 w-3.5" />
+              Connected site
+            </div>
+            <p className="mt-1 break-all font-mono text-sm font-semibold">{pinnedOrigin}</p>
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          {completed && !connectPromptOrigin && !signPrompt ? (
+            <CheckCircle2 className="h-4 w-4 text-primary" />
+          ) : (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          )}
+          <span>
+            {completed && !connectPromptOrigin && !signPrompt
+              ? `Answered ${completed.method}. ${transport === 'popup' ? 'You can close this window.' : ''}`
+              : status}
+          </span>
+        </div>
+
+        {transport === 'popup' && (
+          <p className="text-xs text-muted-foreground">
+            Keep this window open while you use the site. Closing it ends the session.
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <GradientBackground>
+      <div className="flex min-h-screen items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>{heading}</CardHeader>
+          <CardContent>{body()}</CardContent>
+        </Card>
+      </div>
+
+      <ConnectApprovalDialog
+        open={connectPromptOrigin !== null}
+        origin={connectPromptOrigin || ''}
+        accounts={accounts}
+        defaultAddress={activeAddress}
+        singleRequest={transport === 'redirect'}
+        onDecision={resolveConnectPrompt}
+      />
+
+      <SignMessageApprovalDialog
+        open={signPrompt !== null}
+        origin={signPrompt?.origin || ''}
+        account={signPrompt?.account || ''}
+        message={signPrompt?.message || ''}
+        onDecision={resolveSignPrompt}
+      />
+    </GradientBackground>
+  );
+}
+
+export default function ConnectPage() {
+  return (
+    <Suspense
+      fallback={
+        <GradientBackground>
+          <div className="flex min-h-screen items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        </GradientBackground>
+      }
+    >
+      <ConnectClient />
+    </Suspense>
+  );
+}

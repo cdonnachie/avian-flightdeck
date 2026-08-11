@@ -10,12 +10,20 @@ This document serves as a central index for all documentation related to the Avi
 
 ## Deployment
 
-- [Deployment Guide](DEPLOY.md) - How to deploy the application to Vercel
+- [Deployment Guide](DEPLOY.md) - Self-hosting the static build behind nginx
 
 ## Core Features
 
 - [Security Features](SECURITY_FEATURES.md) - Security implementation details
 - [Security Settings](SECURITY_SETTINGS.md) - Security configuration options
+
+## Development
+
+- [Testing](TESTING.md) - How the Vitest suite is set up, what it covers, and what it does not
+
+## dApp Integration
+
+- [Avian Connect](AVIAN_CONNECT.md) - Wire protocol for connecting external dApps to the wallet
 
 ## User Interface
 

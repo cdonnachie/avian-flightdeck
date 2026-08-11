@@ -1,135 +1,194 @@
-# Deploying Avian FlightDeck Wallet to Vercel
+# Deploying Avian FlightDeck
 
-## 🚀 Quick Deploy
+FlightDeck is a **fully client-side wallet**. There are no API routes, no server components that
+need a runtime, and no server-side data fetching — every key, every signature and every byte of
+wallet state lives in the browser. `next build` therefore emits a plain folder of static files
+(`out/`), and deployment is nothing more than putting that folder behind a web server.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/cdonnachie/avian-flightdeck)
+There is no Node process in production, nothing to supervise, and nothing to restart.
 
-## 📋 Prerequisites
-
-- Vercel account (free tier works)
-- GitHub/GitLab repository with your code
-- Node.js 18+ for local development
-
-## 🔧 Deployment Steps
-
-### 1. **Connect Repository**
+## Build
 
 ```bash
-# Install Vercel CLI (optional)
-pnpm add -g vercel
-
-# Login to Vercel
-vercel login
-
-# Deploy from project directory
-vercel
+pnpm install --frozen-lockfile
+pnpm build          # writes out/
 ```
 
-### 2. **Configure Environment Variables**
+The result is roughly 11 MB. Build on a workstation or in CI — the target host needs no toolchain.
 
-In your Vercel dashboard, add these environment variables:
+Verify it locally before shipping:
 
 ```bash
-NODE_ENV=production
-NEXT_TELEMETRY_DISABLED=1
+pnpm start          # serves out/ on http://localhost:3000
 ```
 
-### 3. **Automatic Deployment**
+## Host: an LXC container on Proxmox
 
-- Push to main/master branch
-- Vercel automatically builds and deploys
-- PWA features work out of the box
+A minimal Debian container is plenty. Nothing here is CPU or memory hungry — it is a file server.
 
-## ✅ What Works on Vercel
-
-- ✅ **PWA Installation**: Add to home screen
-- ✅ **Service Worker**: Offline functionality
-- ✅ **IndexedDB**: Local wallet storage
-- ✅ **WebSocket**: ElectrumX connections
-- ✅ **HTTPS**: Required for PWA features
-- ✅ **Performance**: Edge caching and optimization
-
-## 🔒 Security Features
-
-The `vercel.json` configuration includes:
-
-- Security headers (XSS protection, content type sniffing)
-- Service worker caching policies
-- Frame protection for wallet security
-
-## 🌐 Custom Domain (Optional)
-
-1. Go to Vercel Dashboard → Your Project → Settings → Domains
-2. Add your custom domain (e.g., `flightdeck.avn.network`)
-3. Follow DNS configuration instructions
-4. SSL certificate is automatically provisioned
-
-## 📱 PWA Features on Vercel
-
-- **Manifest**: Automatically served at `/manifest.json`
-- **Service Worker**: Cached and updated properly
-- **Install Prompt**: Works on supported browsers
-- **Offline Mode**: Full wallet functionality offline
-- **Push Notifications**: Ready for future implementation
-
-## 🔍 Build Verification
+| Resource | Suggested |
+| -------- | --------- |
+| Template | `debian-12-standard` |
+| Cores    | 1 |
+| RAM      | 512 MB |
+| Disk     | 4 GB |
+| Type     | Unprivileged |
 
 ```bash
-# Local build test (same as Vercel)
-pnpm run build
-pnpm run start
+# On the Proxmox host
+pct create 120 local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst \
+  --hostname flightdeck \
+  --cores 1 --memory 512 --swap 512 \
+  --rootfs local-lvm:4 \
+  --net0 name=eth0,bridge=vmbr0,ip=dhcp \
+  --unprivileged 1 --features nesting=1 \
+  --start 1
 
-# Check PWA features
-# Visit: chrome://flags/#bypass-app-banner-engagement-checks
-# Enable and test "Add to Home Screen"
+pct enter 120
 ```
 
-## 🚨 Production Considerations
+Inside the container:
 
-### Remove Development Features
+```bash
+apt update && apt install -y nginx rsync
+mkdir -p /var/www/flightdeck
+chown -R www-data:www-data /var/www/flightdeck
+```
 
-Before production deployment:
+## nginx
 
-1. **Security Review**:
-   - Verify all ElectrumX connections use WSS (secure WebSocket)
-   - Test offline functionality
-   - Verify PWA install flow
+`/etc/nginx/sites-available/flightdeck`:
 
-### Performance Optimization
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name flightdeck.example.com;
 
-- Static assets are automatically optimized by Vercel
-- Images are served via Vercel Image Optimization
-- Service worker caches resources efficiently
+    root /var/www/flightdeck;
+    index index.html;
 
-## 📊 Monitoring
+    # Routes are exported as directories containing index.html (trailingSlash: true),
+    # so this one rule serves every deep link without per-route configuration.
+    location / {
+        try_files $uri $uri/ $uri/index.html /404.html;
+    }
 
-Vercel provides:
+    # The service worker must never be cached, or clients pin themselves to an old
+    # build and stop receiving updates. This is the single most important rule here.
+    location = /sw.js {
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        expires off;
+    }
 
-- **Analytics**: Page views, performance metrics
-- **Function Logs**: Runtime errors
-- **Real-time Logs**: Build and execution issues
+    location ~ ^/workbox-.*\.js$ {
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+        expires off;
+    }
 
-## 🆘 Troubleshooting
+    # Hashed build assets are immutable and safe to cache hard.
+    location /_next/static/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        access_log off;
+    }
 
-### Common Issues:
+    location = /manifest.json {
+        add_header Cache-Control "public, max-age=3600" always;
+    }
 
-1. **PWA not installing**:
-   - Ensure HTTPS (automatic on Vercel)
-   - Check manifest.json accessibility
-   - Verify service worker registration
+    # A wallet should never be framed, and should leak nothing on navigation.
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Permissions-Policy "camera=(self), geolocation=(), microphone=(), payment=()" always;
 
-2. **Build failures**:
-   - Check Node.js version (18+ required)
-   - Verify all dependencies in package.json
-   - Review build logs in Vercel dashboard
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+}
+```
 
-3. **Storage issues**:
-   - IndexedDB works in all modern browsers
-   - Private/incognito mode may limit storage
-   - Check browser developer tools for errors
+`camera=(self)` is deliberate — the QR scanner needs it.
 
-## 📞 Support
+```bash
+ln -s /etc/nginx/sites-available/flightdeck /etc/nginx/sites-enabled/
+rm -f /etc/nginx/sites-enabled/default
+nginx -t && systemctl reload nginx
+```
 
-- **Vercel Docs**: [vercel.com/docs](https://vercel.com/docs)
-- **Next.js PWA**: [github.com/shadowwalker/next-pwa](https://github.com/shadowwalker/next-pwa)
-- **Avian Network**: [avn.network](https://avn.network)
+## HTTPS is not optional
+
+The wallet needs a secure context to function at all:
+
+- **Web Crypto** (`crypto.subtle`, `getRandomValues`) — key generation and encryption
+- **Service worker** — offline support and PWA install
+- **WebAuthn** — biometric unlock
+- **IndexedDB persistence** — browsers are more willing to keep storage on a secure origin
+
+Over plain HTTP the app will appear to load and then fail in ways that look like bugs. Terminate
+TLS either at this container or at whatever reverse proxy already fronts your network.
+
+At the container:
+
+```bash
+apt install -y certbot python3-certbot-nginx
+certbot --nginx -d flightdeck.example.com
+```
+
+Behind an existing proxy (Nginx Proxy Manager, Traefik, Caddy, pfSense/HAProxy), point it at this
+container on port 80 and let it hold the certificate. Make sure it forwards `X-Forwarded-Proto`
+and does not strip the cache headers above.
+
+## Deploy
+
+```bash
+pnpm build
+rsync -az --delete out/ root@flightdeck:/var/www/flightdeck/
+```
+
+`--delete` matters: stale hashed chunks from previous builds otherwise accumulate forever.
+
+For zero-downtime and instant rollback, deploy to a timestamped directory and flip a symlink:
+
+```bash
+RELEASE=$(date +%Y%m%d-%H%M%S)
+rsync -az out/ root@flightdeck:/var/www/releases/$RELEASE/
+ssh root@flightdeck "ln -sfn /var/www/releases/$RELEASE /var/www/flightdeck-current && nginx -s reload"
+```
+
+with `root /var/www/flightdeck-current;` in the nginx config. Rolling back is then re-pointing the
+symlink at the previous release.
+
+## Outbound connections
+
+The browser talks directly to these; the host itself needs no outbound access beyond updates:
+
+| Destination | Purpose |
+| ----------- | ------- |
+| `wss://electrum-us.avn.network:50003` | Balances, history, broadcasting |
+| `wss://electrum-eu.avn.network:50003` | ” |
+| `wss://electrum-ca.avn.network:50003` | ” |
+| `https://api.coingecko.com` | AVN price (optional; failure is handled) |
+
+If you add a Content-Security-Policy, `connect-src` must include all of the above, and
+`script-src` needs `'wasm-unsafe-eval'` for the secp256k1 build. **Test a CSP against a real
+wallet before enforcing it** — a policy that blocks the crypto libraries silently breaks signing.
+
+## Verifying a deployment
+
+1. `curl -I https://flightdeck.example.com/sw.js` → `Cache-Control: no-cache`
+2. Load a deep link directly, e.g. `/settings/connected-sites/` → renders, no 404
+3. DevTools → Application → Service Workers → activated
+4. DevTools → Application → Manifest → installable
+5. Create a throwaway wallet, reload, confirm it persists
+6. Check the balance updates, which proves the WebSocket reached ElectrumX
+
+## Backups
+
+The server holds **no user data** — it is a static bundle, and rebuilding from git reproduces it
+exactly. There is nothing on this host worth backing up beyond the nginx config.
+
+Users are solely responsible for their own wallet backups; see the in-app backup tools. Be aware
+that browser IndexedDB can be evicted under storage pressure, so the app's backup prompts are the
+only thing standing between a user and a lost wallet.

@@ -185,6 +185,28 @@ export function purposeForAddressType(addressType: AddressType): number {
     return ADDRESS_TYPE_INFO[addressType].purpose;
 }
 
+/**
+ * True when the string is a WIF private key valid on the Avian network.
+ *
+ * This is the only reliable way to tell a correct decryption from a wrong password on the legacy
+ * (CryptoJS AES-CBC) format, which carries no authentication tag — see decryptData. Anything that
+ * decrypts a legacy blob and then *writes* the result must check it with this first.
+ */
+export function isValidWIF(key: string): boolean {
+    try {
+        // WIF keys are base58 and, on Avian, start with '5', 'K' or 'L'.
+        if (!/^[5KL][123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/.test(key)) {
+            return false;
+        }
+
+        const ECPair = ECPairFactory(ecc);
+        ECPair.fromWIF(key, avianNetwork);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 export async function secureEncrypt(data: string, password: string): Promise<string> {
     const salt = randomBytes(SALT_LENGTH);
     const N = 16384,
@@ -230,6 +252,19 @@ export function legacyDecrypt(encryptedData: string, password: string): string {
 
 /**
  * Unified decryption function that handles both new (scrypt) and legacy (CryptoJS) formats.
+ *
+ * IMPORTANT — the two formats give very different guarantees:
+ *
+ * - The current format is AES-GCM, which is authenticated. A wrong password always throws.
+ * - The legacy CryptoJS format is unauthenticated AES-CBC. There is nothing in the ciphertext
+ *   to verify a password against, so a wrong password yields garbage plaintext. Usually that
+ *   garbage is invalid UTF-8 and this function throws, but often enough to matter it decodes
+ *   cleanly and is returned as if it were correct.
+ *
+ * So `wasLegacy: true` means "this value has not been authenticated". Callers must validate it
+ * against what they expected — isValidWIF for a key, bip39.validateMnemonic for a mnemonic —
+ * before trusting it, and certainly before writing it anywhere.
+ *
  * @returns An object containing the decrypted data and a flag indicating if legacy format was used.
  */
 export async function decryptData(
@@ -1306,11 +1341,16 @@ export class WalletService {
      */
     async validateWalletPassword(password: string): Promise<boolean> {
         try {
-            // First check if wallet is encrypted at all
-            const isEncrypted = await StorageService.getIsEncrypted();
+            // With no wallet there is nothing to validate the password against, so there is no
+            // basis on which to call it valid. This used to fall through to the unencrypted
+            // branch below and answer true for any password at all.
+            const activeWallet = await StorageService.getActiveWallet();
+            if (!activeWallet) {
+                return false;
+            }
 
-            if (!isEncrypted) {
-                // If wallet is not encrypted, any password is valid
+            if (!activeWallet.isEncrypted) {
+                // Nothing is encrypted, so there is no password to get wrong.
                 return true;
             }
 
@@ -2143,22 +2183,6 @@ export class WalletService {
             let decryptedKey = params.privateKey;
 
             // Helper function to check if a string is a valid WIF private key
-            const isValidWIF = (key: string): boolean => {
-                try {
-                    // WIF keys should be base58 encoded and start with specific characters
-                    // For Avian network, they typically start with 'K', 'L', or '5'
-                    if (!/^[5KL][123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/.test(key)) {
-                        return false;
-                    }
-
-                    // Try to create ECPair to validate
-                    const ECPair = ECPairFactory(ecc);
-                    ECPair.fromWIF(key, avianNetwork);
-                    return true;
-                } catch {
-                    return false;
-                }
-            };
 
             // Check if the private key is encrypted by trying to parse it as WIF first
             if (!isValidWIF(params.privateKey)) {
@@ -2287,6 +2311,15 @@ export class WalletService {
         if (wallet.isEncrypted && password) {
             try {
                 const { decrypted, wasLegacy } = await decryptData(wallet.privateKey, password);
+
+                // The legacy format is unauthenticated, so a wrong password can decrypt to
+                // plausible-looking rubbish instead of failing. Never treat that as the key, and
+                // above all never write it back — doing so would overwrite the real key and
+                // destroy the wallet.
+                if (!isValidWIF(decrypted)) {
+                    throw new Error('Invalid password');
+                }
+
                 if (wasLegacy) {
                     walletLogger.info(`Upgrading encryption for wallet: ${wallet.name}`);
                     const newEncryptedKey = await secureEncrypt(decrypted, password);
@@ -2358,15 +2391,13 @@ export class WalletService {
                 return;
             }
 
-            // If we only want new transactions, get existing ones from storage
-            let existingTxHashes: Set<string> = new Set();
-            if (onlyNewTransactions) {
-                const existingTransactions = await StorageService.getTransactionHistory(address);
-                existingTxHashes = new Set(existingTransactions.map((tx) => tx.txid));
-            }
-
-            // Get existing transactions from local storage
-            const existingTxs = await StorageService.getTransactionHistory(address);
+            // Get existing transactions from local storage.
+            // getTransactionHistory falls back to matching the counterparty address when a wallet
+            // has no rows of its own yet, so it can return another wallet's transactions. Scope
+            // the lookups to this wallet or an internal transfer would suppress its own receive.
+            const existingTxs = (await StorageService.getTransactionHistory(address)).filter(
+                (tx) => tx.walletAddress === address,
+            );
 
             // Create maps for faster lookups
             const existingTxMap = new Map(existingTxs.map((tx) => [`${tx.txid}-${tx.type}`, tx]));
@@ -2451,8 +2482,9 @@ export class WalletService {
                                 // Continue processing other transactions even if this one fails
                             }
                         }
-                    } else if (!existingTxIdSet.has(historyTx.tx_hash) || classification.type === 'send') {
-                        // Always save send transactions
+                    } else {
+                        // No row of this type for this wallet yet, so record it. Keyed by type so
+                        // a send and a receive of the same txid can coexist across wallets.
                         try {
                             // This is a new transaction, save it
                             await StorageService.saveTransaction(updatedTx);
@@ -2687,9 +2719,8 @@ export class WalletService {
             // Enhanced transaction classification for better multi-wallet support
 
             // Check if we have inputs (spending from our address)
-            let hasInputFromUs = false;
             let inputFromCurrentAddress = false;
-            let inputAddresses: string[] = [];
+            const inputAddresses: string[] = [];
             let totalInputValue = 0; // Track input value for fee calculation
 
             if (txDetails.vin) {
@@ -2709,9 +2740,6 @@ export class WalletService {
                         inputAddresses.push(input.address);
                         if (input.address === address) {
                             inputFromCurrentAddress = true;
-                            hasInputFromUs = true;
-                        } else if (await this.isOurAddress(input.address)) {
-                            hasInputFromUs = true;
                         }
                     }
                     // Also check scriptSig.addresses for legacy format
@@ -2720,9 +2748,6 @@ export class WalletService {
                             inputAddresses.push(inputAddress);
                             if (inputAddress === address) {
                                 inputFromCurrentAddress = true;
-                                hasInputFromUs = true;
-                            } else if (await this.isOurAddress(inputAddress)) {
-                                hasInputFromUs = true;
                             }
                         }
                     }
@@ -2745,9 +2770,6 @@ export class WalletService {
                                         inputAddresses.push(inputAddress);
                                         if (inputAddress === address) {
                                             inputFromCurrentAddress = true;
-                                            hasInputFromUs = true;
-                                        } else if (await this.isOurAddress(inputAddress)) {
-                                            hasInputFromUs = true;
                                         }
                                     }
                                 }
@@ -2763,14 +2785,15 @@ export class WalletService {
             }
 
             // Check if we have outputs (receiving to our address)
-            let hasOutputToUs = false;
             let hasOutputToCurrentAddress = false;
-            let totalOutputToUs = 0;
             let totalOutputToCurrentAddress = 0;
             let totalOutputToOthers = 0;
             let totalOutputValue = 0; // Track total output for fee calculation
-            let firstOutputToOthers = '';
-            let outputsToOthers: Array<{ address: string; value: number }> = [];
+            const outputsToOthers: Array<{ address: string; value: number }> = [];
+            // Outputs paying another wallet this user owns. These still leave the address being
+            // analysed, so from its point of view they are money sent, not change.
+            let totalOutputToOwnedElsewhere = 0;
+            const outputsToOwnedElsewhere: Array<{ address: string; value: number }> = [];
 
             if (txDetails.vout) {
                 for (let i = 0; i < txDetails.vout.length; i++) {
@@ -2801,22 +2824,21 @@ export class WalletService {
                         }
 
                         if (isTargetAddress) {
-                            // This output goes to the specific address we're analyzing
+                            // This output comes back to the address we're analyzing — change, or
+                            // a consolidation. It never counts as money sent.
                             hasOutputToCurrentAddress = true;
-                            hasOutputToUs = true;
-                            totalOutputToUs += outputValue;
                             totalOutputToCurrentAddress += outputValue;
                         } else if (isOurOutput) {
-                            // This output goes to one of our other wallets (like change)
-                            hasOutputToUs = true;
-                            totalOutputToUs += outputValue;
-                            // Don't add to totalOutputToCurrentAddress since it's not to the target address
+                            // This output pays another wallet the user owns. The funds still left
+                            // this address, so it is a send from here and a receive over there.
+                            totalOutputToOwnedElsewhere += outputValue;
+                            outputsToOwnedElsewhere.push({
+                                address: outputAddresses[0],
+                                value: outputValue,
+                            });
                         } else {
                             // This output goes to an external address
                             totalOutputToOthers += outputValue;
-                            if (!firstOutputToOthers && outputAddresses.length > 0) {
-                                firstOutputToOthers = outputAddresses[0];
-                            }
 
                             // Store all outputs to external addresses
                             outputsToOthers.push({
@@ -2831,28 +2853,23 @@ export class WalletService {
             // Calculate the transaction fee if we have all input values
             const fee = totalInputValue > 0 ? totalInputValue - totalOutputValue : 0;
 
-            // Special multi-wallet handling - distinguish between external receives and internal transfers
-            // These variables are calculated for future features (wallet-to-wallet transfer detection)
-            // TODO: Implement special handling for self transfers and transfers between owned wallets
-            const isSelfTransfer =
-                inputFromCurrentAddress && hasOutputToCurrentAddress && outputsToOthers.length === 0;
-            const isTransferBetweenOurWallets =
-                hasInputFromUs && !inputFromCurrentAddress && hasOutputToCurrentAddress;
+            // Everything that left this address, whether it went to a stranger or to another
+            // wallet the same user owns. Change coming back here is deliberately excluded.
+            const outputsLeavingAddress = [...outputsToOthers, ...outputsToOwnedElsewhere];
+            const totalOutputLeavingAddress = totalOutputToOthers + totalOutputToOwnedElsewhere;
 
             // Handle special case where we're checking a specific address
             if (!inputFromCurrentAddress && hasOutputToCurrentAddress) {
                 // If we're analyzing a specific address that received funds but didn't spend any,
                 // this is a receive transaction for this address
 
-                // Check if it's from another of our wallets
-                // fromIsOurWallet is calculated for future features (wallet-to-wallet transfer identification)
-                let fromIsOurWallet = false;
+                // Prefer naming another of the user's own wallets as the sender when one funded
+                // this transaction, so an internal transfer reads as coming from that wallet.
                 let senderAddress = '';
 
                 if (inputAddresses.length > 0) {
                     for (const inputAddr of inputAddresses) {
                         if (await this.isOurAddress(inputAddr)) {
-                            fromIsOurWallet = true;
                             senderAddress = inputAddr;
                             break;
                         }
@@ -2877,32 +2894,22 @@ export class WalletService {
             // Classify the transaction
             if (inputFromCurrentAddress) {
                 // This address is spending funds
-                if (totalOutputToOthers > 0) {
-                    // Handle case where we're sending to multiple recipients
-                    if (outputsToOthers.length > 1) {
-                        // For multi-recipient transactions, use the largest output as the "primary" recipient
-                        let largestOutput = outputsToOthers[0];
-                        for (const output of outputsToOthers) {
-                            if (output.value > largestOutput.value) {
-                                largestOutput = output;
-                            }
+                if (totalOutputLeavingAddress > 0) {
+                    // Where several recipients were paid, report the largest as the primary one.
+                    // A single recipient is just the degenerate case of the same rule.
+                    let largestOutput = outputsLeavingAddress[0];
+                    for (const output of outputsLeavingAddress) {
+                        if (output.value > largestOutput.value) {
+                            largestOutput = output;
                         }
-
-                        return {
-                            type: 'send',
-                            amount: totalOutputToOthers, // Show total amount sent to all recipients
-                            fromAddress: address,
-                            toAddress: largestOutput.address, // Use the largest recipient as the primary one
-                        };
-                    } else {
-                        // Standard send transaction (may also have change)
-                        return {
-                            type: 'send',
-                            amount: totalOutputToOthers,
-                            fromAddress: address,
-                            toAddress: firstOutputToOthers || 'Unknown',
-                        };
                     }
+
+                    return {
+                        type: 'send',
+                        amount: totalOutputLeavingAddress, // Total sent to all recipients
+                        fromAddress: address,
+                        toAddress: largestOutput?.address || 'Unknown',
+                    };
                 } else if (hasOutputToCurrentAddress) {
                     // This is a self-transfer (consolidation to the same wallet)
                     return {
@@ -3558,22 +3565,6 @@ export class WalletService {
             let decryptedKey = privateKeyWIF;
 
             // Helper function to check if a string is a valid WIF private key
-            const isValidWIF = (key: string): boolean => {
-                try {
-                    // WIF keys should be base58 encoded and start with specific characters
-                    // For Avian network, they typically start with 'K', 'L', or '5'
-                    if (!/^[5KL][123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/.test(key)) {
-                        return false;
-                    }
-
-                    // Try to create ECPair to validate
-                    const ECPair = ECPairFactory(ecc);
-                    ECPair.fromWIF(key, avianNetwork);
-                    return true;
-                } catch {
-                    return false;
-                }
-            };
 
             // Check if the private key is encrypted by trying to parse it as WIF first
             if (!isValidWIF(privateKeyWIF)) {
@@ -3739,22 +3730,6 @@ export class WalletService {
             let decryptedKey = recipientPrivateKeyWIF;
 
             // Helper function to check if a string is a valid WIF private key
-            const isValidWIF = (key: string): boolean => {
-                try {
-                    // WIF keys should be base58 encoded and start with specific characters
-                    // For Avian network, they typically start with 'K', 'L', or '5'
-                    if (!/^[5KL][123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/.test(key)) {
-                        return false;
-                    }
-
-                    // Try to create ECPair to validate
-                    const ECPair = ECPairFactory(ecc);
-                    ECPair.fromWIF(key, avianNetwork);
-                    return true;
-                } catch {
-                    return false;
-                }
-            };
 
             // Check if the private key is encrypted by trying to parse it as WIF first
             if (!isValidWIF(recipientPrivateKeyWIF)) {
