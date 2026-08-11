@@ -344,8 +344,8 @@ export default function ReceiveContent({ address }: ReceiveContentProps) {
             <QrCode className="w-6 h-6 text-primary" />
           </div>
           <CardTitle>Receive AVN</CardTitle>
-          <Alert className="bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800">
-            <AlertDescription className="text-yellow-600 dark:text-yellow-400 text-sm">
+          <Alert className="bg-caution/10 border-caution/30">
+            <AlertDescription className="text-caution text-sm">
               ⚠️ Do not keep large amounts in your wallet
             </AlertDescription>
           </Alert>
@@ -406,8 +406,8 @@ export default function ReceiveContent({ address }: ReceiveContentProps) {
           <QrCode className="w-6 h-6 text-primary" />
         </div>
         <CardTitle>Payment Address</CardTitle>
-        <Alert className="bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800">
-          <AlertDescription className="text-yellow-600 dark:text-yellow-400 text-sm">
+        <Alert className="bg-caution/10 border-caution/30">
+          <AlertDescription className="text-caution text-sm">
             ⚠️ Do not keep large amounts in your wallet
           </AlertDescription>
         </Alert>
@@ -460,7 +460,7 @@ export default function ReceiveContent({ address }: ReceiveContentProps) {
                               {wallet.isActive && (
                                 <Badge
                                   variant="outline"
-                                  className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border-green-200 dark:border-green-700"
+                                  className="bg-primary/10 text-primary border-primary/20"
                                 >
                                   Active
                                 </Badge>
@@ -567,7 +567,7 @@ export default function ReceiveContent({ address }: ReceiveContentProps) {
                     className="h-8 w-8 ml-1 rounded-full"
                   >
                     {copied ? (
-                      <CheckCircle className="w-4 h-4 text-green-500" />
+                      <CheckCircle className="w-4 h-4 text-primary" />
                     ) : (
                       <Copy className="w-4 h-4" />
                     )}
