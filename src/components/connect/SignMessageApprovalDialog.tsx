@@ -65,7 +65,7 @@ export default function SignMessageApprovalDialog({
         <p className="text-xs text-muted-foreground">{message.length} characters</p>
       </div>
 
-      <Alert className="bg-muted/50">
+      <Alert className="border-caution/30 bg-caution/10 [&>svg]:text-caution">
         <ShieldAlert className="h-4 w-4" />
         <AlertDescription className="text-xs">
           Signing proves you control this address. Read the whole message — only sign what you

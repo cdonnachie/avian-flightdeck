@@ -205,19 +205,19 @@ export default function AuthenticationDialog({
           <DrawerContent className="max-h-[95vh]">
             <DrawerHeader className="text-center">
               <DrawerTitle className="text-xl font-semibold flex items-center justify-center gap-2">
-                <Lock className="w-5 h-5 text-avian-500" />
+                <Lock className="w-5 h-5 text-primary" />
                 {title}
               </DrawerTitle>
             </DrawerHeader>
 
             <div className="px-4 pb-4 space-y-4">
               {error && (
-                <div className="p-3 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300">
+                <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive">
                   {error}
                 </div>
               )}
 
-              <p className="text-gray-600 dark:text-gray-400">{message}</p>
+              <p className="text-muted-foreground">{message}</p>
 
               <form onSubmit={handlePasswordSubmit}>
                 <div className="space-y-2 mb-4">
@@ -242,9 +242,9 @@ export default function AuthenticationDialog({
                       onClick={() => setShowPassword(!showPassword)}
                     >
                       {showPassword ? (
-                        <EyeOff className="h-4 w-4 text-gray-500" />
+                        <EyeOff className="h-4 w-4 text-muted-foreground" />
                       ) : (
-                        <Eye className="h-4 w-4 text-gray-500" />
+                        <Eye className="h-4 w-4 text-muted-foreground" />
                       )}
                     </Button>
                   </div>
@@ -320,12 +320,12 @@ export default function AuthenticationDialog({
 
             <div className="space-y-4 py-2">
               {error && (
-                <div className="p-3 bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300">
+                <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-destructive">
                   {error}
                 </div>
               )}
 
-              <p className="text-gray-600 dark:text-gray-400">{message}</p>
+              <p className="text-muted-foreground">{message}</p>
 
               <form onSubmit={handlePasswordSubmit}>
                 <div className="space-y-2 mb-4">
@@ -350,9 +350,9 @@ export default function AuthenticationDialog({
                       onClick={() => setShowPassword(!showPassword)}
                     >
                       {showPassword ? (
-                        <EyeOff className="h-4 w-4 text-gray-500" />
+                        <EyeOff className="h-4 w-4 text-muted-foreground" />
                       ) : (
-                        <Eye className="h-4 w-4 text-gray-500" />
+                        <Eye className="h-4 w-4 text-muted-foreground" />
                       )}
                     </Button>
                   </div>
