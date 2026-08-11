@@ -233,8 +233,8 @@ export default function OnboardingPage() {
                     setStep('form');
                 }}>
                     <CardHeader>
-                        <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
-                            <Wallet className="w-6 h-6 text-green-600" />
+                        <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                            <Wallet className="w-6 h-6 text-primary" />
                         </div>
                         <CardTitle className="text-xl">Create New Wallet</CardTitle>
                         <p className="text-muted-foreground">
@@ -249,8 +249,8 @@ export default function OnboardingPage() {
                     setStep('form');
                 }}>
                     <CardHeader>
-                        <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                            <FileKey className="w-6 h-6 text-blue-600" />
+                        <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                            <FileKey className="w-6 h-6 text-primary" />
                         </div>
                         <CardTitle className="text-xl">Import from Mnemonic</CardTitle>
                         <p className="text-muted-foreground">
@@ -265,8 +265,8 @@ export default function OnboardingPage() {
                     setStep('form');
                 }}>
                     <CardHeader>
-                        <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
-                            <Import className="w-6 h-6 text-purple-600" />
+                        <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                            <Import className="w-6 h-6 text-primary" />
                         </div>
                         <CardTitle className="text-xl">Import Private Key</CardTitle>
                         <p className="text-muted-foreground">
@@ -278,8 +278,8 @@ export default function OnboardingPage() {
                 {/* Restore from Backup */}
                 <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setStep('backup-file')}>
                     <CardHeader>
-                        <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-4">
-                            <Upload className="w-6 h-6 text-orange-600" />
+                        <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                            <Upload className="w-6 h-6 text-primary" />
                         </div>
                         <CardTitle className="text-xl">Restore from Backup</CardTitle>
                         <p className="text-muted-foreground">
@@ -294,8 +294,8 @@ export default function OnboardingPage() {
                     setStep('form');
                 }}>
                     <CardHeader>
-                        <div className="w-12 h-12 bg-teal-100 rounded-lg flex items-center justify-center mb-4">
-                            <ScrollText className="w-6 h-6 text-teal-600" />
+                        <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
+                            <ScrollText className="w-6 h-6 text-primary" />
                         </div>
                         <CardTitle className="text-xl">Import from Descriptor</CardTitle>
                         <p className="text-muted-foreground">
@@ -384,9 +384,9 @@ export default function OnboardingPage() {
                                         onClick={() => setShowBackupPassword(!showBackupPassword)}
                                     >
                                         {showBackupPassword ? (
-                                            <EyeOff className="h-4 w-4 text-gray-500" />
+                                            <EyeOff className="h-4 w-4 text-muted-foreground" />
                                         ) : (
-                                            <Eye className="h-4 w-4 text-gray-500" />
+                                            <Eye className="h-4 w-4 text-muted-foreground" />
                                         )}
                                     </Button>
                                 </div>
@@ -427,8 +427,8 @@ export default function OnboardingPage() {
     const renderSuccess = () => (
         <Card className="max-w-md mx-auto text-center">
             <CardContent className="pt-6">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Wallet className="w-8 h-8 text-green-600" />
+                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Wallet className="w-8 h-8 text-primary" />
                 </div>
                 <h2 className="text-2xl font-bold mb-2">Setup Complete!</h2>
                 <p className="text-muted-foreground mb-6">

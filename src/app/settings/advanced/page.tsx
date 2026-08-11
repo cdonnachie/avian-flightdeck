@@ -99,14 +99,14 @@ export default function AdvancedSettingsPage() {
                 </div>
 
                 {/* RIP-25 Post-Quantum Notice */}
-                <Card className="border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20">
+                <Card className="border-primary/20 bg-primary/5">
                     <CardHeader className="pb-2">
-                        <CardTitle className="flex items-center gap-2 text-base text-purple-800 dark:text-purple-200">
+                        <CardTitle className="flex items-center gap-2 text-base text-foreground">
                             <FlaskConical className="w-4 h-4" />
                             RIP-25: Post-Quantum Signatures (ML-DSA-44)
                         </CardTitle>
                     </CardHeader>
-                    <CardContent className="text-sm text-purple-700 dark:text-purple-300 space-y-1">
+                    <CardContent className="text-sm text-muted-foreground space-y-1">
                         <p>
                             Avian Core v5.0.0 introduces <strong>RIP-25</strong> — ML-DSA-44 (Dilithium) lattice-based
                             post-quantum signature support.

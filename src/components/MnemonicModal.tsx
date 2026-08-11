@@ -286,7 +286,7 @@ export default function MnemonicModal({ isOpen, onClose, mode }: MnemonicModalPr
       {mode === 'export' ? (
         // Export Mode
         <div className="space-y-4">
-          <Alert className="bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-700">
+          <Alert className="bg-caution/10 border-caution/30">
             <AlertTriangle className="h-5 w-5" />
             <AlertTitle>Security Warning</AlertTitle>
             <AlertDescription>
@@ -351,7 +351,7 @@ export default function MnemonicModal({ isOpen, onClose, mode }: MnemonicModalPr
 
                 {/* BIP39 Passphrase Indicator */}
                 {hasBip39Passphrase && (
-                  <Alert className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700">
+                  <Alert className="bg-primary/5 border-primary/20">
                     <Key className="h-4 w-4" />
                     <AlertTitle>BIP39 Passphrase (25th Word) Required</AlertTitle>
                     <AlertDescription className="space-y-3">
@@ -360,7 +360,7 @@ export default function MnemonicModal({ isOpen, onClose, mode }: MnemonicModalPr
                         both the mnemonic phrase above AND the passphrase to fully restore this
                         wallet.
                       </p>
-                      <p className="font-medium text-blue-800 dark:text-blue-200">
+                      <p className="font-medium text-foreground">
                         ⚠️ Make sure you have backed up your passphrase separately!
                       </p>
 
@@ -371,7 +371,7 @@ export default function MnemonicModal({ isOpen, onClose, mode }: MnemonicModalPr
                             disabled={isLoadingPassphrase}
                             variant="outline"
                             size="sm"
-                            className="text-blue-700 border-blue-300 hover:bg-blue-100 dark:text-blue-300 dark:border-blue-600 dark:hover:bg-blue-900/30"
+                            className="text-primary border-primary/40 hover:bg-primary/10"
                           >
                             {isLoadingPassphrase ? (
                               <RefreshCw className="w-3 h-3 animate-spin mr-2" />
@@ -383,9 +383,9 @@ export default function MnemonicModal({ isOpen, onClose, mode }: MnemonicModalPr
                         </div>
                       ) : (
                         <div className="pt-2 space-y-3">
-                          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-md p-3">
+                          <div className="bg-caution/10 border border-caution/30 rounded-md p-3">
                             <div className="flex items-center justify-between mb-2">
-                              <span className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                              <span className="text-sm font-medium text-caution">
                                 Your BIP39 Passphrase:
                               </span>
                               <Button
@@ -394,16 +394,16 @@ export default function MnemonicModal({ isOpen, onClose, mode }: MnemonicModalPr
                                 }
                                 variant="ghost"
                                 size="sm"
-                                className="h-6 text-yellow-700 hover:text-yellow-900 dark:text-yellow-300 dark:hover:text-yellow-100"
+                                className="h-6 text-caution hover:text-caution"
                               >
                                 <Copy className="w-3 h-3" />
                               </Button>
                             </div>
-                            <div className="font-mono text-sm bg-white dark:bg-gray-800 p-2 rounded border break-all">
+                            <div className="font-mono text-sm bg-background p-2 rounded border break-all">
                               {decryptedPassphrase}
                             </div>
                           </div>
-                          <p className="text-xs text-yellow-700 dark:text-yellow-300">
+                          <p className="text-xs text-muted-foreground">
                             🔒 Store this passphrase separately from your mnemonic for maximum
                             security.
                           </p>
@@ -430,7 +430,7 @@ export default function MnemonicModal({ isOpen, onClose, mode }: MnemonicModalPr
       ) : (
         // Import Mode
         <div className="space-y-4">
-          <Alert className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700">
+          <Alert className="bg-primary/5 border-primary/20">
             <AlertTriangle className="h-5 w-5" />
             <AlertTitle>Import Wallet</AlertTitle>
             <AlertDescription>
@@ -449,18 +449,18 @@ export default function MnemonicModal({ isOpen, onClose, mode }: MnemonicModalPr
               }}
               placeholder="Enter your 12-word mnemonic phrase..."
               className={`${isValidMnemonic === false
-                  ? 'border-red-300 dark:border-red-600'
+                  ? 'border-destructive/50'
                   : isValidMnemonic === true
-                    ? 'border-green-300 dark:border-green-600'
+                    ? 'border-primary/50'
                     : ''
                 }`}
               rows={3}
             />
             {isValidMnemonic === true && (
-              <p className="text-sm text-green-600 dark:text-green-400">✓ Valid mnemonic phrase</p>
+              <p className="text-sm text-primary">✓ Valid mnemonic phrase</p>
             )}
             {isValidMnemonic === false && (
-              <p className="text-sm text-red-600 dark:text-red-400">✗ Invalid mnemonic phrase</p>
+              <p className="text-sm text-destructive">✗ Invalid mnemonic phrase</p>
             )}
           </div>
 
@@ -483,9 +483,9 @@ export default function MnemonicModal({ isOpen, onClose, mode }: MnemonicModalPr
                 onClick={() => setShowPassword(!showPassword)}
               >
                 {showPassword ? (
-                  <EyeOff className="h-4 w-4 text-gray-500" />
+                  <EyeOff className="h-4 w-4 text-muted-foreground" />
                 ) : (
-                  <Eye className="h-4 w-4 text-gray-500" />
+                  <Eye className="h-4 w-4 text-muted-foreground" />
                 )}
               </Button>
             </div>
@@ -510,9 +510,9 @@ export default function MnemonicModal({ isOpen, onClose, mode }: MnemonicModalPr
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
               >
                 {showConfirmPassword ? (
-                  <EyeOff className="h-4 w-4 text-gray-500" />
+                  <EyeOff className="h-4 w-4 text-muted-foreground" />
                 ) : (
-                  <Eye className="h-4 w-4 text-gray-500" />
+                  <Eye className="h-4 w-4 text-muted-foreground" />
                 )}
               </Button>
             </div>
