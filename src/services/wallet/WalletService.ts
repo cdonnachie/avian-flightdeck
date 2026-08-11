@@ -10,7 +10,7 @@ import { ECPairFactory } from 'ecpair';
 import * as ecc from 'tiny-secp256k1';
 import * as bip39 from 'bip39';
 import { BIP32Factory } from 'bip32';
-import { ElectrumService } from '../core/ElectrumService';
+import { ElectrumService, type DetailedBalance } from '../core/ElectrumService';
 import { StorageService } from '../core/StorageService';
 import { walletLogger } from '@/lib/Logger';
 import {
@@ -449,10 +449,22 @@ export class WalletService {
     }
 
     async getBalance(address: string, forceRefresh: boolean = false): Promise<number> {
+        return (await this.getBalanceDetailed(address, forceRefresh)).balance;
+    }
+
+    /**
+     * Balance plus its provenance. A bare number cannot distinguish "the server says 0" from
+     * "the server is unreachable and nothing is cached" — callers that display the balance
+     * should use this and treat 'unknown' as unavailable rather than as zero.
+     */
+    async getBalanceDetailed(
+        address: string,
+        forceRefresh: boolean = false,
+    ): Promise<DetailedBalance> {
         try {
-            return await this.electrum.getBalance(address, forceRefresh);
+            return await this.electrum.getBalanceDetailed(address, forceRefresh);
         } catch (error) {
-            return 0;
+            return { balance: 0, source: 'unknown' };
         }
     }
 

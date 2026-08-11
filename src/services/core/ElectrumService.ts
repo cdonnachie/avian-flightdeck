@@ -5,6 +5,14 @@ interface UTXO {
   height?: number;
 }
 
+/** Where a reported balance came from — see getBalanceDetailed. */
+export type BalanceSource = 'live' | 'cache' | 'stored' | 'unknown';
+
+export interface DetailedBalance {
+  balance: number;
+  source: BalanceSource;
+}
+
 interface BalanceResponse {
   confirmed: number;
   unconfirmed: number;
@@ -124,6 +132,11 @@ export class ElectrumService {
           electrumLogger.debug(`Connected to Electrum server: ${url}`);
 
           resolve();
+
+          // Server-side subscriptions die with the socket, so after a reconnect every address
+          // we were watching must be re-subscribed or balance updates silently stop arriving.
+          // Fire-and-forget: the connection is usable regardless of how re-subscription fares.
+          void this.resubscribeAll();
         };
 
         this.websocket.onclose = (event) => {
@@ -132,6 +145,13 @@ export class ElectrumService {
           electrumLogger.debug(
             `WebSocket closed: code=${event.code}, reason=${event.reason || 'unknown'}`,
           );
+
+          // If the socket closed before it ever opened, nothing else will settle the connect()
+          // promise: onopen never fires, and this handler clears isConnecting, which defuses
+          // the connection-timeout guard below. Without this reject, callers await forever and
+          // the app hangs on its loading screen whenever the server refuses the connection.
+          // (Rejecting an already-settled promise is a no-op, so later closes are harmless.)
+          reject(new Error(`Connection closed before opening (code ${event.code})`));
 
           // Attempt to reconnect if not manually closed and not already reconnecting
           if (
@@ -167,6 +187,38 @@ export class ElectrumService {
       this.isConnecting = false;
       electrumLogger.error('Failed to connect to Electrum server:', error);
       throw new Error('Connection failed');
+    }
+  }
+
+  /**
+   * Re-issues blockchain.scripthash.subscribe for every tracked subscription and delivers the
+   * current status to its callback. Downstream compares the status and refetches the balance,
+   * which also covers anything that changed while the connection was down.
+   */
+  private async resubscribeAll(): Promise<void> {
+    if (this.subscriptions.size === 0) {
+      return;
+    }
+
+    electrumLogger.info(
+      `Re-establishing ${this.subscriptions.size} address subscription(s) after reconnect`,
+    );
+
+    for (const [scriptHash, callback] of Array.from(this.subscriptions.entries())) {
+      try {
+        const status = await this.makeRequest('blockchain.scripthash.subscribe', [scriptHash]);
+        callback({
+          scripthash: scriptHash,
+          status,
+          method: 'blockchain.scripthash.subscribe',
+        });
+      } catch (error) {
+        electrumLogger.error(
+          `Failed to re-subscribe ${scriptHash.substring(0, 8)}… after reconnect:`,
+          error,
+        );
+        // Keep going: one failed re-subscription must not strand the others.
+      }
     }
   }
 
@@ -317,6 +369,20 @@ export class ElectrumService {
   }
 
   async getBalance(address: string, forceRefresh: boolean = false): Promise<number> {
+    return (await this.getBalanceDetailed(address, forceRefresh)).balance;
+  }
+
+  /**
+   * Like getBalance, but reports where the number came from. The fallback chain means a plain
+   * number is ambiguous — a 0 could be the server's answer or "we have no idea" — and the UI
+   * must not present the second as the first.
+   *
+   * - live:    the server answered just now
+   * - cache:   pushed to us by a subscription earlier in this session
+   * - stored:  persisted from a previous session; real, but possibly stale
+   * - unknown: nothing to go on — the balance should be shown as unavailable, not as 0
+   */
+  async getBalanceDetailed(address: string, forceRefresh: boolean = false): Promise<DetailedBalance> {
     try {
       // Log the balance request for debugging
       electrumLogger.debug(
@@ -329,7 +395,7 @@ export class ElectrumService {
         electrumLogger.debug(
           `Using cached balance for ${address.substring(0, 5)}...: ${cachedBalance}`,
         );
-        return cachedBalance;
+        return { balance: cachedBalance, source: 'cache' };
       }
 
       // Convert address to script hash for Electrum protocol
@@ -347,7 +413,7 @@ export class ElectrumService {
         `Balance retrieved for ${address.substring(0, 5)}...: ${totalBalance} (confirmed: ${response.confirmed}, unconfirmed: ${response.unconfirmed})`,
       );
 
-      return totalBalance;
+      return { balance: totalBalance, source: 'live' };
     } catch (error) {
       // Return cached balance if available
       const cachedBalance = this.realBalanceCache.get(address);
@@ -355,20 +421,26 @@ export class ElectrumService {
         electrumLogger.debug(
           `Failed to get balance from server, using cached balance for ${address.substring(0, 5)}...: ${cachedBalance}`,
         );
-        return cachedBalance;
+        return { balance: cachedBalance, source: 'cache' };
       }
 
-      // Last resort: check StorageService for persisted balance
+      // Next: a balance persisted by a previous session. A stored zero is indistinguishable
+      // from "nothing was ever stored" (the storage layer defaults to 0), so only a positive
+      // value counts as real data here.
       try {
         const { StorageService } = await import('./StorageService');
         const walletBalance = await StorageService.getWalletBalance(address);
-
-        return walletBalance;
+        if (walletBalance > 0) {
+          return { balance: walletBalance, source: 'stored' };
+        }
       } catch (storageError) {
-        // Final fallback: check localStorage for persisted balance
         const storedBalance = localStorage.getItem('avian_wallet_last_balance');
-        return storedBalance ? parseInt(storedBalance, 10) : 0;
+        if (storedBalance && parseInt(storedBalance, 10) > 0) {
+          return { balance: parseInt(storedBalance, 10), source: 'stored' };
+        }
       }
+
+      return { balance: 0, source: 'unknown' };
     }
   }
 

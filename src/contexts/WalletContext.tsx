@@ -16,10 +16,19 @@ import { TransactionClientService } from '@/services/notifications/client/Transa
 import { CoinSelectionStrategy, EnhancedUTXO } from '@/services/wallet/UTXOSelectionService';
 import { walletContextLogger } from '@/lib/Logger';
 
+/**
+ * How trustworthy the displayed balance is.
+ * - live:    confirmed by the server this session (directly or via subscription)
+ * - stale:   a real number from an earlier session; the server has not confirmed it yet
+ * - unknown: nothing to go on — the UI must show "unavailable", never 0
+ */
+export type BalanceStatus = 'live' | 'stale' | 'unknown';
+
 interface WalletContextType {
   wallet: WalletService | null;
   electrum: ElectrumService | null;
   balance: number;
+  balanceStatus: BalanceStatus;
   address: string;
   isEncrypted: boolean;
   isLoading: boolean;
@@ -38,11 +47,7 @@ interface WalletContextType {
     password: string,
     passphrase?: string,
   ) => Promise<void>;
-  importWalletFromDescriptor: (
-    name: string,
-    descriptor: string,
-    password: string,
-  ) => Promise<void>;
+  importWalletFromDescriptor: (name: string, descriptor: string, password: string) => Promise<void>;
   sendTransaction: (
     toAddress: string,
     amount: number,
@@ -127,6 +132,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
   const [wallet, setWallet] = useState<WalletService | null>(null);
   const [electrum, setElectrum] = useState<ElectrumService | null>(null);
   const [balance, setBalance] = useState<number>(0); // Initially 0, but will update early with last known balance
+  const [balanceStatus, setBalanceStatus] = useState<BalanceStatus>('unknown');
   const [address, setAddress] = useState<string>('');
   const [isEncrypted, setIsEncrypted] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -178,6 +184,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
         const lastKnownData = TransactionClientService.getLastKnownBalance(activeWallet.address);
         if (lastKnownData && lastKnownData.balance > 0) {
           setBalance(lastKnownData.balance);
+          setBalanceStatus('stale');
         }
 
         // Initialize wallet with subscription for real-time updates
@@ -185,6 +192,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
           activeWallet.address,
           (data) => {
             setBalance(data.balance);
+            setBalanceStatus('live');
           },
           (processed, total, currentTx) => {
             // Set processing progress during initial transaction loading
@@ -204,6 +212,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
         setAddress('');
         setIsEncrypted(false);
         setBalance(0);
+        setBalanceStatus('unknown');
       }
 
       // Run migration for existing transactions if needed
@@ -240,7 +249,9 @@ export function WalletProvider({ children }: WalletProviderProps) {
       const newWallet = await wallet.generateWallet(password, useMnemonic, passphrase);
       setAddress(newWallet.address);
       setIsEncrypted(true); // Always encrypted now
+      // A freshly generated address genuinely holds nothing, so this zero is real.
       setBalance(0);
+      setBalanceStatus('live');
 
       // Save to storage
       await StorageService.setAddress(newWallet.address);
@@ -252,6 +263,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
         newWallet.address,
         (data) => {
           setBalance(data.balance);
+          setBalanceStatus('live');
         },
         (processed, total, currentTx) => {
           // Set processing progress during initial transaction loading
@@ -292,6 +304,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
       const lastKnownData = TransactionClientService.getLastKnownBalance(restoredWallet.address);
       if (lastKnownData && lastKnownData.balance > 0) {
         setBalance(lastKnownData.balance);
+        setBalanceStatus('stale');
       }
 
       // Initialize wallet with subscription for real-time updates
@@ -299,6 +312,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
         restoredWallet.address,
         (data) => {
           setBalance(data.balance);
+          setBalanceStatus('live');
         },
         (processed, total, currentTx) => {
           // Set processing progress during initial transaction loading
@@ -352,6 +366,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
       const lastKnownData = TransactionClientService.getLastKnownBalance(restoredWallet.address);
       if (lastKnownData && lastKnownData.balance > 0) {
         setBalance(lastKnownData.balance);
+        setBalanceStatus('stale');
       }
 
       // Initialize wallet with subscription for real-time updates
@@ -359,6 +374,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
         restoredWallet.address,
         (data) => {
           setBalance(data.balance);
+          setBalanceStatus('live');
         },
         (processed, total, currentTx) => {
           // Set processing progress during initial transaction loading
@@ -455,24 +471,36 @@ export function WalletProvider({ children }: WalletProviderProps) {
     if (!wallet || !address) return;
 
     try {
-      // Force a fresh balance check from the Electrum server
-      // Adding a forceRefresh parameter to bypass any caching
-      const newBalance = await wallet.getBalance(address, true);
+      // Force a fresh balance check from the Electrum server, and keep track of whether the
+      // number we got back is the server's answer or a fallback — the UI shows the difference.
+      const detailed = await wallet.getBalanceDetailed(address, true);
 
-      // Update the balance in the UI
-      setBalance(newBalance);
+      if (detailed.source === 'live' || detailed.source === 'cache') {
+        setBalance(detailed.balance);
+        setBalanceStatus('live');
 
-      // Also update the last known balance in local storage
-      try {
-        const { TransactionClientService } = await import(
-          '@/services/notifications/client/TransactionClientService'
-        );
-        TransactionClientService.saveLastKnownBalance(newBalance, address);
-      } catch (storageError) {
-        walletContextLogger.error('Failed to update last known balance in storage:', storageError);
+        // Also update the last known balance in local storage
+        try {
+          const { TransactionClientService } =
+            await import('@/services/notifications/client/TransactionClientService');
+          TransactionClientService.saveLastKnownBalance(detailed.balance, address);
+        } catch (storageError) {
+          walletContextLogger.error(
+            'Failed to update last known balance in storage:',
+            storageError,
+          );
+        }
+      } else if (detailed.source === 'stored') {
+        setBalance(detailed.balance);
+        setBalanceStatus('stale');
+      } else {
+        // Nothing usable came back. Keep the last number we showed, but stop claiming it is
+        // current; if we never had one, it stays unknown and renders as unavailable.
+        setBalanceStatus((prev) => (prev === 'live' ? 'stale' : prev));
       }
     } catch (error) {
       walletContextLogger.error('Failed to update balance:', error);
+      setBalanceStatus((prev) => (prev === 'live' ? 'stale' : prev));
     }
   }, [wallet, address]);
 
@@ -647,6 +675,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
               const balances = JSON.parse(balancesStr);
               if (balances[activeWallet.address] && balances[activeWallet.address].balance > 0) {
                 setBalance(balances[activeWallet.address].balance);
+                setBalanceStatus('stale');
               }
             }
           } catch (error) {
@@ -655,15 +684,19 @@ export function WalletProvider({ children }: WalletProviderProps) {
 
           // Get the balance for the newly active wallet
           // Force refresh to ensure we get the latest balance from the server
-          const newBalance = await wallet.getBalance(activeWallet.address, true);
-          setBalance(newBalance);
+          const detailed = await wallet.getBalanceDetailed(activeWallet.address, true);
+          if (detailed.source !== 'unknown') {
+            setBalance(detailed.balance);
+            setBalanceStatus(detailed.source === 'stored' ? 'stale' : 'live');
+          }
 
           // Save the initial balance for this wallet if we're switching to it
           // This prevents false balance change notifications when switching wallets
-          const { TransactionClientService } = await import(
-            '@/services/notifications/client/TransactionClientService'
-          );
-          TransactionClientService.saveLastKnownBalance(newBalance, activeWallet.address);
+          if (detailed.source === 'live' || detailed.source === 'cache') {
+            const { TransactionClientService } =
+              await import('@/services/notifications/client/TransactionClientService');
+            TransactionClientService.saveLastKnownBalance(detailed.balance, activeWallet.address);
+          }
 
           // Subscribe to updates for the new wallet address immediately
           try {
@@ -671,6 +704,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
               // Update UI when wallet has updates
               if (data && data.balance !== undefined) {
                 setBalance(data.balance);
+                setBalanceStatus('live');
 
                 // Also update the last known balance when we get updates
                 import('@/services/notifications/client/TransactionClientService').then(
@@ -715,16 +749,19 @@ export function WalletProvider({ children }: WalletProviderProps) {
                 // Update balance again after refreshing transactions
                 // Force refresh to ensure we get the latest balance from the server
                 wallet
-                  .getBalance(activeWallet.address, true)
-                  .then(async (finalBalance) => {
-                    setBalance(finalBalance);
+                  .getBalanceDetailed(activeWallet.address, true)
+                  .then(async (finalDetailed) => {
+                    if (finalDetailed.source === 'unknown') {
+                      return; // Nothing usable; keep whatever we last showed.
+                    }
+                    setBalance(finalDetailed.balance);
+                    setBalanceStatus(finalDetailed.source === 'stored' ? 'stale' : 'live');
 
                     // Update the saved balance after refreshing transactions
-                    const { TransactionClientService } = await import(
-                      '@/services/notifications/client/TransactionClientService'
-                    );
+                    const { TransactionClientService } =
+                      await import('@/services/notifications/client/TransactionClientService');
                     TransactionClientService.saveLastKnownBalance(
-                      finalBalance,
+                      finalDetailed.balance,
                       activeWallet.address,
                     );
 
@@ -747,6 +784,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
         setAddress('');
         setIsEncrypted(false);
         setBalance(0);
+        setBalanceStatus('unknown');
       }
     } catch (error) {
       walletContextLogger.error('Error reloading active wallet:', error);
@@ -811,6 +849,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
         (newBalance) => {
           // Update balance after processing
           setBalance(newBalance);
+          setBalanceStatus('live');
         },
       );
 
@@ -859,6 +898,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
           (newBalance) => {
             // Update balance periodically during processing
             setBalance(newBalance);
+            setBalanceStatus('live');
           },
         );
 
@@ -886,6 +926,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
     wallet,
     electrum,
     balance,
+    balanceStatus,
     address,
     isEncrypted,
     isLoading,
@@ -910,12 +951,20 @@ export function WalletProvider({ children }: WalletProviderProps) {
       if (!wallet) throw new Error('Wallet service not initialized');
       try {
         setIsLoading(true);
-        const newWallet = await wallet.importWalletFromDescriptor({ name, descriptor, password, makeActive: true });
+        const newWallet = await wallet.importWalletFromDescriptor({
+          name,
+          descriptor,
+          password,
+          makeActive: true,
+        });
         setAddress(newWallet.address);
         setIsEncrypted(true);
         await wallet.initializeWallet(
           newWallet.address,
-          (data) => { setBalance(data.balance); },
+          (data) => {
+            setBalance(data.balance);
+            setBalanceStatus('live');
+          },
           (processed, total, currentTx) => {
             setProcessingProgress({ isProcessing: total > 0, processed, total, currentTx });
           },
