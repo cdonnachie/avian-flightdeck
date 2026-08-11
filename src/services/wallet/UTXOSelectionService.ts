@@ -466,6 +466,49 @@ export class UTXOSelectionService {
   }
 
   /**
+   * The most candidates best-fit will enumerate combinations over. The exhaustive search below is
+   * O(pool^4); left unbounded, a wallet with a few hundred UTXOs (common after receiving lots of
+   * small payments) generates hundreds of millions of arrays and freezes the tab. Capping the
+   * pool keeps the search to at most C(35,4) ≈ 52k combinations. Wallets at or below the cap are
+   * unaffected — they get the exact same exhaustive result as before.
+   */
+  private static readonly MAX_BEST_FIT_CANDIDATES = 35;
+
+  /**
+   * Reduces a large UTXO set to a bounded pool that still contains the combinations best-fit
+   * cares about — those producing the least change.
+   *
+   * Two kinds of candidate matter, and both are kept:
+   * - the smallest UTXOs at or above the target, which are the tightest single-input matches
+   *   (any single UTXO >= target has change = value - target, minimised by the smallest such);
+   * - the largest UTXOs below the target, which are the best building blocks for reaching it in
+   *   two to four inputs.
+   *
+   * This is a heuristic: it can miss an optimum that would need mid-range UTXOs combined across
+   * many inputs, but best-fit is capped at four inputs anyway, and selectBestFit falls back to a
+   * greedy selection when this returns nothing usable. The input is assumed sorted descending.
+   */
+  private static capBestFitCandidates(
+    sortedDesc: EnhancedUTXO[],
+    totalRequired: number,
+    cap: number,
+  ): EnhancedUTXO[] {
+    if (sortedDesc.length <= cap) {
+      return sortedDesc;
+    }
+
+    const atOrAbove = sortedDesc.filter((utxo) => utxo.value >= totalRequired);
+    const below = sortedDesc.filter((utxo) => utxo.value < totalRequired);
+
+    // Up to five tightest single-input matches (the smallest of the at-or-above group).
+    const boundary = atOrAbove.slice(Math.max(0, atOrAbove.length - 5));
+    // Fill the remaining budget with the largest building blocks below the target.
+    const buildingBlocks = below.slice(0, cap - boundary.length);
+
+    return [...boundary, ...buildingBlocks].sort((a, b) => b.value - a.value);
+  }
+
+  /**
    * Find best fit combination with minimal change
    */
   private static findBestFitCombination(
@@ -474,7 +517,14 @@ export class UTXOSelectionService {
     maxInputs: number,
   ): UTXOSelectionResult | null {
     // Sort by value descending for better branch and bound performance
-    const sorted = [...utxos].sort((a, b) => b.value - a.value);
+    const fullySorted = [...utxos].sort((a, b) => b.value - a.value);
+
+    // Bound the search so a large wallet cannot freeze the tab; small wallets are unaffected.
+    const sorted = this.capBestFitCandidates(
+      fullySorted,
+      totalRequired,
+      this.MAX_BEST_FIT_CANDIDATES,
+    );
 
     let bestResult: UTXOSelectionResult | null = null;
     let bestChange = Infinity;
