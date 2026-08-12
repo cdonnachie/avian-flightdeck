@@ -4,6 +4,48 @@ import React from 'react';
 import { RefreshCw, Loader, Copy } from 'lucide-react';
 
 /**
+ * Animate a number toward `target`, easing from its previous value (0 on first mount) over ~1.2s —
+ * the balance "spins up" like an instrument coming online, and eases to each new value after a
+ * refresh. Honours prefers-reduced-motion (and Playwright's reduced-motion emulation) by jumping
+ * straight to the target.
+ */
+function useCountUp(target: number): number {
+    const [value, setValue] = React.useState(0);
+    const fromRef = React.useRef(0);
+    const rafRef = React.useRef<number | undefined>(undefined);
+
+    React.useEffect(() => {
+        const from = fromRef.current;
+        fromRef.current = target;
+
+        const reduce =
+            typeof window !== 'undefined' &&
+            !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        if (reduce || from === target || !Number.isFinite(target)) {
+            setValue(target);
+            return;
+        }
+
+        let start: number | null = null;
+        const step = (ts: number) => {
+            if (start === null) start = ts;
+            const t = Math.min((ts - start) / 1200, 1);
+            const eased = 1 - Math.pow(1 - t, 3);
+            setValue(from + (target - from) * eased);
+            if (t < 1) rafRef.current = requestAnimationFrame(step);
+            else setValue(target);
+        };
+        rafRef.current = requestAnimationFrame(step);
+
+        return () => {
+            if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        };
+    }, [target]);
+
+    return value;
+}
+
+/**
  * BalanceInstrument — the wallet's primary flight display.
  *
  * An always-dark "cockpit" surface (in both light and dark themes) carrying the
@@ -52,6 +94,9 @@ export function BalanceInstrument({
     onCopy,
     className = '',
 }: BalanceInstrumentProps) {
+    // The figure spins up from 0 on load and eases to each new value after a refresh.
+    const displayBalance = useCountUp(balance);
+
     return (
         <section
             className={`relative overflow-hidden rounded-2xl border border-[#24404A] bg-[linear-gradient(180deg,#163139,#122730)] shadow-[0_30px_60px_-40px_rgba(0,0,0,0.8)] ${className}`}
@@ -102,7 +147,7 @@ export function BalanceInstrument({
                         </span>
                     ) : (
                         <>
-                            <span className="break-all">{`${formatBalance(balance)} AVN`}</span>
+                            <span className="break-all">{`${formatBalance(displayBalance)} AVN`}</span>
                             {balanceStatus === 'stale' && (
                                 <span
                                     data-testid="balance-stale"
