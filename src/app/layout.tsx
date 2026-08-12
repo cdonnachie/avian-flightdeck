@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter, Roboto_Mono } from 'next/font/google';
+import localFont from 'next/font/local';
 import { ThemeProvider } from 'next-themes';
 import './globals.css';
 import './vendor-prefixes.css';
@@ -15,8 +15,18 @@ const ServiceWorkerRegistrar = dynamic(() => import('@/components/ServiceWorkerR
 import ElectrumManagerWrapper from '@/components/ElectrumManagerWrapper';
 import ClientWatchedAddressWrapper from '@/components/ClientWatchedAddressWrapper';
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
-const robotoMono = Roboto_Mono({ subsets: ['latin'], variable: '--font-roboto-mono' });
+const inter = localFont({
+  src: '../../public/fonts/inter-latin-wght-normal.woff2',
+  variable: '--font-inter',
+  weight: '100 900',
+  display: 'swap',
+});
+const robotoMono = localFont({
+  src: '../../public/fonts/roboto-mono-latin-wght-normal.woff2',
+  variable: '--font-roboto-mono',
+  weight: '100 700',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'Avian FlightDeck',
