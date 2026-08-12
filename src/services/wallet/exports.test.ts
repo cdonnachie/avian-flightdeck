@@ -178,7 +178,7 @@ describe('exportActiveWalletPrivateKey', () => {
 
     // The stored blob should now be scrypt/AES-GCM hex, not the old base64 form.
     const stored = await StorageService.getWalletById(created.id!);
-    expect(stored?.privateKey).toMatch(/^[0-9a-f]+$/);
+    expect(stored?.privateKey).toMatch(/^v2\./);
     expect(stored?.privateKey).not.toBe(created.privateKey);
   });
 });

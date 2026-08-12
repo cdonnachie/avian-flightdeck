@@ -98,7 +98,11 @@ test.describe('acceptance: the signature verifies in Message Utilities', () => {
     await walletPage.getByRole('button', { name: 'signMessage()', exact: true }).click();
     await approvalDialog(popup).getByRole('button', { name: 'Sign', exact: true }).click();
     await authenticate(popup);
-    await expect(walletPage.getByTestId('demo-verification')).toHaveAttribute('data-valid', 'true');
+    // Signing decrypts the key with scrypt (hardened to ~64 MB), which is deliberately slow and
+    // slower still under parallel e2e workers — give it headroom beyond the default expect timeout.
+    await expect(walletPage.getByTestId('demo-verification')).toHaveAttribute('data-valid', 'true', {
+      timeout: 30_000,
+    });
 
     // Take the full signature from the demo's own session, the way a user would copy it.
     const signature = await walletPage.evaluate(
@@ -128,7 +132,11 @@ test.describe('acceptance: the signature verifies in Message Utilities', () => {
     await walletPage.getByRole('button', { name: 'signMessage()', exact: true }).click();
     await approvalDialog(popup).getByRole('button', { name: 'Sign', exact: true }).click();
     await authenticate(popup);
-    await expect(walletPage.getByTestId('demo-verification')).toHaveAttribute('data-valid', 'true');
+    // Signing decrypts the key with scrypt (hardened to ~64 MB), which is deliberately slow and
+    // slower still under parallel e2e workers — give it headroom beyond the default expect timeout.
+    await expect(walletPage.getByTestId('demo-verification')).toHaveAttribute('data-valid', 'true', {
+      timeout: 30_000,
+    });
 
     const signature = await walletPage.evaluate(
       () => JSON.parse(sessionStorage.getItem('avian-connect-demo') || '{}').signature as string,

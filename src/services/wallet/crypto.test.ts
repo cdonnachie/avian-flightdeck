@@ -104,18 +104,33 @@ describe('purposeForAddressType', () => {
 describe('secureEncrypt / decryptData', () => {
   const password = 'a-sufficiently-long-password';
 
-  it('round-trips a secret', async () => {
+  it('round-trips a secret and writes the current v2 format', async () => {
     const encrypted = await secureEncrypt('super secret mnemonic words', password);
-    const { decrypted, wasLegacy } = await decryptData(encrypted, password);
+    const { decrypted, wasLegacy, format } = await decryptData(encrypted, password);
 
     expect(decrypted).toBe('super secret mnemonic words');
     expect(wasLegacy).toBe(false);
+    expect(format).toBe('v2');
+  });
+
+  it('still decrypts a pre-hardening v1 ciphertext, so existing wallets keep opening', async () => {
+    // A real blob produced by the original N=16384 (v1) format. Generated once with the old
+    // parameters; existing wallets are sealed exactly like this and must never be stranded.
+    const v1Blob =
+      '7519b19070904c1411d9b13e1cf346081b8c9214501fd8a4278eae2685834ad09ec3731e2dd16448524d5a365319fa341037670e21c00595269dd356ac36af991465e08826a87069335f48e227f00ec3888fa2551702e9840e991a449c5ded107b6f12ad5b56086a6f98468c844084f4d8038b57f38ad5';
+    const { decrypted, wasLegacy, format } = await decryptData(v1Blob, 'golden-test-password');
+
+    expect(decrypted).toBe('golden v1 secret phrase');
+    expect(wasLegacy).toBe(false);
+    expect(format).toBe('v1');
   });
 
   it('never emits the plaintext', async () => {
-    const encrypted = await secureEncrypt('L1aW4aubDFB7yfras2S1mN3bqg9nwySY8nkoLmJebSLD5BWv3ENZ', password);
-    expect(encrypted).not.toContain('L1aW4aubDFB7yfras2S1mN3bqg9nwySY8nkoLmJebSLD5BWv3ENZ');
-    expect(encrypted).toMatch(/^[0-9a-f]+$/);
+    const secret = 'L1aW4aubDFB7yfras2S1mN3bqg9nwySY8nkoLmJebSLD5BWv3ENZ';
+    const encrypted = await secureEncrypt(secret, password);
+    expect(encrypted).not.toContain(secret);
+    // The current format is versioned and self-describing: v2.<base64 header>.<base64 body>.
+    expect(encrypted).toMatch(/^v2\.[A-Za-z0-9+/=]+\.[A-Za-z0-9+/=]+$/);
   });
 
   it('produces a different ciphertext every time, so salt and IV are not reused', async () => {
@@ -123,8 +138,9 @@ describe('secureEncrypt / decryptData', () => {
     const second = await secureEncrypt('same input', password);
 
     expect(first).not.toBe(second);
-    // Salt is the leading 16 bytes; identical salts would mean a broken RNG.
-    expect(first.slice(0, 32)).not.toBe(second.slice(0, 32));
+    // The v2 header is deterministic (same KDF params); the salt and IV live in the body, which
+    // must differ every time or the RNG is broken.
+    expect(first.split('.')[2]).not.toBe(second.split('.')[2]);
   });
 
   it('refuses the wrong password', async () => {
@@ -136,10 +152,12 @@ describe('secureEncrypt / decryptData', () => {
 
   it('refuses tampered ciphertext, because the payload is authenticated', async () => {
     const encrypted = await secureEncrypt('secret', password);
-    // Flip a byte in the ciphertext body, past salt, IV and tag.
+    // Corrupt a character in the base64 body (past the `v2.` prefix and the header).
+    const dot = encrypted.lastIndexOf('.');
+    const body = encrypted.slice(dot + 1);
+    const at = Math.floor(body.length / 2);
     const tampered =
-      encrypted.slice(0, encrypted.length - 2) +
-      (encrypted.slice(-2) === 'ff' ? '00' : 'ff');
+      encrypted.slice(0, dot + 1) + body.slice(0, at) + (body[at] === 'A' ? 'B' : 'A') + body.slice(at + 1);
 
     await expect(decryptData(tampered, password)).rejects.toThrow(
       /Invalid password or corrupted data/,
