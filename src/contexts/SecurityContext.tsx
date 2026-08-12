@@ -42,6 +42,34 @@ interface SecurityContextType {
 
 const SecurityContext = createContext<SecurityContextType | undefined>(undefined);
 
+// A manual "lock now" is remembered here so it survives a page refresh even when the opt-in
+// open-time wall is disabled. sessionStorage (not localStorage) is deliberate: the lock holds
+// across reloads of the same tab, but closing the tab clears it — reopening then honours the
+// user's open-time setting (no wall if they turned it off).
+const MANUAL_LOCK_KEY = 'avian-manual-lock';
+
+function setManualLockFlag(on: boolean) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (on) {
+      sessionStorage.setItem(MANUAL_LOCK_KEY, '1');
+    } else {
+      sessionStorage.removeItem(MANUAL_LOCK_KEY);
+    }
+  } catch {
+    // sessionStorage can throw in locked-down privacy modes; a non-durable lock is acceptable then.
+  }
+}
+
+function isManuallyLocked(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return sessionStorage.getItem(MANUAL_LOCK_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 interface SecurityProviderProps {
   children: ReactNode;
 }
@@ -109,10 +137,16 @@ export function SecurityProvider({ children }: SecurityProviderProps) {
 
         const activeWallet = await StorageService.getActiveWallet();
 
-        // Only ever raise the wall on start when the user opted in AND a wallet exists. Otherwise
+        // Raise the wall on start when a wallet exists AND either the user opted into the open-time
+        // wall, or they manually locked earlier this session (which persists across refresh). A
+        // manual lock always wins; otherwise fall back to the service's locked state. With neither,
         // the wallet loads read-only and sensitive actions prompt on demand.
-        if (activeWallet && wallEnabled) {
-          setScreenLocked(await securityService.isLocked());
+        const manuallyLocked = isManuallyLocked();
+        if (activeWallet && (wallEnabled || manuallyLocked)) {
+          setScreenLocked(manuallyLocked || (await securityService.isLocked()));
+          if (manuallyLocked) {
+            setLockReason('manual');
+          }
         } else {
           setScreenLocked(false);
         }
@@ -214,7 +248,9 @@ export function SecurityProvider({ children }: SecurityProviderProps) {
   }, []);
 
   const lockWallet = async () => {
-    // A manual lock raises the wall and forgets the session password.
+    // A manual lock raises the wall and forgets the session password. Remember it so a refresh
+    // keeps the wall up even when the open-time wall is disabled.
+    setManualLockFlag(true);
     await securityService.lockWallet('manual');
     setScreenLocked(true);
     setLockReason('manual');
@@ -229,6 +265,7 @@ export function SecurityProvider({ children }: SecurityProviderProps) {
       if (biometricAvailable) {
         const biometricResult = await securityService.authenticateWithBiometric();
         if (biometricResult.success) {
+          setManualLockFlag(false);
           setWasBiometricAuth(true);
           setStoredWalletPassword(biometricResult.walletPassword);
           setScreenLocked(false);
@@ -240,6 +277,7 @@ export function SecurityProvider({ children }: SecurityProviderProps) {
     } else {
       const success = await securityService.unlockWallet(password, false);
       if (success) {
+        setManualLockFlag(false);
         setScreenLocked(false);
         setWasBiometricAuth(false);
         // Store the password if provided
@@ -332,6 +370,7 @@ export function SecurityProvider({ children }: SecurityProviderProps) {
   };
 
   const manualLock = async () => {
+    setManualLockFlag(true);
     await securityService.lockWallet('manual');
     setScreenLocked(true);
     setLockReason('manual');
@@ -343,6 +382,8 @@ export function SecurityProvider({ children }: SecurityProviderProps) {
   // so the key is available for the rest of the session; a biometric unlock does not (the next
   // sensitive action re-runs the quick biometric prompt).
   const handleUnlock = (password?: string) => {
+    // A successful unlock clears any remembered manual lock, so a later refresh does not re-lock.
+    setManualLockFlag(false);
     setScreenLocked(false);
     if (password) {
       setStoredWalletPassword(password);
