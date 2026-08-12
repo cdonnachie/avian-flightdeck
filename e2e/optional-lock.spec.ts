@@ -53,4 +53,38 @@ test.describe('optional lock screen', () => {
       page.getByText(WALLET_ADDRESS).filter({ visible: true }).first(),
     ).toBeVisible({ timeout: 30_000 });
   });
+
+  test('manual lock survives a refresh even when the open-time wall is off', async ({ page }) => {
+    await page.routeWebSocket(/.*/, (ws) => ws.close());
+    await acceptTerms(page);
+    await seedWallet(page);
+    await setScreenLock(page, false); // no open-time wall
+
+    // The dashboard loads read-only (no wall). Lock manually via the nav button.
+    const lockButton = page.getByRole('button', { name: 'Lock wallet' });
+    await expect(lockButton).toBeVisible({ timeout: 30_000 });
+    await lockButton.click();
+
+    // The wall appears.
+    await expect(page.getByRole('button', { name: 'Unlock', exact: true })).toBeVisible({
+      timeout: 30_000,
+    });
+
+    // A refresh keeps the wall up — the manual lock is remembered for the session.
+    await page.reload();
+    await expect(page.getByRole('button', { name: 'Unlock', exact: true })).toBeVisible({
+      timeout: 30_000,
+    });
+
+    // Unlocking clears the remembered lock; the wall goes and does not return on the next refresh.
+    await page.getByPlaceholder('Password').fill(WALLET_PASSWORD);
+    await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+    await expect(page.getByText('Wallet locked')).toBeHidden({ timeout: 60_000 });
+
+    await page.reload();
+    await expect(
+      page.getByText(WALLET_ADDRESS).filter({ visible: true }).first(),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText('Wallet locked')).toHaveCount(0);
+  });
 });
