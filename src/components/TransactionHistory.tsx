@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
+  Inbox,
 } from 'lucide-react';
 
 import {
@@ -27,7 +28,29 @@ import {
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
+import { Skeleton } from '@/components/ui/skeleton';
+import { EmptyState } from '@/components/EmptyState';
 import { toast } from 'sonner';
+
+// Loading placeholder that mirrors the transaction-row layout, so the list settles into place
+// rather than flashing a bare spinner.
+function TxRowSkeleton() {
+  return (
+    <div className="p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <Skeleton className="h-10 w-10 flex-shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-2 py-1">
+            <Skeleton className="h-3.5 w-24" />
+            <Skeleton className="h-3 w-44" />
+            <Skeleton className="h-3 w-20" />
+          </div>
+        </div>
+        <Skeleton className="h-4 w-20 flex-shrink-0" />
+      </div>
+    </div>
+  );
+}
 
 interface TransactionData {
   id?: number;
@@ -441,34 +464,21 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
       <CardContent className="p-0">
         <div className="max-h-[500px] overflow-y-auto">
           {isLoading ? (
-            <div className="flex items-center justify-center p-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-              <span className="ml-2 text-muted-foreground">Loading transactions...</span>
+            <div className="divide-y divide-border" aria-busy="true" aria-label="Loading transactions">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <TxRowSkeleton key={i} />
+              ))}
             </div>
           ) : paginatedTransactions.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="text-muted-foreground mb-2">
-                <svg
-                  className="w-16 h-16 mx-auto"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1}
-                    d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
-                  />
-                </svg>
-              </div>
-              <p className="text-muted-foreground text-lg">
-                {filter === 'all' ? 'No transactions found' : `No ${filter} transactions found`}
-              </p>
-              <p className="text-muted-foreground text-sm mt-1">
-                Transactions will appear here once you start using your wallet
-              </p>
-            </div>
+            <EmptyState
+              icon={Inbox}
+              title={filter === 'all' ? 'No transactions yet' : `No ${filter} transactions`}
+              description={
+                filter === 'all'
+                  ? 'When you receive or send AVN, it shows up here with live confirmations.'
+                  : `Nothing matches the ${filter} filter yet.`
+              }
+            />
           ) : (
             <div className="divide-y divide-border">
               {paginatedTransactions.map((tx) => (

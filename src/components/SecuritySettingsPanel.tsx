@@ -15,6 +15,7 @@ import {
   Info,
   AlertTriangle,
 } from 'lucide-react';
+import { EmptyState } from '@/components/EmptyState';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { cn } from '@/lib/utils';
 
@@ -612,11 +613,11 @@ export default function SecuritySettingsPanel({
             </div>
 
             {filteredAuditLog.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <FileText className="h-10 w-10 mx-auto mb-2 opacity-50" />
-                <p>No audit log entries found</p>
-                <p className="text-sm">Security events will appear here when they occur</p>
-              </div>
+              <EmptyState
+                icon={FileText}
+                title="No audit log entries"
+                description="Security events like unlocks and setting changes will appear here as they happen."
+              />
             ) : (
               <>
                 <div className="space-y-3">
