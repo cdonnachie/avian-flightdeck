@@ -9,6 +9,7 @@ import WalletCreationForm, {
     WalletCreationMode,
     WalletCreationData,
 } from '@/components/WalletCreationForm';
+import OnboardingCreateWallet from '@/components/OnboardingCreateWallet';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { BackupService } from '@/services/core/BackupService';
 import { BackupQRModal } from '@/components/BackupQRModal';
@@ -313,27 +314,42 @@ export default function OnboardingPage() {
         </div>
     );
 
-    const renderForm = () => (
-        <div className="max-w-lg mx-auto">
-            <div className="text-center mb-8">
-                <Button variant="ghost" onClick={() => setStep('method')} className="mb-4">
-                    <ArrowLeft className="w-4 h-4 mr-2" /> Back
-                </Button>
-                <h1 className="text-3xl font-bold mb-2">
-                    {formMode === 'create' && 'Create New Wallet'}
-                    {formMode === 'importMnemonic' && 'Import from Mnemonic'}
-                    {formMode === 'importWIF' && 'Import Private Key'}
-                </h1>
-            </div>
+    const renderForm = () => {
+        // Create gets the guided, confirm-your-backup wizard; imports keep the direct form.
+        if (formMode === 'create') {
+            return (
+                <div className="max-w-lg mx-auto">
+                    <OnboardingCreateWallet
+                        onSubmit={handleFormSubmit}
+                        onCancel={() => setStep('method')}
+                        isSubmitting={isSubmitting}
+                    />
+                </div>
+            );
+        }
 
-            <WalletCreationForm
-                mode={formMode}
-                onSubmit={handleFormSubmit}
-                onCancel={() => setStep('method')}
-                isSubmitting={isSubmitting}
-            />
-        </div>
-    );
+        return (
+            <div className="max-w-lg mx-auto">
+                <div className="text-center mb-8">
+                    <Button variant="ghost" onClick={() => setStep('method')} className="mb-4">
+                        <ArrowLeft className="w-4 h-4 mr-2" /> Back
+                    </Button>
+                    <h1 className="text-3xl font-bold mb-2">
+                        {formMode === 'importMnemonic' && 'Import from Mnemonic'}
+                        {formMode === 'importWIF' && 'Import Private Key'}
+                        {formMode === 'importDescriptor' && 'Import from Descriptor'}
+                    </h1>
+                </div>
+
+                <WalletCreationForm
+                    mode={formMode}
+                    onSubmit={handleFormSubmit}
+                    onCancel={() => setStep('method')}
+                    isSubmitting={isSubmitting}
+                />
+            </div>
+        );
+    };
 
     const renderBackupFile = () => (
         <div className="max-w-lg mx-auto space-y-6">
