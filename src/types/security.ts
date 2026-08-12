@@ -54,6 +54,10 @@ export interface AutoLockSettings {
   timeout: number; // in milliseconds
   biometricUnlock: boolean;
   requirePasswordAfterTimeout: boolean;
+  // Opt-in full-screen password wall shown when opening the wallet. Default false (the wallet
+  // loads read-only and only key-using actions prompt). `undefined` in stored settings means a
+  // pre-existing install that predates this toggle — migrated to `true` to preserve its wall.
+  screenLockEnabled?: boolean;
 }
 
 export interface SecuritySettings {

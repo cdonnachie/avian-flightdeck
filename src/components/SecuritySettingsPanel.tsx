@@ -372,6 +372,27 @@ export default function SecuritySettingsPanel({
               <Separator />
 
               <div className="space-y-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <Label htmlFor="screen-lock-enabled">Require password to open the wallet</Label>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      When off, the wallet opens read-only (balance, address, history) and only asks
+                      for your password to send, export, or sign.
+                    </p>
+                  </div>
+                  <Switch
+                    id="screen-lock-enabled"
+                    checked={settings.autoLock.screenLockEnabled === true}
+                    onCheckedChange={(checked) =>
+                      handleSettingsUpdate({
+                        autoLock: { ...settings.autoLock, screenLockEnabled: checked },
+                      })
+                    }
+                  />
+                </div>
+
+                <Separator />
+
                 <div className="flex items-center justify-between">
                   <Label htmlFor="auto-lock-enabled" className="flex-1">
                     Enable auto-lock

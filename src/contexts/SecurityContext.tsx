@@ -5,6 +5,7 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useRef,
   ReactNode,
   useCallback,
 } from 'react';
@@ -17,6 +18,16 @@ import Image from 'next/image';
 import GradientBackground from '@/components/GradientBackground';
 
 interface SecurityContextType {
+  /** The opt-in full-screen password wall is showing. */
+  screenLocked: boolean;
+  /** The wallet password is held in memory for silent re-auth this session. */
+  keyUnlocked: boolean;
+  /** Whether the screen-lock wall is enabled (opt-in; from settings). */
+  screenLockEnabled: boolean;
+  /**
+   * @deprecated Use `screenLocked` (the UI wall) or `keyUnlocked` (credential availability).
+   * Kept as an alias of `screenLocked` for existing consumers (the lock button).
+   */
   isLocked: boolean;
   lockWallet: () => Promise<void>;
   unlockWallet: (password?: string, useBiometric?: boolean) => Promise<boolean>;
@@ -47,7 +58,10 @@ export function SecurityProvider({ children }: SecurityProviderProps) {
   }
 
   const [isInitializing, setIsInitializing] = useState(true); // Add initializing state
-  const [isLocked, setIsLocked] = useState(false);
+  // The opt-in full-screen wall (was `isLocked`). Split from credential availability so the wallet
+  // can load read-only without a password by default; see docs/proposals/optional-lock-screen.md.
+  const [screenLocked, setScreenLocked] = useState(false);
+  const [screenLockEnabled, setScreenLockEnabled] = useState(false);
   const [lockReason, setLockReason] = useState<'timeout' | 'manual' | 'failed_auth'>('manual');
   const [wasBiometricAuth, setWasBiometricAuth] = useState(false);
   const [storedWalletPassword, setStoredWalletPassword] = useState<string | undefined>();
@@ -60,34 +74,51 @@ export function SecurityProvider({ children }: SecurityProviderProps) {
     ((value: { success: boolean; password?: string }) => void) | null
   >(null);
 
+  // Credential availability: the password is in memory, so requireAuth can silently re-auth.
+  const keyUnlocked = storedWalletPassword !== undefined;
+
+  // Read in event callbacks that outlive the render they were created in.
+  const screenLockEnabledRef = useRef(false);
+  const screenLockedRef = useRef(false);
   useEffect(() => {
-    // Initialize security service and check if wallet should be locked
+    screenLockEnabledRef.current = screenLockEnabled;
+  }, [screenLockEnabled]);
+  useEffect(() => {
+    screenLockedRef.current = screenLocked;
+  }, [screenLocked]);
+
+  useEffect(() => {
+    // Initialize security service and check if the wall should be shown
     const initSecurity = async () => {
       try {
         // Check terms acceptance FIRST - security requires terms acceptance
         const termsAccepted = localStorage.getItem('terms-accepted');
 
         if (!termsAccepted) {
-          // Terms not accepted, stay unlocked regardless of wallet state
-          setIsLocked(false);
+          // Terms not accepted, no wall regardless of wallet state
+          setScreenLocked(false);
           setIsInitializing(false);
           return;
         }
 
-        // Terms accepted, proceed with normal security checks
+        // Whether the opt-in wall is enabled for this install.
+        const settings = await securityService.getSecuritySettings();
+        const wallEnabled = settings.autoLock?.screenLockEnabled === true;
+        setScreenLockEnabled(wallEnabled);
+        screenLockEnabledRef.current = wallEnabled;
+
         const activeWallet = await StorageService.getActiveWallet();
 
-        // Check if there's an active wallet
-        if (activeWallet) {
-          const isCurrentlyLocked = await securityService.isLocked();
-          setIsLocked(isCurrentlyLocked);
+        // Only ever raise the wall on start when the user opted in AND a wallet exists. Otherwise
+        // the wallet loads read-only and sensitive actions prompt on demand.
+        if (activeWallet && wallEnabled) {
+          setScreenLocked(await securityService.isLocked());
         } else {
-          // If no active wallet, ensure we're unlocked
-          setIsLocked(false);
+          setScreenLocked(false);
         }
       } catch (error) {
-        // Default to unlocked state if there's an error
-        setIsLocked(false);
+        // Default to no wall if there's an error
+        setScreenLocked(false);
       } finally {
         // Mark initialization as complete
         setIsInitializing(false);
@@ -126,12 +157,22 @@ export function SecurityProvider({ children }: SecurityProviderProps) {
     window.addEventListener('focus', handleFocus);
     window.addEventListener('terms-accepted', handleTermsAccepted as EventListener);
 
-    // Listen for lock state changes
+    // Listen for lock state changes from the service (auto-lock timeout, failed-auth, manual).
+    // The wall is only raised for a timeout/failed-auth lock when the user enabled it; a manual
+    // lock always raises it (the user explicitly asked to lock).
     const unsubscribe = securityService.onLockStateChange(
       (locked: boolean, reason?: 'timeout' | 'manual' | 'failed_auth') => {
-        setIsLocked(locked);
+        const raiseWall =
+          locked && (reason === 'manual' || screenLockEnabledRef.current);
+        setScreenLocked(raiseWall);
         if (reason) {
           setLockReason(reason);
+        }
+        // A lock (from any source) forgets the in-memory password, so the next sensitive action
+        // must re-authenticate — this is the credential half of "locking".
+        if (locked) {
+          setStoredWalletPassword(undefined);
+          setWasBiometricAuth(false);
         }
       },
     );
@@ -147,8 +188,8 @@ export function SecurityProvider({ children }: SecurityProviderProps) {
     ];
 
     const handleUserActivity = () => {
-      // Only reset auto-lock if wallet is unlocked
-      if (!isLocked) {
+      // Only reset auto-lock while the wall is not showing
+      if (!screenLockedRef.current) {
         securityService.resetAutoLock();
       }
     };
@@ -168,12 +209,17 @@ export function SecurityProvider({ children }: SecurityProviderProps) {
         window.removeEventListener(eventType, handleUserActivity);
       });
     };
-  }, [isLocked]);
+    // Intentionally run once: the callbacks read the live values through refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const lockWallet = async () => {
-    await securityService.lockWallet();
-    setIsLocked(true);
+    // A manual lock raises the wall and forgets the session password.
+    await securityService.lockWallet('manual');
+    setScreenLocked(true);
     setLockReason('manual');
+    setWasBiometricAuth(false);
+    setStoredWalletPassword(undefined);
   };
 
   const unlockWallet = async (password?: string, useBiometric?: boolean) => {
@@ -185,7 +231,7 @@ export function SecurityProvider({ children }: SecurityProviderProps) {
         if (biometricResult.success) {
           setWasBiometricAuth(true);
           setStoredWalletPassword(biometricResult.walletPassword);
-          setIsLocked(false);
+          setScreenLocked(false);
           return true;
         }
         return false;
@@ -194,7 +240,7 @@ export function SecurityProvider({ children }: SecurityProviderProps) {
     } else {
       const success = await securityService.unlockWallet(password, false);
       if (success) {
-        setIsLocked(false);
+        setScreenLocked(false);
         setWasBiometricAuth(false);
         // Store the password if provided
         if (password) {
@@ -232,12 +278,12 @@ export function SecurityProvider({ children }: SecurityProviderProps) {
     message?: string,
     autoLogin: boolean = false,
   ): Promise<{ success: boolean; password?: string }> => {
-    if (isLocked) {
-      return { success: false };
-    }
-
+    // NOTE: this intentionally no longer early-returns on the UI wall. Authentication is gated on
+    // whether the KEY is available, not on whether the wall is showing — so it works in both the
+    // load-then-authenticate (no wall) and screen-lock (wall) modes. It must still FAIL CLOSED:
+    // the only path that succeeds without prompting requires a password already in memory.
     try {
-      // If password is already stored from previous authentication
+      // If password is already stored from a previous authentication this session
       if (storedWalletPassword && autoLogin) {
         return {
           success: true,
@@ -287,14 +333,21 @@ export function SecurityProvider({ children }: SecurityProviderProps) {
 
   const manualLock = async () => {
     await securityService.lockWallet('manual');
-    setIsLocked(true);
+    setScreenLocked(true);
     setLockReason('manual');
     setWasBiometricAuth(false);
     setStoredWalletPassword(undefined);
   };
 
-  const handleUnlock = () => {
-    setIsLocked(false);
+  // Called by the lock screen when the user unlocks it. A password unlock hands the password back
+  // so the key is available for the rest of the session; a biometric unlock does not (the next
+  // sensitive action re-runs the quick biometric prompt).
+  const handleUnlock = (password?: string) => {
+    setScreenLocked(false);
+    if (password) {
+      setStoredWalletPassword(password);
+      setWasBiometricAuth(false);
+    }
   };
 
   // Show nothing while initializing to prevent flicker
@@ -313,14 +366,13 @@ export function SecurityProvider({ children }: SecurityProviderProps) {
     );
   }
 
-  if (isLocked) {
-    return <SecurityLockScreen onUnlock={handleUnlock} lockReason={lockReason} />;
-  }
-
   return (
     <SecurityContext.Provider
       value={{
-        isLocked,
+        screenLocked,
+        keyUnlocked,
+        screenLockEnabled,
+        isLocked: screenLocked,
         lockWallet,
         unlockWallet,
         requireAuth,
@@ -329,7 +381,14 @@ export function SecurityProvider({ children }: SecurityProviderProps) {
         storedWalletPassword,
       }}
     >
-      {children}
+      {/* The provider is always mounted (so requireAuth works and the default no-wall mode loads
+          the wallet read-only). When the opt-in wall is up we render it in place of the wallet
+          subtree — there is no read-only view to show behind a full-screen wall anyway. */}
+      {screenLocked ? (
+        <SecurityLockScreen onUnlock={handleUnlock} lockReason={lockReason} />
+      ) : (
+        children
+      )}
       <AuthenticationDialog
         isOpen={showAuthDialog}
         onClose={handleAuthCancel}
