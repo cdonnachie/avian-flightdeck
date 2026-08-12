@@ -9,7 +9,8 @@ import {
     Lock,
     Unlock,
     HelpCircle,
-    Server,
+    Shield,
+    ChevronRight,
 } from 'lucide-react';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSecurity } from '@/contexts/SecurityContext';
@@ -42,7 +43,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function Home() {
     const router = useRouter();
-    const { wallet, balance, balanceStatus, address, isLoading, processingProgress, updateBalance } = useWallet();
+    const { wallet, balance, balanceStatus, address, isLoading, isEncrypted, processingProgress, updateBalance } = useWallet();
     const { lockWallet, isLocked } = useSecurity();
     const [activeTab, setActiveTab] = useState<'send' | 'receive' | 'history'>('send');
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -322,55 +323,107 @@ export default function Home() {
                     onCopy={handleCopyAddress}
                 />
 
-                <div className="grid grid-cols-12 gap-8">
-                    {/* Send Panel - Left top */}
-                    <div className="col-span-12 lg:col-span-6 xl:col-span-6">
-                        <Card className="h-full rounded-none rounded-t-md">
-                            <CardHeader className="flex flex-row items-center gap-2 border-b border-border/60 bg-card px-4 py-3 text-foreground [&_svg]:text-primary rounded-t-md">
-                                <Send className="h-5 w-5 mr-2 flex-shrink-0" />
-                                <CardTitle className="text-lg">Send AVN</CardTitle>
-                            </CardHeader>
-                            <CardContent className="p-0 pt-2">
-                                <SendForm />
-                            </CardContent>
-                        </Card>
+                <div className="grid grid-cols-12 gap-6">
+                    {/* Main column: send/receive + history */}
+                    <div className="col-span-12 space-y-6 xl:col-span-8">
+                        <Tabs
+                            value={activeTab === 'history' ? 'send' : activeTab}
+                            onValueChange={(value) =>
+                                setActiveTab(value as 'send' | 'receive' | 'history')
+                            }
+                        >
+                            <TabsList className="flex h-auto w-full bg-background p-0">
+                                <TabsTrigger
+                                    value="send"
+                                    className="flex-1 flex items-center justify-center px-6 py-3 data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:w-full bg-background rounded-tl-lg text-muted-foreground relative"
+                                >
+                                    <Send className="h-4 w-4 mr-2" /> Send
+                                </TabsTrigger>
+                                <TabsTrigger
+                                    value="receive"
+                                    className="flex-1 flex items-center justify-center px-6 py-3 data-[state=active]:border-primary data-[state=active]:text-primary data-[state=active]:after:h-0.5 data-[state=active]:after:bg-primary data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:w-full bg-background rounded-tr-lg text-muted-foreground relative"
+                                >
+                                    <QrCode className="h-4 w-4 mr-2" /> Receive
+                                </TabsTrigger>
+                            </TabsList>
+                            <Card className="mt-2">
+                                <CardContent className="p-0">
+                                    <TabsContent value="send" className="m-0">
+                                        <SendForm />
+                                    </TabsContent>
+                                    <TabsContent value="receive" className="m-0">
+                                        <ReceiveContent address={address || ''} />
+                                    </TabsContent>
+                                </CardContent>
+                            </Card>
+                        </Tabs>
+
+                        <TransactionHistory className="max-w-none" />
                     </div>
 
-                    {/* Receive Panel - Right top */}
-                    <div className="col-span-12 lg:col-span-6 xl:col-span-6">
-                        <Card className="h-full rounded-t-md">
+                    {/* Right rail: network / wallet / security */}
+                    <div className="col-span-12 space-y-6 xl:col-span-4">
+                        <ConnectionStatus />
+
+                        <Card>
                             <CardHeader className="flex flex-row items-center gap-2 border-b border-border/60 bg-card px-4 py-3 text-foreground [&_svg]:text-primary rounded-t-md">
-                                <QrCode className="h-5 w-5 mr-2 flex-shrink-0" />
-                                <CardTitle className="text-lg">Receive AVN</CardTitle>
+                                <Wallet className="h-5 w-5 mr-2 flex-shrink-0" />
+                                <CardTitle className="text-lg">Wallet</CardTitle>
                             </CardHeader>
-                            <CardContent className="p-0 pt-2">
-                                <ReceiveContent address={address || ''} />
+                            <CardContent className="space-y-4 p-4">
+                                <div>
+                                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                        Balance
+                                    </span>
+                                    <div className="mt-1 break-all font-mono text-lg text-primary">
+                                        {balanceStatus === 'unknown' ? '—' : `${formatBalance(balance)} AVN`}
+                                    </div>
+                                </div>
+                                <div>
+                                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                        Active address
+                                    </span>
+                                    <div className="mt-1 break-all font-mono text-xs text-muted-foreground">
+                                        {address || 'No wallet loaded'}
+                                    </div>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    className="w-full justify-between"
+                                    onClick={() => router.push('/settings/wallet')}
+                                >
+                                    Manage wallets
+                                    <ChevronRight className="h-4 w-4" />
+                                </Button>
                             </CardContent>
                         </Card>
-                    </div>
 
-                    {/* Transaction History - Full width bottom */}
-                    <div className="col-span-12">
-                        <Card className="h-full rounded-t-md">
+                        <Card>
                             <CardHeader className="flex flex-row items-center gap-2 border-b border-border/60 bg-card px-4 py-3 text-foreground [&_svg]:text-primary rounded-t-md">
-                                <History className="h-5 w-5 mr-2 flex-shrink-0" />
-                                <CardTitle className="text-lg">Transaction History</CardTitle>
+                                <Shield className="h-5 w-5 mr-2 flex-shrink-0" />
+                                <CardTitle className="text-lg">Security</CardTitle>
                             </CardHeader>
-                            <CardContent className="p-4">
-                                <TransactionHistory />
-                            </CardContent>
-                        </Card>
-                    </div>
-
-                    {/* Connection Status - Full width at bottom */}
-                    <div className="col-span-12">
-                        <Card className="h-full rounded-t-md">
-                            <CardHeader className="flex flex-row items-center gap-2 border-b border-border/60 bg-card px-4 py-3 text-foreground [&_svg]:text-primary rounded-t-md">
-                                <Server className="h-5 w-5 mr-2 flex-shrink-0" />
-                                <CardTitle className="text-lg">Connection Status</CardTitle>
-                            </CardHeader>
-                            <CardContent className="p-4">
-                                <ConnectionStatus />
+                            <CardContent className="space-y-2.5 p-4 text-sm">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-muted-foreground">Status</span>
+                                    <span className={isLocked ? 'text-caution' : 'text-primary'}>
+                                        {isLocked ? 'Locked' : 'Unlocked'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-muted-foreground">Encryption</span>
+                                    <span className={isEncrypted ? 'text-primary' : 'text-caution'}>
+                                        {isEncrypted ? 'Active' : 'None'}
+                                    </span>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    className="mt-2 w-full justify-between"
+                                    onClick={() => router.push('/settings/security')}
+                                >
+                                    Security settings
+                                    <ChevronRight className="h-4 w-4" />
+                                </Button>
                             </CardContent>
                         </Card>
                     </div>
