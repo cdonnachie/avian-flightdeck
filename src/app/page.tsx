@@ -31,7 +31,7 @@ import WalletSettingsDashboard from '@/components/WalletSettingsDashboard';
 import { TransactionHistory } from '@/components/TransactionHistory';
 import ConnectionStatus from '@/components/ConnectionStatus';
 import ThemeSwitcher from '@/components/ThemeSwitcher';
-import WelcomeDialog from '@/components/WelcomeDialog';
+import LandingPage from '@/components/LandingPage';
 import AboutModal from '@/components/AboutModal';
 import { AppLayout } from '@/components/AppLayout';
 import { BalanceInstrument } from '@/components/BalanceInstrument';
@@ -47,7 +47,8 @@ export default function Home() {
     const { lockWallet, isLocked } = useSecurity();
     const [activeTab, setActiveTab] = useState<'send' | 'receive' | 'history'>('send');
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const [showWelcomeDialog, setShowWelcomeDialog] = useState(false);
+    // null = still determining; false = no wallet on device (show the landing page); true = dashboard
+    const [walletExists, setWalletExists] = useState<boolean | null>(null);
     const [showAboutModal, setShowAboutModal] = useState(false);
     const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
     const [termsAccepted, setTermsAccepted] = useState<boolean | null>(null);
@@ -66,31 +67,31 @@ export default function Home() {
         }
     }, [router]);
 
-    // Check if wallet exists on initial load - only after terms are accepted
+    // Decide whether to show the wallet dashboard or, for a first-time visitor with no wallet on
+    // the device, the landing page. Only runs after terms are accepted.
     useEffect(() => {
         const checkWalletExists = async () => {
-            if (termsAccepted && typeof window !== 'undefined') {
-                // Add a small delay to ensure wallet context has time to initialize
-                await new Promise(resolve => setTimeout(resolve, 100));
+            if (!termsAccepted || typeof window === 'undefined') return;
 
-                // First check localStorage for wallet data
-                const walletData = localStorage.getItem('wallets') || localStorage.getItem('activeWallet');
+            // A loaded address means we already have a wallet — go straight to the dashboard.
+            if (address) {
+                setWalletExists(true);
+                return;
+            }
 
-                // Also check using StorageService for more accurate detection
-                try {
-                    const { StorageService } = await import('@/services/core/StorageService');
-                    const hasWallet = await StorageService.hasWallet();
+            // Give the wallet context a moment to initialise before deciding.
+            await new Promise((resolve) => setTimeout(resolve, 100));
 
-                    // Only show welcome dialog if no wallet exists and no address is loaded
-                    if (!hasWallet && !walletData && !address) {
-                        setShowWelcomeDialog(true);
-                    }
-                } catch (error) {
-                    // Fallback to localStorage check if StorageService fails
-                    if (!walletData && !address && !isLoading) {
-                        setShowWelcomeDialog(true);
-                    }
-                }
+            const walletData =
+                localStorage.getItem('wallets') || localStorage.getItem('activeWallet');
+
+            try {
+                const { StorageService } = await import('@/services/core/StorageService');
+                const hasWallet = await StorageService.hasWallet();
+                setWalletExists(!!(hasWallet || walletData || address));
+            } catch (error) {
+                // Fallback to the localStorage check if StorageService fails.
+                setWalletExists(!!(walletData || address));
             }
         };
 
@@ -178,15 +179,21 @@ export default function Home() {
     };
 
     // Don't render the main app until terms acceptance has been checked
-    if (termsAccepted === null) {
+    if (termsAccepted === null || walletExists === null) {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
                 <div className="flex items-center space-x-2">
                     <Loader className="h-6 w-6 animate-spin text-avian-600" />
-                    <span className="text-gray-600 dark:text-gray-400">Loading...</span>
+                    <span className="text-muted-foreground">Loading...</span>
                 </div>
             </div>
         );
+    }
+
+    // First-time visitor with no wallet on this device: show the landing page instead of the
+    // (empty) dashboard. Returning users with a wallet fall through to the dashboard below.
+    if (walletExists === false) {
+        return <LandingPage />;
     }
 
     return (
@@ -431,7 +438,6 @@ export default function Home() {
             </div>
 
             {/* Welcome Dialog */}
-            {showWelcomeDialog && <WelcomeDialog onClose={() => setShowWelcomeDialog(false)} />}
 
             {/* About Modal */}
             <AboutModal isOpen={showAboutModal} onClose={() => setShowAboutModal(false)} />
