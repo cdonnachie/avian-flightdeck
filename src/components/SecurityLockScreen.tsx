@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface SecurityLockScreenProps {
-  onUnlock: () => void;
+  onUnlock: (password?: string) => void;
   lockReason?: 'timeout' | 'manual' | 'failed_auth';
 }
 
@@ -223,7 +223,7 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
     try {
       const success = await securityService.unlockWallet(password, false);
       if (success) {
-        handleUnlockSuccess('Welcome back!');
+        handleUnlockSuccess('Welcome back!', password);
       } else {
         setError('Invalid password');
         // Check lockout status after failed attempt
@@ -245,11 +245,13 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
     }
   };
 
-  const handleUnlockSuccess = (message: string) => {
+  const handleUnlockSuccess = (message: string, password?: string) => {
     toast.success('Wallet unlocked', {
       description: message,
     });
-    onUnlock();
+    // Hand the password back so the key is available for silent re-auth this session (password
+    // unlocks only; biometric/no-password unlocks pass nothing and re-prompt on demand).
+    onUnlock(password);
   };
 
   const handleBiometricUnlock = async () => {

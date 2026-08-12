@@ -995,15 +995,24 @@ export class SecurityService {
     try {
       const allSettings = await StorageService.getSettings();
       const settings = allSettings?.security_settings;
-      if (settings) return settings;
+      if (settings) {
+        // Migrate pre-existing installs that predate the screen-lock toggle: they have been
+        // living with the full password wall, so keep it on rather than silently dropping it.
+        if (settings.autoLock && settings.autoLock.screenLockEnabled === undefined) {
+          settings.autoLock.screenLockEnabled = true;
+          await this.updateSecuritySettings(settings);
+        }
+        return settings;
+      }
 
-      // Default settings
+      // Default settings — new installs load read-only with no wall (screenLockEnabled: false).
       const defaultSettings: SecuritySettings = {
         autoLock: {
           enabled: true,
           timeout: 300000, // 5 minutes
           biometricUnlock: false,
           requirePasswordAfterTimeout: true,
+          screenLockEnabled: false,
         },
         biometric: {
           enabled: false,
@@ -1027,6 +1036,7 @@ export class SecurityService {
           timeout: 300000,
           biometricUnlock: false,
           requirePasswordAfterTimeout: true,
+          screenLockEnabled: false,
         },
         biometric: {
           enabled: false,
@@ -1050,6 +1060,7 @@ export class SecurityService {
           timeout: 300000, // 5 minutes
           biometricUnlock: false,
           requirePasswordAfterTimeout: true,
+          screenLockEnabled: false,
         },
         biometric: {
           enabled: false,

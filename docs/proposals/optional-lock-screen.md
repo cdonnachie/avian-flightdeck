@@ -1,7 +1,15 @@
 # Proposal: optional lock screen, load-then-authenticate
 
-**Status:** proposed, not yet implemented
+**Status:** implemented (2026-08-12)
 **Scope:** its own PR, after the reconnect/balance fixes land
+
+> **Implementation note.** Built as specified, with one deliberate simplification: rather than an
+> overlay over always-mounted children, the wall renders *in place of* the wallet subtree while the
+> `SecurityContext.Provider` stays mounted. The user-facing behaviour is identical (default no-wall
+> loads read-only; opt-in wall shows on start), `requireAuth` works in both modes and still fails
+> closed, and it sidesteps a z-index/stacking fight the sibling-overlay hit. Open questions 1
+> (session-password timeout) and 2 (biometric-only unlock) remain follow-ups; a lock now clears the
+> in-memory password (the credential half), but there is no standalone key-timeout without the wall.
 
 ## Summary
 

@@ -33,7 +33,7 @@ interface SeedRecord {
 }
 
 /** Accepts the terms so the app does not bounce us to /terms on first load. */
-async function acceptTerms(page: Page) {
+export async function acceptTerms(page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem('terms-accepted', 'true');
     localStorage.setItem('terms-accepted-date', new Date().toISOString());
@@ -44,7 +44,7 @@ async function acceptTerms(page: Page) {
  * Puts a wallet into the app's database. The app has to boot once first so that IndexedDB exists
  * with the current schema — creating it ourselves would risk drifting from StorageService.
  */
-async function seedWallet(page: Page) {
+export async function seedWallet(page: Page) {
   const record: SeedRecord = {
     name: WALLET_NAME,
     address: WALLET_ADDRESS,
@@ -94,6 +94,87 @@ async function seedWallet(page: Page) {
 }
 
 /**
+ * Sets the opt-in screen-lock wall on or off. It updates the settings record the app already
+ * created on boot (updating the existing record avoids the unique `key` index conflict a fresh
+ * insert would hit) and reloads so it takes effect. Call after seedWallet.
+ */
+export async function setScreenLock(page: Page, enabled: boolean) {
+  // Wait until the app has written its settings record.
+  await page.waitForFunction(
+    (dbName) =>
+      new Promise<boolean>((resolve) => {
+        const req = indexedDB.open(dbName);
+        req.onsuccess = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains('preferences')) {
+            db.close();
+            resolve(false);
+            return;
+          }
+          const g = db
+            .transaction('preferences', 'readonly')
+            .objectStore('preferences')
+            .index('key')
+            .get('settings');
+          g.onsuccess = () => {
+            db.close();
+            resolve(!!g.result);
+          };
+          g.onerror = () => {
+            db.close();
+            resolve(false);
+          };
+        };
+        req.onerror = () => resolve(false);
+      }),
+    DB_NAME,
+    { timeout: 30_000 },
+  );
+
+  await page.evaluate(
+    ({ dbName, enabled }) =>
+      new Promise<void>((resolve, reject) => {
+        const req = indexedDB.open(dbName);
+        req.onerror = () => reject(req.error ?? new Error('open failed'));
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction('preferences', 'readwrite');
+          const store = tx.objectStore('preferences');
+          const g = store.index('key').get('settings');
+          g.onsuccess = () => {
+            const rec = g.result;
+            if (!rec) {
+              reject(new Error('settings record missing'));
+              return;
+            }
+            let parsed: Record<string, any> = {};
+            try {
+              parsed = typeof rec.value === 'string' ? JSON.parse(rec.value) : rec.value || {};
+            } catch {
+              parsed = {};
+            }
+            parsed.security_settings = parsed.security_settings || {};
+            parsed.security_settings.autoLock = parsed.security_settings.autoLock || {};
+            parsed.security_settings.autoLock.screenLockEnabled = enabled;
+            rec.value = JSON.stringify(parsed);
+            rec.updatedAt = new Date();
+            store.put(rec);
+          };
+          g.onerror = () => reject(g.error ?? new Error('read failed'));
+          tx.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          tx.onerror = () => reject(tx.error ?? new Error('write failed'));
+        };
+      }),
+    { dbName: DB_NAME, enabled },
+  );
+
+  await page.reload();
+}
+
+/**
  * An encrypted wallet starts locked, so the app shows its lock screen until the password is
  * entered. Unlocking marks the session active, and that flag is inherited by popups opened from
  * this window, so it only has to be done once.
@@ -120,6 +201,9 @@ export const test = base.extend<{ walletPage: Page }>({
 
     await acceptTerms(page);
     await seedWallet(page);
+    // These specs exercise the wallet behind the password wall, so opt into it explicitly (the
+    // app default is now no wall). unlockWallet then drives the wall as before.
+    await setScreenLock(page, true);
     await unlockWallet(page);
     await use(page);
   },
