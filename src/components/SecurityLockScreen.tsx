@@ -1,23 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Lock, Fingerprint, Eye, EyeOff, Shield, Clock, Wallet } from 'lucide-react';
+import { Lock, Fingerprint, Eye, EyeOff, Shield, Clock, ArrowRight } from 'lucide-react';
 import { securityService } from '@/services/core/SecurityService';
 import { StorageService } from '@/services/core/StorageService';
 import { toast } from 'sonner';
-import GradientBackground from '@/components/GradientBackground';
 import ThemeSwitcher from '@/components/ThemeSwitcher';
 import BiometricSetupButton from '@/components/BiometricSetupButton';
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface SecurityLockScreenProps {
   onUnlock: (password?: string) => void;
@@ -492,11 +481,6 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
     return 'Biometric';
   };
 
-  const getBiometricIcon = () => {
-    // Use a fingerprint as the generic biometric icon
-    return <Fingerprint className="w-5 h-5 mr-2" />;
-  };
-
   const getLockReasonMessage = () => {
     switch (lockReason) {
       case 'timeout':
@@ -510,276 +494,169 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
     }
   };
 
-  const getLockReasonIcon = () => {
-    switch (lockReason) {
-      case 'timeout':
-        return <Clock className="w-6 h-6 text-caution" />;
-      case 'failed_auth':
-        return <Shield className="w-6 h-6 text-destructive" />;
-      default:
-        return <Lock className="w-6 h-6 text-avian-600 dark:text-avian-400" />;
-    }
-  };
-
   // If no wallets exist, don't render the lock screen at all
   if (!hasWallets) {
     return null;
   }
 
   return (
-    <GradientBackground>
-      <div className="min-h-screen px-4 py-8 flex flex-col justify-center">
-        <div className="w-full">
-          <Card className="relative w-full max-w-lg mx-auto shadow-2xl">
-            {/* Theme Toggle Button */}
-            <div className="absolute top-4 right-4 z-10">
+    <div
+      className="min-h-screen w-full bg-[#0D1B21]"
+      style={{
+        backgroundImage:
+          'radial-gradient(900px 520px at 82% -8%, rgba(52,245,198,0.07), transparent 60%)',
+      }}
+    >
+      <div className="flex min-h-screen items-center justify-center px-4 py-10">
+        <div className="w-full max-w-sm">
+          <div className="relative overflow-hidden rounded-2xl border border-[#24404A] bg-[linear-gradient(180deg,#163139,#122730)] shadow-[0_40px_80px_-40px_rgba(0,0,0,0.9)]">
+            {/* artificial-horizon backdrop */}
+            <div aria-hidden className="pointer-events-none absolute inset-0 opacity-45">
+              <div className="absolute inset-x-0 top-0 bottom-[44%] bg-[linear-gradient(180deg,#16525C,#123E46)]" />
+              <div className="absolute inset-x-0 top-[56%] bottom-0 bg-[linear-gradient(180deg,#1A1F52,#12163A)]" />
+              <div className="absolute inset-x-0 top-[56%] h-0.5 bg-[#34F5C6] opacity-60 shadow-[0_0_12px_rgba(52,245,198,0.5)]" />
+            </div>
+
+            <div className="absolute right-3 top-3 z-10">
               <ThemeSwitcher />
             </div>
 
-            {/* Header */}
-            <CardHeader className="text-center">
-              <div className="flex justify-center mb-3">{getLockReasonIcon()}</div>
-              <CardTitle className="text-2xl">Wallet Locked</CardTitle>
-              <CardDescription>{getLockReasonMessage()}</CardDescription>
-            </CardHeader>
+            <div className="relative px-7 pb-8 pt-9 text-center">
+              {/* lock badge */}
+              <div className="mx-auto mb-5 grid h-14 w-14 place-items-center rounded-2xl border border-white/10 bg-[rgba(4,18,26,0.55)]">
+                {lockReason === 'timeout' ? (
+                  <Clock className="h-6 w-6 text-[#F2C46B]" />
+                ) : lockReason === 'failed_auth' ? (
+                  <Shield className="h-6 w-6 text-[#F0768A]" />
+                ) : (
+                  <Lock className="h-6 w-6 text-[#34F5C6]" />
+                )}
+              </div>
 
-            <CardContent className="space-y-4">
-              {/* Active Wallet Info */}
+              <h1 className="text-xl font-semibold text-[#E6F0F2]">Wallet locked</h1>
+              <p className="mt-1 text-sm text-[#9DB4BC]">
+                {activeWallet?.isEncrypted
+                  ? 'Enter your password to resume'
+                  : getLockReasonMessage()}
+              </p>
               {activeWallet && (
-                <Card className="mb-5 bg-muted/40 border border-border">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center">
-                      <Wallet className="w-4 h-4 mr-2 text-avian-600 dark:text-avian-400" />
-                      <CardTitle className="text-sm font-medium text-foreground">
-                        Active Wallet
-                      </CardTitle>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="text-sm text-muted-foreground space-y-2 pt-0">
-                    <div className="flex flex-wrap justify-between">
-                      <span className="mr-2">Name:</span>
-                      <span className="font-medium break-all">{activeWallet.name}</span>
-                    </div>
-                    <div className="flex flex-wrap justify-between">
-                      <span className="mr-2">Address:</span>
-                      <span className="font-mono text-xs truncate max-w-[180px]">
-                        {activeWallet.address.slice(0, 8)}...{activeWallet.address.slice(-8)}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap justify-between">
-                      <span className="mr-2">Protection:</span>
-                      <span
-                        className={`font-medium ${activeWallet.isEncrypted ? 'text-avian-600 dark:text-avian-400' : 'text-caution'}`}
-                      >
-                        {activeWallet.isEncrypted ? 'Password Protected' : 'No Password'}
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
+                <p className="mt-2 font-mono text-xs text-[#6b8088]">
+                  {activeWallet.name} · {activeWallet.address.slice(0, 8)}…
+                  {activeWallet.address.slice(-6)}
+                </p>
               )}
 
-              {/* Biometric Authentication - Available and Set Up */}
-              {biometricAvailable && (
-                <div className="mb-5">
-                  <Card className="mb-4 bg-card border border-border">
-                    <CardContent className="p-4">
-                      <div className="flex flex-col gap-3">
-                        <Button
-                          variant="outline"
-                          onClick={handleBiometricUnlock}
-                          disabled={isLoading || isLockedOut}
-                          className="w-full justify-center border-primary hover:bg-primary/10 text-primary hover:text-primary"
-                        >
-                          {getBiometricIcon()}
-                          <span className="truncate">
-                            {isLoading
-                              ? 'Authenticating...'
-                              : isLockedOut
-                                ? `Locked (${Math.ceil(lockoutTimeRemaining / 1000)}s)`
-                                : 'Unlock with Biometrics'}
-                          </span>
-                        </Button>
-
-                        <Button
-                          variant="ghost"
-                          onClick={handleBiometricDisable}
-                          disabled={isLoading}
-                          className="text-sm text-destructive hover:text-destructive hover:bg-destructive/10"
-                        >
-                          <span>Disable biometric authentication</span>
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <div className="flex items-center my-4">
-                    <div className="flex-1 border-t border-border"></div>
-                    <span className="px-3 text-sm text-muted-foreground">OR</span>
-                    <div className="flex-1 border-t border-border"></div>
-                  </div>
-                </div>
-              )}
-
-              {/* Biometric Setup Option - When supported but not set up */}
-              {biometricSupported && !biometricAvailable && activeWallet && (
-                <div className="mb-5">
-                  <Card className="mb-4 bg-card border border-border">
-                    <CardHeader className="pb-2">
-                      <div className="flex items-center">
-                        <Fingerprint className="w-5 h-5 text-primary mr-2" />
-                        <CardTitle className="text-base font-medium text-foreground">
-                          Biometric Authentication
-                        </CardTitle>
-                      </div>
-                      <CardDescription className="text-sm text-muted-foreground">
-                        You can set up biometric authentication for this wallet for faster, more
-                        secure access.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <BiometricSetupButton
-                        walletAddress={activeWallet.address}
-                        onSetupComplete={(success) => {
-                          if (success) {
-                            // Immediately hide the biometric setup section
-                            setBiometricAvailable(true);
-                            // Then refresh all biometric states to ensure UI is correct
-                            setTimeout(() => {
-                              checkBiometricSupport();
-                            }, 500);
-                          }
-                        }}
-                        className="w-full bg-card dark:bg-transparent border border-primary hover:bg-primary/10 text-avian-600 dark:text-white py-3"
-                      />
-                    </CardContent>
-                  </Card>
-
-                  <div className="flex items-center my-4">
-                    <div className="flex-1 border-t border-border"></div>
-                    <span className="px-3 text-sm text-muted-foreground">OR</span>
-                    <div className="flex-1 border-t border-border"></div>
-                  </div>
-                </div>
-              )}
-
-              {/* Password Authentication */}
               {activeWallet?.isEncrypted ? (
-                <div className="space-y-4">
-                  <div className="grid gap-2">
-                    <label className="text-sm font-medium text-muted-foreground">
-                      Wallet Password
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        onKeyDown={(e) =>
-                          e.key === 'Enter' && !isLockedOut && handlePasswordUnlock()
-                        }
-                        placeholder="Enter your wallet password"
-                        className="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring bg-background text-foreground pr-10"
-                        disabled={isLoading || isLockedOut}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-0 top-0 h-full px-3 text-muted-foreground hover:text-foreground"
-                      >
-                        {showPassword ? (
-                          <EyeOff className="w-4 h-4" />
-                        ) : (
-                          <Eye className="w-4 h-4" />
-                        )}
-                      </Button>
-                    </div>
+                <div className="mt-6 space-y-3 text-left">
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && !isLockedOut && handlePasswordUnlock()}
+                      placeholder="Password"
+                      autoFocus
+                      disabled={isLoading || isLockedOut}
+                      aria-label="Wallet password"
+                      className="w-full rounded-lg border border-[#24404A] bg-[rgba(4,18,26,0.6)] px-3.5 py-2.5 pr-10 font-mono text-sm text-[#E6F0F2] placeholder:text-[#4D5E68] focus:border-[#34F5C6] focus:outline-none disabled:opacity-60"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#9DB4BC] hover:text-[#E6F0F2]"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
 
-                  {error && (
-                    <Alert
-                      variant="destructive"
-                      className="bg-destructive/10 border-destructive/30"
-                    >
-                      <AlertDescription className="text-sm text-destructive">
-                        {error}
-                      </AlertDescription>
-                    </Alert>
-                  )}
+                  {error && <p className="text-xs text-[#F0768A]">{error}</p>}
 
-                  <Button
+                  <button
                     onClick={handlePasswordUnlock}
-                    disabled={isLoading || isLockedOut || (activeWallet?.isEncrypted && !password)}
-                    className="w-full disabled:opacity-50"
+                    disabled={isLoading || isLockedOut || !password}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-[linear-gradient(135deg,#34F5C6,#17A7B6)] px-4 py-3 font-mono text-sm font-semibold uppercase tracking-[0.06em] text-[#06232A] shadow-[0_8px_24px_-10px_rgba(52,245,198,0.5)] transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
                   >
-                    <Lock className="w-5 h-5 mr-2" />
-                    {isLoading
-                      ? 'Unlocking...'
-                      : isLockedOut
-                        ? `Locked (${Math.ceil(lockoutTimeRemaining / 1000)}s)`
-                        : 'Unlock Wallet'}
-                  </Button>
+                    {isLoading ? (
+                      'Unlocking…'
+                    ) : isLockedOut ? (
+                      `Locked (${Math.ceil(lockoutTimeRemaining / 1000)}s)`
+                    ) : (
+                      <>
+                        <ArrowRight className="h-4 w-4" /> Unlock
+                      </>
+                    )}
+                  </button>
                 </div>
               ) : (
-                /* No Password Required */
-                <div className="space-y-4">
-                  <Card className="bg-caution/10 border-caution/30">
-                    <CardContent className="p-4">
-                      <div className="flex items-center">
-                        <Shield className="w-5 h-5 text-caution mr-2" />
-                        <div className="text-sm">
-                          <p className="font-medium text-caution">
-                            No Password Required
-                          </p>
-                          <p className="text-muted-foreground">
-                            This wallet is not password protected
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {error && (
-                    <Alert
-                      variant="destructive"
-                      className="bg-destructive/10 border-destructive/30"
-                    >
-                      <AlertDescription className="text-sm text-destructive">
-                        {error}
-                      </AlertDescription>
-                    </Alert>
-                  )}
-
-                  <Button
+                <div className="mt-6 space-y-3 text-left">
+                  <div className="flex items-start gap-2.5 rounded-lg border border-[#F2C46B]/30 bg-[#F2C46B]/10 p-3 text-sm text-[#E6F0F2]">
+                    <Shield className="mt-0.5 h-4 w-4 flex-none text-[#F2C46B]" />
+                    <span>This wallet is not password protected.</span>
+                  </div>
+                  {error && <p className="text-xs text-[#F0768A]">{error}</p>}
+                  <button
                     onClick={handlePasswordUnlock}
                     disabled={isLoading || isLockedOut}
-                    className="w-full disabled:opacity-50"
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-[linear-gradient(135deg,#34F5C6,#17A7B6)] px-4 py-3 font-mono text-sm font-semibold uppercase tracking-[0.06em] text-[#06232A] shadow-[0_8px_24px_-10px_rgba(52,245,198,0.5)] transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
                   >
-                    <Lock className="w-5 h-5 mr-2" />
-                    {isLoading
-                      ? 'Unlocking...'
-                      : isLockedOut
-                        ? `Locked (${Math.ceil(lockoutTimeRemaining / 1000)}s)`
-                        : 'Unlock Wallet'}
-                  </Button>
+                    {isLoading ? (
+                      'Unlocking…'
+                    ) : isLockedOut ? (
+                      `Locked (${Math.ceil(lockoutTimeRemaining / 1000)}s)`
+                    ) : (
+                      <>
+                        <ArrowRight className="h-4 w-4" /> Continue
+                      </>
+                    )}
+                  </button>
                 </div>
               )}
 
-              {/* Security Notice */}
-              <Alert className="mt-6 bg-caution/10 border-caution/30">
-                <Shield className="h-4 w-4 text-caution" />
-                <AlertDescription className="text-xs text-caution">
-                  <p className="font-medium">Security Notice</p>
-                  <p>
-                    Your wallet is protected by advanced security features. All access attempts are
-                    logged for your security.
+              {biometricAvailable && (
+                <div className="mt-4">
+                  <button
+                    onClick={handleBiometricUnlock}
+                    disabled={isLoading || isLockedOut}
+                    className="inline-flex items-center gap-2 text-sm text-[#9DB4BC] transition-colors hover:text-[#34F5C6] disabled:opacity-50"
+                  >
+                    <Fingerprint className="h-4 w-4 text-[#34F5C6]" /> Unlock with biometrics
+                  </button>
+                  <div>
+                    <button
+                      onClick={handleBiometricDisable}
+                      disabled={isLoading}
+                      className="mt-2 text-xs text-[#6b8088] transition-colors hover:text-[#F0768A] disabled:opacity-50"
+                    >
+                      Disable biometric unlock
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {biometricSupported && !biometricAvailable && activeWallet && (
+                <div className="mt-6 border-t border-[#1A333B] pt-5 text-left">
+                  <p className="mb-2 text-xs text-[#9DB4BC]">
+                    Set up biometric unlock for faster access next time.
                   </p>
-                </AlertDescription>
-              </Alert>
-            </CardContent>
-          </Card>
+                  <BiometricSetupButton
+                    walletAddress={activeWallet.address}
+                    onSetupComplete={(success) => {
+                      if (success) {
+                        setBiometricAvailable(true);
+                        setTimeout(() => {
+                          checkBiometricSupport();
+                        }, 500);
+                      }
+                    }}
+                    className="w-full border border-[#24404A] bg-[rgba(4,18,26,0.5)] text-[#E6F0F2] hover:border-[#34F5C6] hover:text-[#34F5C6]"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
-    </GradientBackground>
+    </div>
   );
 }

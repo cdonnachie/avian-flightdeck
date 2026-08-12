@@ -23,8 +23,8 @@ test.describe('optional lock screen', () => {
     await setScreenLock(page, false); // no wall
 
     // No password wall.
-    await expect(page.getByRole('button', { name: 'Unlock Wallet' })).toHaveCount(0);
-    await expect(page.getByText('Wallet Locked')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Unlock', exact: true })).toHaveCount(0);
+    await expect(page.getByText('Wallet locked')).toHaveCount(0);
 
     // Read-only content is visible without authenticating: the address is shown, and the balance
     // reads "unavailable" (the socket is blocked) rather than a misleading zero. The responsive
@@ -41,14 +41,14 @@ test.describe('optional lock screen', () => {
     await seedWallet(page);
     await setScreenLock(page, true); // wall on
 
-    const unlockButton = page.getByRole('button', { name: 'Unlock Wallet' });
+    const unlockButton = page.getByRole('button', { name: 'Unlock', exact: true });
     await expect(unlockButton).toBeVisible({ timeout: 30_000 });
 
-    await page.getByPlaceholder('Enter your wallet password').fill(WALLET_PASSWORD);
+    await page.getByPlaceholder('Password').fill(WALLET_PASSWORD);
     await unlockButton.click();
 
     // The wall goes away and the wallet is revealed.
-    await expect(page.getByText('Wallet Locked')).toBeHidden({ timeout: 60_000 });
+    await expect(page.getByText('Wallet locked')).toBeHidden({ timeout: 60_000 });
     await expect(
       page.getByText(WALLET_ADDRESS).filter({ visible: true }).first(),
     ).toBeVisible({ timeout: 30_000 });
