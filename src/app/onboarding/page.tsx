@@ -18,19 +18,10 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 
-/** Instrument-styled brand mark used across the onboarding shell (matches the landing page glyph). */
+/** Instrument-styled brand mark used across the onboarding shell (matches the landing page). */
 function BrandMark() {
-    return (
-        <svg className="ob-brand__mark" viewBox="0 0 32 32" aria-hidden>
-            <path
-                d="M16 3 L28 26 L16 20 L4 26 Z"
-                fill="none"
-                stroke="#34F5C6"
-                strokeWidth="1.8"
-                strokeLinejoin="round"
-            />
-        </svg>
-    );
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img className="ob-brand__mark" src="/logomark-white.svg" alt="Avian" width={28} height={28} />;
 }
 
 export default function OnboardingPage() {

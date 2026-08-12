@@ -5,7 +5,7 @@ import { QrCode, Camera, ArrowLeft, ArrowRight, X, AlertCircle, ChevronLeft, Dow
 import { QRCodeSVG } from 'qrcode.react';
 import jsQR from 'jsqr';
 import { toast } from 'sonner';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { BackupService } from '@/services/core/BackupService';
 import { Logger } from '@/lib/Logger';
 import RouteGuard from '@/components/RouteGuard';
@@ -27,7 +27,12 @@ const qrBackupLogger = Logger.getLogger('qr_backup');
 
 export default function BackupQRPage() {
     const router = useRouter();
-    const [activeTab, setActiveTab] = useState<'backup' | 'restore'>('backup');
+    // Restore is used by people who do NOT have a wallet yet (e.g. mid-onboarding), so honour a
+    // ?tab=restore deep link and, in that case, don't gate the page behind an existing wallet.
+    const searchParams = useSearchParams();
+    const initialTab: 'backup' | 'restore' =
+        searchParams.get('tab') === 'restore' ? 'restore' : 'backup';
+    const [activeTab, setActiveTab] = useState<'backup' | 'restore'>(initialTab);
     const [backupPassword, setBackupPassword] = useState('');
     const [restorePassword, setRestorePassword] = useState('');
     const [showBackupPassword, setShowBackupPassword] = useState(false);
@@ -587,7 +592,7 @@ export default function BackupQRPage() {
     };
 
     return (
-        <RouteGuard requireTerms={true} requireWallet={true}>
+        <RouteGuard requireTerms={true} requireWallet={initialTab !== 'restore'}>
             <AppLayout
                 headerProps={{
                     title: 'QR Code Backup & Restore',
