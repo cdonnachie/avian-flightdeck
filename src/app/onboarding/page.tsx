@@ -3,30 +3,40 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useWallet } from '@/contexts/WalletContext';
-import { Wallet, Import, FileKey, ArrowLeft, Upload, QrCode, AlertTriangle, ArrowRight, Eye, EyeOff, ScrollText } from 'lucide-react';
+import { ArrowLeft, Upload, QrCode, Eye, EyeOff } from 'lucide-react';
 import { StorageService } from '@/services/core/StorageService';
 import WalletCreationForm, {
     WalletCreationMode,
     WalletCreationData,
 } from '@/components/WalletCreationForm';
 import OnboardingCreateWallet from '@/components/OnboardingCreateWallet';
-import { useMediaQuery } from '@/hooks/use-media-query';
 import { BackupService } from '@/services/core/BackupService';
 import { BackupQRModal } from '@/components/BackupQRModal';
+import { ONBOARDING_CSS } from '@/components/onboarding/instrument';
 
-// Import Shadcn UI components
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
+
+/** Instrument-styled brand mark used across the onboarding shell (matches the landing page glyph). */
+function BrandMark() {
+    return (
+        <svg className="ob-brand__mark" viewBox="0 0 32 32" aria-hidden>
+            <path
+                d="M16 3 L28 26 L16 20 L4 26 Z"
+                fill="none"
+                stroke="#34F5C6"
+                strokeWidth="1.8"
+                strokeLinejoin="round"
+            />
+        </svg>
+    );
+}
 
 export default function OnboardingPage() {
     const router = useRouter();
     const { reloadActiveWallet } = useWallet();
-    const isMobile = useMediaQuery('(max-width: 768px)');
-    const [step, setStep] = useState<'welcome' | 'method' | 'form' | 'backup-file' | 'success'>('welcome');
+    const [step, setStep] = useState<'method' | 'form' | 'backup-file' | 'success'>('method');
     const [formMode, setFormMode] = useState<WalletCreationMode>('create');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showBackupQRModal, setShowBackupQRModal] = useState(false);
@@ -193,243 +203,157 @@ export default function OnboardingPage() {
         }, 2000);
     };
 
-    const renderWelcome = () => (
-        <Card className="max-w-md mx-auto">
-            <CardHeader className="text-center">
-                <div className="flex justify-center mb-4">
-                    <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center">
-                        <Wallet className="w-10 h-10 text-primary" />
-                    </div>
-                </div>
-                <CardTitle className="text-2xl">Welcome to Avian Wallet</CardTitle>
-                <p className="text-muted-foreground">
-                    Your secure, privacy-focused wallet for Avian Network
+    const pickImport = (mode: WalletCreationMode) => {
+        setFormMode(mode);
+        setStep('form');
+    };
+
+    // ---- screens -----------------------------------------------------------
+    const methodScreen = (
+        <div className="ob-panel ob-solo">
+            <div className="ob-head">
+                <span className="ob-label">Bring a wallet online</span>
+                <h1>Create a new wallet, or bring your own keys</h1>
+                <p>
+                    Everything runs on this device. Start fresh and we&apos;ll generate a recovery
+                    phrase, or import one you already hold.
                 </p>
-            </CardHeader>
-            <CardContent>
-                <Button
-                    onClick={() => setStep('method')}
-                    className="w-full"
-                    size="lg"
+            </div>
+
+            <div className="ob-methods">
+                <button
+                    className="ob-tile ob-tile--go"
+                    onClick={() => {
+                        setFormMode('create');
+                        setStep('form');
+                    }}
                 >
-                    Get Started <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-            </CardContent>
-        </Card>
-    );
-
-    const renderMethodSelection = () => (
-        <div className="max-w-2xl mx-auto space-y-6">
-            <div className="text-center mb-8">
-                <h1 className="text-3xl font-bold mb-2">Choose Setup Method</h1>
-                <p className="text-muted-foreground">
-                    How would you like to set up your wallet?
-                </p>
+                    <span className="ob-tile__ic ob-tile__ic--go">
+                        <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden>
+                            <path d="M12 5 v14 M5 12 h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                    </span>
+                    <span className="ob-tile__body">
+                        <b>Create New Wallet</b>
+                        <small>Generate a fresh HD wallet and back up its recovery phrase.</small>
+                    </span>
+                    <span className="ob-tile__go" aria-hidden>→</span>
+                </button>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2">
-                {/* Create New Wallet */}
-                <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => {
-                    setFormMode('create');
-                    setStep('form');
-                }}>
-                    <CardHeader>
-                        <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-                            <Wallet className="w-6 h-6 text-primary" />
-                        </div>
-                        <CardTitle className="text-xl">Create New Wallet</CardTitle>
-                        <p className="text-muted-foreground">
-                            Generate a new wallet with a secure mnemonic phrase
-                        </p>
-                    </CardHeader>
-                </Card>
-
-                {/* Import from Mnemonic */}
-                <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => {
-                    setFormMode('importMnemonic');
-                    setStep('form');
-                }}>
-                    <CardHeader>
-                        <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-                            <FileKey className="w-6 h-6 text-primary" />
-                        </div>
-                        <CardTitle className="text-xl">Import from Mnemonic</CardTitle>
-                        <p className="text-muted-foreground">
-                            Restore your wallet using a 12 or 24-word phrase
-                        </p>
-                    </CardHeader>
-                </Card>
-
-                {/* Import from Private Key */}
-                <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => {
-                    setFormMode('importWIF');
-                    setStep('form');
-                }}>
-                    <CardHeader>
-                        <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-                            <Import className="w-6 h-6 text-primary" />
-                        </div>
-                        <CardTitle className="text-xl">Import Private Key</CardTitle>
-                        <p className="text-muted-foreground">
-                            Import a wallet using a WIF private key
-                        </p>
-                    </CardHeader>
-                </Card>
-
-                {/* Restore from Backup */}
-                <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setStep('backup-file')}>
-                    <CardHeader>
-                        <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-                            <Upload className="w-6 h-6 text-primary" />
-                        </div>
-                        <CardTitle className="text-xl">Restore from Backup</CardTitle>
-                        <p className="text-muted-foreground">
-                            Import wallet from a backup file or QR codes
-                        </p>
-                    </CardHeader>
-                </Card>
-
-                {/* Import from Descriptor */}
-                <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => {
-                    setFormMode('importDescriptor');
-                    setStep('form');
-                }}>
-                    <CardHeader>
-                        <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4">
-                            <ScrollText className="w-6 h-6 text-primary" />
-                        </div>
-                        <CardTitle className="text-xl">Import from Descriptor</CardTitle>
-                        <p className="text-muted-foreground">
-                            Import from an Avian Core v5 output script descriptor
-                        </p>
-                    </CardHeader>
-                </Card>
-            </div>
-
-            <div className="text-center">
-                <Button variant="ghost" onClick={() => setStep('welcome')}>
-                    <ArrowLeft className="w-4 h-4 mr-2" /> Back
-                </Button>
+            <div className="ob-methods__sub">
+                <div className="ob-label" style={{ marginBottom: 12 }}>Import an existing wallet</div>
+                <div className="ob-imports">
+                    <button className="ob-irow" onClick={() => pickImport('importMnemonic')}>
+                        <span className="ob-lamp ob-lamp--turq" />
+                        <span className="ob-irow__t"><b>Recovery phrase</b><small>Restore from a 12 or 24-word phrase</small></span>
+                        <span className="ob-irow__go" aria-hidden>→</span>
+                    </button>
+                    <button className="ob-irow" onClick={() => pickImport('importWIF')}>
+                        <span className="ob-lamp ob-lamp--turq" />
+                        <span className="ob-irow__t"><b>Private key (WIF)</b><small>Import a single-key wallet</small></span>
+                        <span className="ob-irow__go" aria-hidden>→</span>
+                    </button>
+                    <button className="ob-irow" onClick={() => pickImport('importDescriptor')}>
+                        <span className="ob-lamp ob-lamp--indigo" />
+                        <span className="ob-irow__t"><b>Output descriptor</b><small>Avian Core v5 script descriptor</small></span>
+                        <span className="ob-irow__go" aria-hidden>→</span>
+                    </button>
+                    <button className="ob-irow" onClick={() => setStep('backup-file')}>
+                        <span className="ob-lamp ob-lamp--indigo" />
+                        <span className="ob-irow__t"><b>Encrypted backup / QR</b><small>Restore a backup file or scan QR codes</small></span>
+                        <span className="ob-irow__go" aria-hidden>→</span>
+                    </button>
+                </div>
             </div>
         </div>
     );
 
-    const renderForm = () => {
-        // Create gets the guided, confirm-your-backup wizard; imports keep the direct form.
-        if (formMode === 'create') {
-            return (
-                <div className="max-w-lg mx-auto">
-                    <OnboardingCreateWallet
-                        onSubmit={handleFormSubmit}
-                        onCancel={() => setStep('method')}
-                        isSubmitting={isSubmitting}
-                    />
-                </div>
-            );
-        }
-
-        return (
-            <div className="max-w-lg mx-auto">
-                <div className="text-center mb-8">
-                    <Button variant="ghost" onClick={() => setStep('method')} className="mb-4">
-                        <ArrowLeft className="w-4 h-4 mr-2" /> Back
-                    </Button>
-                    <h1 className="text-3xl font-bold mb-2">
-                        {formMode === 'importMnemonic' && 'Import from Mnemonic'}
-                        {formMode === 'importWIF' && 'Import Private Key'}
-                        {formMode === 'importDescriptor' && 'Import from Descriptor'}
-                    </h1>
-                </div>
-
-                <WalletCreationForm
-                    mode={formMode}
-                    onSubmit={handleFormSubmit}
-                    onCancel={() => setStep('method')}
-                    isSubmitting={isSubmitting}
-                />
-            </div>
-        );
+    const importTitles: Partial<Record<WalletCreationMode, string>> = {
+        importMnemonic: 'Import from recovery phrase',
+        importWIF: 'Import a private key',
+        importDescriptor: 'Import from descriptor',
     };
 
-    const renderBackupFile = () => (
-        <div className="max-w-lg mx-auto space-y-6">
-            <div className="text-center">
-                <Button variant="ghost" onClick={() => setStep('method')} className="mb-4">
-                    <ArrowLeft className="w-4 h-4 mr-2" /> Back
-                </Button>
-                <h1 className="text-3xl font-bold mb-2">Restore from Backup</h1>
-                <p className="text-muted-foreground">
-                    Upload a backup file or scan QR codes to restore your wallet
-                </p>
+    const importScreen = (
+        <div className="ob-panel ob-solo">
+            <button className="ob-mini ob-mini--muted ob-back" onClick={() => setStep('method')}>
+                <ArrowLeft className="h-4 w-4" /> Back
+            </button>
+            <div className="ob-head ob-head--sm">
+                <span className="ob-label">Import</span>
+                <h2>{importTitles[formMode]}</h2>
+            </div>
+            <WalletCreationForm
+                mode={formMode}
+                onSubmit={handleFormSubmit}
+                onCancel={() => setStep('method')}
+                isSubmitting={isSubmitting}
+            />
+        </div>
+    );
+
+    const restoreScreen = (
+        <div className="ob-panel ob-solo">
+            <button className="ob-mini ob-mini--muted ob-back" onClick={() => setStep('method')}>
+                <ArrowLeft className="h-4 w-4" /> Back
+            </button>
+            <div className="ob-head ob-head--sm">
+                <span className="ob-label">Restore</span>
+                <h2>Restore from a backup</h2>
+                <p>Upload an encrypted backup file, or scan a set of QR codes.</p>
             </div>
 
-            <div className="grid gap-4">
-                {/* File Upload */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <Upload className="w-5 h-5" />
-                            Upload Backup File
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <Input
-                            type="file"
-                            accept=".json"
-                            onChange={handleFileSelect}
-                            disabled={isSubmitting}
-                        />
+            <div className="ob-restore">
+                <div className="ob-restore__file">
+                    <div className="ob-field__lbl">
+                        <Upload className="inline h-4 w-4 mr-2 -mt-0.5" /> Backup file
+                    </div>
+                    <Input
+                        type="file"
+                        accept=".json"
+                        onChange={handleFileSelect}
+                        disabled={isSubmitting}
+                        className="ob-file"
+                    />
 
-                        {needsPassword && (
-                            <div className="mt-4 space-y-3">
-                                <Label htmlFor="backupPassword">Backup Password</Label>
-                                <div className="relative">
-                                    <Input
-                                        id="backupPassword"
-                                        type={showBackupPassword ? "text" : "password"}
-                                        value={backupPassword}
-                                        onChange={(e) => setBackupPassword(e.target.value)}
-                                        placeholder="Enter backup password"
-                                        className="pr-10"
-                                    />
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                                        onClick={() => setShowBackupPassword(!showBackupPassword)}
-                                    >
-                                        {showBackupPassword ? (
-                                            <EyeOff className="h-4 w-4 text-muted-foreground" />
-                                        ) : (
-                                            <Eye className="h-4 w-4 text-muted-foreground" />
-                                        )}
-                                    </Button>
-                                </div>
-                                <Button
-                                    onClick={handlePasswordRestore}
-                                    disabled={!backupPassword || isSubmitting}
-                                    className="w-full"
+                    {needsPassword && (
+                        <div className="mt-4 space-y-3">
+                            <Label htmlFor="backupPassword" className="ob-field__lbl">Backup password</Label>
+                            <div className="ob-inwrap">
+                                <Input
+                                    id="backupPassword"
+                                    type={showBackupPassword ? 'text' : 'password'}
+                                    value={backupPassword}
+                                    onChange={(e) => setBackupPassword(e.target.value)}
+                                    placeholder="Enter backup password"
+                                    className="ob-input pr-10"
+                                />
+                                <button
+                                    type="button"
+                                    className="ob-eye"
+                                    onClick={() => setShowBackupPassword(!showBackupPassword)}
+                                    aria-label={showBackupPassword ? 'Hide password' : 'Show password'}
                                 >
-                                    {isSubmitting ? 'Restoring...' : 'Restore Backup'}
-                                </Button>
+                                    {showBackupPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                </button>
                             </div>
-                        )}
-                    </CardContent>
-                </Card>
+                            <button
+                                className="ob-btn ob-btn--go w-full"
+                                onClick={handlePasswordRestore}
+                                disabled={!backupPassword || isSubmitting}
+                            >
+                                {isSubmitting ? 'Restoring…' : 'Restore backup'}
+                            </button>
+                        </div>
+                    )}
+                </div>
 
-                {/* QR Code Import */}
-                <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => setShowBackupQRModal(true)}>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <QrCode className="w-5 h-5" />
-                            Scan QR Codes
-                        </CardTitle>
-                        <p className="text-muted-foreground">
-                            Restore from QR code backup
-                        </p>
-                    </CardHeader>
-                </Card>
+                <button className="ob-irow" onClick={() => setShowBackupQRModal(true)}>
+                    <span className="ob-tile__ic"><QrCode className="h-5 w-5" /></span>
+                    <span className="ob-irow__t"><b>Scan QR codes</b><small>Restore from a QR code backup</small></span>
+                    <span className="ob-irow__go" aria-hidden>→</span>
+                </button>
             </div>
 
             <BackupQRModal
@@ -440,49 +364,50 @@ export default function OnboardingPage() {
         </div>
     );
 
-    const renderSuccess = () => (
-        <Card className="max-w-md mx-auto text-center">
-            <CardContent className="pt-6">
-                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Wallet className="w-8 h-8 text-primary" />
-                </div>
-                <h2 className="text-2xl font-bold mb-2">Setup Complete!</h2>
-                <p className="text-muted-foreground mb-6">
-                    Your wallet has been successfully set up. Redirecting to your wallet...
-                </p>
-                <Button onClick={() => router.push('/')} className="w-full">
-                    Continue to Wallet
-                </Button>
-            </CardContent>
-        </Card>
+    const successScreen = (
+        <div className="ob-panel ob-solo ob-done">
+            <div className="ob-done__badge">
+                <svg width="34" height="34" viewBox="0 0 24 24" aria-hidden>
+                    <path d="M4 12.5 l5 5 L20 6" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+            </div>
+            <h2>Wallet armed</h2>
+            <p className="ob-lede ob-done__lede">
+                Your keys are generated, encrypted, and stored on this device. You have control.
+            </p>
+            <div className="ob-done__sign"><span className="ob-lamp" /> SYSTEMS NOMINAL</div>
+            <button className="ob-btn ob-btn--go" onClick={() => router.push('/')}>
+                Enter FlightDeck →
+            </button>
+        </div>
     );
 
     return (
-        <div className="min-h-screen bg-background">
-            {/* Header */}
-            <div className="border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                <div className="container max-w-4xl mx-auto px-4 py-4">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <Wallet className="h-6 w-6 text-primary" />
-                            <span className="text-xl font-bold">Avian Wallet</span>
-                        </div>
-                        {step !== 'welcome' && (
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                Step {step === 'method' ? 1 : step === 'form' || step === 'backup-file' ? 2 : 3} of 3
-                            </div>
-                        )}
+        <div className="ob dark">
+            <style>{ONBOARDING_CSS}</style>
+
+            <div className="ob-top">
+                <div className="ob-wrap ob-top__row">
+                    <div className="ob-brand">
+                        <BrandMark />
+                        <span className="ob-brand__name">AVIAN <b>FLIGHTDECK</b></span>
                     </div>
+                    <div className="ob-top__tag"><span className="ob-lamp" /> PREFLIGHT SEQUENCE</div>
                 </div>
             </div>
 
-            {/* Main Content */}
-            <div className="container max-w-4xl mx-auto px-4 py-8">
-                {step === 'welcome' && renderWelcome()}
-                {step === 'method' && renderMethodSelection()}
-                {step === 'form' && renderForm()}
-                {step === 'backup-file' && renderBackupFile()}
-                {step === 'success' && renderSuccess()}
+            <div className="ob-wrap ob-stage">
+                {step === 'method' && methodScreen}
+                {step === 'form' && formMode === 'create' && (
+                    <OnboardingCreateWallet
+                        onSubmit={handleFormSubmit}
+                        onCancel={() => setStep('method')}
+                        isSubmitting={isSubmitting}
+                    />
+                )}
+                {step === 'form' && formMode !== 'create' && importScreen}
+                {step === 'backup-file' && restoreScreen}
+                {step === 'success' && successScreen}
             </div>
         </div>
     );
