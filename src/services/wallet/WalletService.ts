@@ -461,27 +461,16 @@ export class WalletService {
                 walletLogger.warn('Error fixing transactions without wallet address:', fixError);
             }
 
-            // Process initial transaction history only if needed
+            // Pull transaction history on load. This is incremental: after the first sync it only
+            // fetches transactions we haven't stored yet, so opening the wallet is fast even with a
+            // large history. Previously this did a FULL reprocess (re-fetching every transaction)
+            // on first login and every 24h thereafter, which is very slow for big wallets — a full
+            // reclassification is rarely needed and remains available on demand (balance card
+            // long-press -> reprocessTransactionHistory).
             try {
-                // Check if we need to process transactions by checking if this is first login
                 const lastProcessedKey = `${address}_last_processed_time`;
-                const lastProcessedTime = localStorage.getItem(lastProcessedKey);
-                const currentTime = Date.now();
-
-                // Only process if:
-                // 1. Never processed before, or
-                // 2. It's been more than 24 hours since last processing
-                const shouldProcess =
-                    !lastProcessedTime || currentTime - parseInt(lastProcessedTime) > 24 * 60 * 60 * 1000;
-
-                if (shouldProcess) {
-                    await this.processTransactionHistory(address, onProgress);
-                    // Save the processing time
-                    localStorage.setItem(lastProcessedKey, currentTime.toString());
-                } else {
-                    // Still check for new transactions since last login without full reprocessing
-                    await this.refreshTransactionHistory(address, onProgress);
-                }
+                await this.refreshTransactionHistory(address, onProgress);
+                localStorage.setItem(lastProcessedKey, Date.now().toString());
             } catch (error) {
                 walletLogger.error('Error processing initial transaction history:', error);
             }
