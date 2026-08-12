@@ -38,6 +38,12 @@ export default function TermsPage() {
     // Reference to scroll content to check initial scroll position
     const scrollContentRef = useRef<HTMLDivElement>(null);
 
+    // Where to go after acceptance. Only same-origin absolute paths are honoured (guard against an
+    // open redirect via a crafted ?next=); anything else falls back to the main app.
+    const nextParam = searchParams.get('next');
+    const nextPath =
+        nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//') ? nextParam : '/';
+
     // Check if terms are already accepted and redirect to main page (unless viewing)
     useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -53,13 +59,13 @@ export default function TermsPage() {
             }
 
             if (termsAccepted && !isViewMode) {
-                router.push('/');
+                router.push(nextPath);
                 return;
             }
             // Terms not accepted or in view mode, show the page
             setIsCheckingTerms(false);
         }
-    }, [router, searchParams]);
+    }, [router, searchParams, nextPath]);
 
     // Check initial scroll position when content loads
     useEffect(() => {
@@ -124,8 +130,8 @@ export default function TermsPage() {
             // Dispatch custom event to notify SecurityContext
             window.dispatchEvent(new CustomEvent('terms-accepted', { detail: { accepted: true } }));
 
-            // Navigate to main app
-            router.push('/');
+            // Navigate onward — back to whatever sent us here (e.g. /onboarding), else the main app.
+            router.push(nextPath);
         } else if (acceptanceChoice === 'decline') {
             // Show the AlertDialog for declining terms
             setShowDeclineDialog(true);

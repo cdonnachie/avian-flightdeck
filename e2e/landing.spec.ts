@@ -23,3 +23,25 @@ test('a visitor with no wallet sees the landing page and can start onboarding', 
   await create.click();
   await expect(page).toHaveURL(/\/onboarding/);
 });
+
+/**
+ * The landing page is the public entry point: a brand-new visitor who has not accepted the license
+ * still lands here, not on the terms wall. The license is instead accepted when they choose to
+ * create a wallet — onboarding routes them through /terms and back.
+ */
+test('a visitor who has not accepted terms still sees the landing, and Create routes via /terms', async ({
+  page,
+}) => {
+  await page.routeWebSocket(/.*/, (ws) => ws.close());
+  // Deliberately seed no terms-accepted flag.
+
+  await page.goto('/');
+
+  // The landing hero shows without a license wall in front of it.
+  await expect(page.getByRole('heading', { name: /Your funds/i })).toBeVisible({ timeout: 30_000 });
+
+  // Starting onboarding now passes through the license gate first.
+  await page.getByRole('button', { name: /Create a wallet/i }).click();
+  await expect(page).toHaveURL(/\/terms/);
+  await expect(page.getByText('License Agreement').first()).toBeVisible();
+});
