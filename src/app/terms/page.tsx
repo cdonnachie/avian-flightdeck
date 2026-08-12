@@ -5,16 +5,6 @@ import { Shield, AlertTriangle, Check, X, ArrowLeft } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 // Import Shadcn UI components
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -31,7 +21,6 @@ export default function TermsPage() {
     const searchParams = useSearchParams();
     const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
     const [acceptanceChoice, setAcceptanceChoice] = useState<'accept' | 'decline' | null>(null);
-    const [showDeclineDialog, setShowDeclineDialog] = useState(false);
     const [isCheckingTerms, setIsCheckingTerms] = useState(true);
     const [viewMode, setViewMode] = useState(false); // Track if we're in view mode
 
@@ -132,9 +121,6 @@ export default function TermsPage() {
 
             // Navigate onward — back to whatever sent us here (e.g. /onboarding), else the main app.
             router.push(nextPath);
-        } else if (acceptanceChoice === 'decline') {
-            // Show the AlertDialog for declining terms
-            setShowDeclineDialog(true);
         }
     };
 
@@ -449,19 +435,17 @@ export default function TermsPage() {
                                     <div className="flex flex-col sm:flex-row gap-4 w-full sm:justify-end pt-4">
                                         <Button
                                             variant="outline"
-                                            onClick={() => setShowDeclineDialog(true)}
+                                            onClick={() => router.push('/')}
                                             className="w-full sm:w-auto border-border text-muted-foreground hover:bg-muted/40 dark:hover:bg-card"
                                             size="lg"
                                         >
                                             <X className="w-4 h-4 mr-2" />
-                                            Close Application
+                                            Cancel
                                         </Button>
 
                                         <Button
                                             onClick={handleAccept}
-                                            disabled={
-                                                !acceptanceChoice || (acceptanceChoice === 'accept' && !hasScrolledToBottom)
-                                            }
+                                            disabled={acceptanceChoice !== 'accept' || !hasScrolledToBottom}
                                             className="w-full sm:w-auto bg-avian-600 hover:bg-avian-700 dark:bg-avian-600 dark:hover:bg-avian-700 text-white transition-colors disabled:bg-avian-600/50 dark:disabled:bg-avian-600/50 disabled:text-white/70"
                                             size="lg"
                                         >
@@ -484,32 +468,6 @@ export default function TermsPage() {
                     </Card>
                 </div>
             </div>
-
-            {/* Decline Confirmation Dialog */}
-            <AlertDialog open={showDeclineDialog} onOpenChange={setShowDeclineDialog}>
-                <AlertDialogContent className="max-w-md">
-                    <AlertDialogHeader>
-                        <AlertDialogTitle className="flex items-center gap-2 text-caution">
-                            <AlertTriangle className="h-5 w-5" />
-                            Terms Agreement Required
-                        </AlertDialogTitle>
-                        <AlertDialogDescription className="space-y-2">
-                            <p>You must accept the terms to use Avian FlightDeck.</p>
-                            <p>
-                                If you do not accept the terms, please close this browser tab or window to exit the application.
-                            </p>
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel
-                            onClick={() => setShowDeclineDialog(false)}
-                            className="border-border"
-                        >
-                            Return to Terms
-                        </AlertDialogCancel>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
         </div>
     );
 }

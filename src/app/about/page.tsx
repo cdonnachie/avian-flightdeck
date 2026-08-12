@@ -551,7 +551,7 @@ export default function AboutPage() {
                                         </div>
                                     </div>
 
-                                    <div className="bg-gradient-to-r from-caution to-destructive dark:from-caution dark:to-destructive border border-caution/30 p-6 rounded-lg">
+                                    <div className="bg-caution/10 border border-caution/30 p-6 rounded-lg">
                                         <h4 className="font-semibold mb-3 flex items-center gap-2 text-caution">
                                             <Lock className="h-4 w-4" />
                                             Security Notice

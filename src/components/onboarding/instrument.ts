@@ -81,6 +81,8 @@ export const ONBOARDING_CSS = `
 
 .ob-field{display:block;margin-bottom:18px;}
 .ob-field__lbl{display:block;font-size:0.82rem;font-weight:600;color:var(--ink);margin-bottom:8px;}
+.ob-field__row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.ob-field__row .ob-field__lbl{margin-bottom:0;}
 .ob-input{width:100%;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:rgba(4,18,26,0.55);color:var(--ink);font-family:var(--mono);font-size:0.92rem;transition:border-color .15s;}
 .ob-input::placeholder{color:var(--faint);}
 .ob-input:focus{outline:none;border-color:var(--mint);}

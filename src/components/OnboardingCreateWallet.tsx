@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import * as bip39 from 'bip39';
 import { Eye, EyeOff, Copy, RefreshCw, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import PasswordStrengthChecker, { PasswordStrength } from '@/components/PasswordStrength';
 import type { WalletCreationData } from '@/components/WalletCreationForm';
+import { generateWalletName } from '@/lib/walletName';
 
 interface OnboardingCreateWalletProps {
     onSubmit: (data: WalletCreationData) => Promise<void>;
@@ -95,6 +96,17 @@ export default function OnboardingCreateWallet({
     useEffect(() => {
         regenerate(mnemonicLength);
     }, [mnemonicLength, regenerate]);
+
+    // Suggest a creative bird-themed name on mount; the user can keep it, edit it, or re-roll.
+    // Guard against the async suggestion landing after the user has already typed something.
+    const nameTouched = useRef(false);
+    useEffect(() => {
+        generateWalletName().then((suggested) => {
+            if (!nameTouched.current) setName(suggested);
+        });
+    }, []);
+
+    const rollName = async () => setName(await generateWalletName());
 
     const stepIndex = STEPS.indexOf(step);
 
@@ -198,12 +210,20 @@ export default function OnboardingCreateWallet({
                             <h2>Name your wallet</h2>
                         </div>
                         <div className="ob-field">
-                            <label className="ob-field__lbl" htmlFor="wallet-name">Wallet name</label>
+                            <div className="ob-field__row">
+                                <label className="ob-field__lbl" htmlFor="wallet-name">Wallet name</label>
+                                <button type="button" className="ob-mini" onClick={rollName}>
+                                    <RefreshCw className="h-3.5 w-3.5" /> Suggest
+                                </button>
+                            </div>
                             <input
                                 id="wallet-name"
                                 className="ob-input"
                                 value={name}
-                                onChange={(e) => setName(e.target.value)}
+                                onChange={(e) => {
+                                    nameTouched.current = true;
+                                    setName(e.target.value);
+                                }}
                                 placeholder="Main Wallet"
                                 autoFocus
                                 maxLength={50}
