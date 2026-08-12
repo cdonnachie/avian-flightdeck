@@ -35,16 +35,24 @@ export default function OnboardingPage() {
     const [showBackupPassword, setShowBackupPassword] = useState(false);
     const [needsPassword, setNeedsPassword] = useState(false);
 
-    // Check if wallet exists and redirect if so
+    // Gate access: terms must be accepted before a wallet can be created, and an existing wallet
+    // means onboarding is already done.
     useEffect(() => {
-        const checkWallet = async () => {
+        const checkAccess = async () => {
+            // Accepting the license is a precondition for creating or importing a wallet. Send the
+            // user to /terms and bring them straight back here once they accept.
+            if (typeof window !== 'undefined' && !localStorage.getItem('terms-accepted')) {
+                router.push('/terms?next=/onboarding');
+                return;
+            }
+
             const walletExists = await StorageService.hasWallet();
             if (walletExists) {
                 router.push('/');
             }
         };
 
-        checkWallet();
+        checkAccess();
     }, [router]);
 
     // Handle wallet creation/import form submission

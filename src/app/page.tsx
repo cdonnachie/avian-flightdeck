@@ -55,23 +55,21 @@ export default function Home() {
 
     const fullRefreshRequestedRef = useRef(false);
 
-    // Check for terms acceptance on initial load
+    // Read terms acceptance on initial load. We do NOT bounce a brand-new visitor to /terms here:
+    // the landing page is the public entry point, and terms are accepted when they choose to create
+    // or import a wallet (the /onboarding route enforces it). A returning user who has a wallet but
+    // no recorded acceptance is still sent to /terms below, before the dashboard renders.
     useEffect(() => {
         if (typeof window !== 'undefined') {
-            const termsAcceptedValue = localStorage.getItem('terms-accepted');
-            if (!termsAcceptedValue) {
-                router.push('/terms');
-                return;
-            }
-            setTermsAccepted(true);
+            setTermsAccepted(!!localStorage.getItem('terms-accepted'));
         }
-    }, [router]);
+    }, []);
 
     // Decide whether to show the wallet dashboard or, for a first-time visitor with no wallet on
-    // the device, the landing page. Only runs after terms are accepted.
+    // the device, the landing page. Runs once the terms state is known.
     useEffect(() => {
         const checkWalletExists = async () => {
-            if (!termsAccepted || typeof window === 'undefined') return;
+            if (termsAccepted === null || typeof window === 'undefined') return;
 
             // A loaded address means we already have a wallet — go straight to the dashboard.
             if (address) {
@@ -97,6 +95,14 @@ export default function Home() {
 
         checkWalletExists();
     }, [termsAccepted, address, isLoading]);
+
+    // A returning user who already has a wallet but no recorded terms acceptance must accept before
+    // the dashboard renders. (New visitors with no wallet see the landing page instead.)
+    useEffect(() => {
+        if (walletExists === true && termsAccepted === false) {
+            router.push('/terms');
+        }
+    }, [walletExists, termsAccepted, router]);
 
     const formatBalance = (balance: number) => {
         const avnBalance = (balance / 100000000).toFixed(8); // Convert satoshis to AVN
@@ -194,6 +200,19 @@ export default function Home() {
     // (empty) dashboard. Returning users with a wallet fall through to the dashboard below.
     if (walletExists === false) {
         return <LandingPage />;
+    }
+
+    // Wallet exists but terms were never accepted — hold on the loader while the effect above
+    // redirects to /terms, rather than flashing the dashboard.
+    if (termsAccepted === false) {
+        return (
+            <div className="min-h-screen bg-background flex items-center justify-center">
+                <div className="flex items-center space-x-2">
+                    <Loader className="h-6 w-6 animate-spin text-avian-600" />
+                    <span className="text-muted-foreground">Loading...</span>
+                </div>
+            </div>
+        );
     }
 
     return (
