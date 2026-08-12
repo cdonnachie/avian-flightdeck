@@ -210,19 +210,19 @@ export default function BackupDrawer({ isOpen, onClose, onSuccess, onError }: Ba
       <Tabs
         value={activeTab}
         onValueChange={(value) => setActiveTab(value as 'backup' | 'restore')}
-        className="w-full border-b border-gray-200 dark:border-gray-700"
+        className="w-full border-b border-border"
       >
         <TabsList className="flex h-auto bg-transparent p-0 w-full">
           <TabsTrigger
             value="backup"
-            className="flex-1 flex items-center justify-center px-6 py-4 data-[state=active]:border-b-1 data-[state=active]:border-avian-400 data-[state=active]:text-avian-400 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-avian-400 data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:w-full bg-transparent rounded-none text-gray-500 dark:text-gray-400 h-auto relative"
+            className="flex-1 flex items-center justify-center px-6 py-4 data-[state=active]:border-b-1 data-[state=active]:border-avian-400 data-[state=active]:text-avian-400 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-avian-400 data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:w-full bg-transparent rounded-none text-muted-foreground h-auto relative"
           >
             <Download className="w-4 h-4 mr-2" />
             Create Backup
           </TabsTrigger>
           <TabsTrigger
             value="restore"
-            className="flex-1 flex items-center justify-center px-6 py-4 data-[state=active]:border-b-1 data-[state=active]:border-avian-400 data-[state=active]:text-avian-400 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-avian-400 data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:w-full bg-transparent rounded-none text-gray-500 dark:text-gray-400 h-auto relative"
+            className="flex-1 flex items-center justify-center px-6 py-4 data-[state=active]:border-b-1 data-[state=active]:border-avian-400 data-[state=active]:text-avian-400 data-[state=active]:after:h-0.5 data-[state=active]:after:bg-avian-400 data-[state=active]:after:absolute data-[state=active]:after:bottom-0 data-[state=active]:after:left-0 data-[state=active]:after:w-full bg-transparent rounded-none text-muted-foreground h-auto relative"
           >
             <Upload className="w-4 h-4 mr-2" />
             Restore Backup
@@ -246,7 +246,7 @@ export default function BackupDrawer({ isOpen, onClose, onSuccess, onError }: Ba
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="full" id="full" />
                   <Label htmlFor="full" className="flex items-center cursor-pointer">
-                    <Database className="w-4 h-4 mr-2 text-blue-600" />
+                    <Database className="w-4 h-4 mr-2 text-primary" />
                     <div>
                       <span className="font-medium">Full Backup</span>
                       <p className="text-xs text-muted-foreground">
@@ -258,7 +258,7 @@ export default function BackupDrawer({ isOpen, onClose, onSuccess, onError }: Ba
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="wallets" id="wallets" />
                   <Label htmlFor="wallets" className="flex items-center cursor-pointer">
-                    <FileText className="w-4 h-4 mr-2 text-green-600" />
+                    <FileText className="w-4 h-4 mr-2 text-primary" />
                     <div>
                       <span className="font-medium">Wallets Only</span>
                       <p className="text-xs text-muted-foreground">
@@ -279,7 +279,7 @@ export default function BackupDrawer({ isOpen, onClose, onSuccess, onError }: Ba
                   onCheckedChange={(checked) => setUseEncryption(checked as boolean)}
                 />
                 <Label htmlFor="encryption" className="flex items-center cursor-pointer">
-                  <Lock className="w-4 h-4 mr-2 text-amber-600" />
+                  <Lock className="w-4 h-4 mr-2 text-caution" />
                   <span className="font-medium">Encrypt backup file</span>
                 </Label>
               </div>
@@ -310,9 +310,9 @@ export default function BackupDrawer({ isOpen, onClose, onSuccess, onError }: Ba
                       onClick={() => setShowPassword(!showPassword)}
                     >
                       {showPassword ? (
-                        <EyeOff className="h-4 w-4 text-gray-500" />
+                        <EyeOff className="h-4 w-4 text-muted-foreground" />
                       ) : (
-                        <Eye className="h-4 w-4 text-gray-500" />
+                        <Eye className="h-4 w-4 text-muted-foreground" />
                       )}
                     </Button>
                   </div>
@@ -336,9 +336,9 @@ export default function BackupDrawer({ isOpen, onClose, onSuccess, onError }: Ba
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                     >
                       {showConfirmPassword ? (
-                        <EyeOff className="h-4 w-4 text-gray-500" />
+                        <EyeOff className="h-4 w-4 text-muted-foreground" />
                       ) : (
-                        <Eye className="h-4 w-4 text-gray-500" />
+                        <Eye className="h-4 w-4 text-muted-foreground" />
                       )}
                     </Button>
                   </div>
@@ -348,14 +348,14 @@ export default function BackupDrawer({ isOpen, onClose, onSuccess, onError }: Ba
 
             {/* Backup Summary */}
             {backupSummary && (
-              <Alert className="bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700">
+              <Alert className="bg-primary/10 border-primary/30">
                 <div className="flex items-center mb-2">
-                  <CheckCircle className="w-4 h-4 mr-2 text-green-600" />
-                  <span className="font-medium text-green-900 dark:text-green-200">
+                  <CheckCircle className="w-4 h-4 mr-2 text-primary" />
+                  <span className="font-medium text-primary">
                     Backup Created Successfully
                   </span>
                 </div>
-                <AlertDescription className="text-sm text-green-800 dark:text-green-300 space-y-1">
+                <AlertDescription className="text-sm text-primary space-y-1">
                   <p>• {backupSummary.walletsCount} wallets backed up</p>
                   <p>• {backupSummary.addressesCount} address book entries backed up</p>
                   <p>• Type: {backupSummary.backupType}</p>
@@ -394,23 +394,23 @@ export default function BackupDrawer({ isOpen, onClose, onSuccess, onError }: Ba
 
             {/* Backup Preview */}
             {backupPreview && (
-              <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700">
+              <Card className="bg-primary/10 border-primary/30">
                 <CardContent className="pt-6">
                   <div className="flex items-center mb-2">
-                    <FileText className="w-4 h-4 mr-2 text-blue-600" />
-                    <span className="font-medium text-blue-900 dark:text-blue-200">
+                    <FileText className="w-4 h-4 mr-2 text-primary" />
+                    <span className="font-medium text-primary">
                       Backup Preview
                     </span>
                   </div>
-                  <div className="text-sm text-blue-800 dark:text-blue-300 space-y-1">
+                  <div className="text-sm text-primary space-y-1">
                     <p>• Created: {new Date(backupPreview.timestamp).toLocaleDateString()}</p>
                     <p>• Version: {backupPreview.version}</p>
                     <p>• Wallets: {backupPreview.wallets.length}</p>
                     <p>• Address Book entries: {backupPreview.addressBook.length}</p>
                     <p>• Type: {backupPreview.metadata.backupType}</p>
                     {backupPreview.wallets.some((w) => w.isEncrypted) && (
-                      <Alert className="mt-2 bg-yellow-100 dark:bg-yellow-900/30 border-yellow-300 dark:border-yellow-600">
-                        <AlertDescription className="text-yellow-800 dark:text-yellow-200 text-xs">
+                      <Alert className="mt-2 bg-caution/10 border-caution/30">
+                        <AlertDescription className="text-caution text-xs">
                           ⚠️ This backup contains encrypted wallets. You&apos;ll need the individual
                           wallet passwords when accessing them.
                         </AlertDescription>
@@ -445,9 +445,9 @@ export default function BackupDrawer({ isOpen, onClose, onSuccess, onError }: Ba
                       onClick={() => setShowRestorePassword(!showRestorePassword)}
                     >
                       {showRestorePassword ? (
-                        <EyeOff className="h-4 w-4 text-gray-500" />
+                        <EyeOff className="h-4 w-4 text-muted-foreground" />
                       ) : (
-                        <Eye className="h-4 w-4 text-gray-500" />
+                        <Eye className="h-4 w-4 text-muted-foreground" />
                       )}
                     </Button>
                   </div>
@@ -527,10 +527,10 @@ export default function BackupDrawer({ isOpen, onClose, onSuccess, onError }: Ba
                     </Label>
                   </div>
                 </div>
-                <Alert className="mt-2 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700">
+                <Alert className="mt-2 bg-caution/10 border-caution/30">
                   <div className="flex items-start">
-                    <AlertCircle className="w-4 h-4 mr-2 text-amber-600 mt-0.5" />
-                    <AlertDescription className="text-xs text-amber-800 dark:text-amber-200">
+                    <AlertCircle className="w-4 h-4 mr-2 text-caution mt-0.5" />
+                    <AlertDescription className="text-xs text-caution">
                       <p className="font-medium">Warning:</p>
                       <p>
                         If &quot;Overwrite existing&quot; is checked, this will replace your current

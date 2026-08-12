@@ -222,14 +222,14 @@ export default function TermsPage() {
                             <CardTitle className="text-xl">License Agreement</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <Card className="shadow-sm border border-gray-200 dark:border-gray-800">
+                            <Card className="shadow-sm border border-border">
                                 <ScrollArea className="h-96 rounded-lg bg-avian-50 dark:bg-avian-950">
-                                    <CardContent className="p-6 space-y-4 text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                                    <CardContent className="p-6 space-y-4 text-sm text-muted-foreground leading-relaxed">
                                         <div>
-                                            <h4 className="font-medium text-gray-900 dark:text-gray-100 text-base">
+                                            <h4 className="font-medium text-foreground dark:text-muted-foreground text-base">
                                                 MIT License
                                             </h4>
-                                            <p className="mt-2 text-gray-600 dark:text-gray-400">
+                                            <p className="mt-2 text-muted-foreground">
                                                 Copyright (c) 2024 The Avian Developers
                                             </p>
                                         </div>
@@ -248,7 +248,7 @@ export default function TermsPage() {
                                             or substantial portions of the Software.
                                         </p>
 
-                                        <p className="font-medium text-gray-900 dark:text-gray-100">
+                                        <p className="font-medium text-foreground dark:text-muted-foreground">
                                             THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND, EXPRESS
                                             OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
                                             FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
@@ -307,20 +307,20 @@ export default function TermsPage() {
                             <CardTitle className="text-xl">License Agreement</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <Card className="shadow-sm border border-gray-200 dark:border-gray-800">
+                            <Card className="shadow-sm border border-border">
                                 <ScrollArea
                                     className="h-96 rounded-lg bg-avian-50 dark:bg-avian-950"
                                     onScrollCapture={handleScroll}
                                 >
                                     <CardContent
                                         ref={scrollContentRef}
-                                        className="p-6 space-y-4 text-sm text-gray-700 dark:text-gray-300 leading-relaxed"
+                                        className="p-6 space-y-4 text-sm text-muted-foreground leading-relaxed"
                                     >
                                         <div>
-                                            <h4 className="font-medium text-gray-900 dark:text-gray-100 text-base">
+                                            <h4 className="font-medium text-foreground dark:text-muted-foreground text-base">
                                                 MIT License
                                             </h4>
-                                            <p className="mt-2 text-gray-600 dark:text-gray-400">
+                                            <p className="mt-2 text-muted-foreground">
                                                 Copyright (c) 2024 The Avian Developers
                                             </p>
                                         </div>
@@ -339,7 +339,7 @@ export default function TermsPage() {
                                             copies or substantial portions of the Software.
                                         </p>
 
-                                        <p className="uppercase font-medium text-gray-900 dark:text-gray-100">
+                                        <p className="uppercase font-medium text-foreground dark:text-muted-foreground">
                                             The Software is provided &quot;as is&quot;, without warranty of any kind, express or
                                             implied, including but not limited to the warranties of merchantability, fitness for
                                             a particular purpose and noninfringement. In no event shall the authors or copyright
@@ -351,7 +351,7 @@ export default function TermsPage() {
                                         <Separator className="my-6" />
 
                                         <div className="space-y-4">
-                                            <h4 className="font-medium text-gray-900 dark:text-gray-100 text-base">
+                                            <h4 className="font-medium text-foreground dark:text-muted-foreground text-base">
                                                 Important Disclaimer
                                             </h4>
                                             <p>
@@ -368,7 +368,7 @@ export default function TermsPage() {
                                         <Separator className="my-6" />
 
                                         <div className="space-y-4">
-                                            <h4 className="font-medium text-gray-900 dark:text-gray-100 text-base">
+                                            <h4 className="font-medium text-foreground dark:text-muted-foreground text-base">
                                                 Privacy Notice
                                             </h4>
                                             <p>
@@ -397,7 +397,7 @@ export default function TermsPage() {
                             {/* Agreement Section - Only show if not in view mode */}
                             {!viewMode && (
                                 <div className="mt-6 space-y-6">
-                                    <h4 className="text-lg font-medium text-gray-900 dark:text-white">
+                                    <h4 className="text-lg font-medium text-foreground dark:text-white">
                                         Make your selection:
                                     </h4>
 
@@ -416,7 +416,7 @@ export default function TermsPage() {
                                                 htmlFor="accept-terms"
                                                 className={`text-sm font-medium cursor-pointer leading-relaxed ${hasScrolledToBottom
                                                     ? 'text-avian-700 dark:text-avian-300'
-                                                    : 'text-gray-400 dark:text-gray-500'
+                                                    : 'text-muted-foreground'
                                                     }`}
                                             >
                                                 I accept the terms of the License Agreement and agree to use Avian FlightDeck
@@ -424,15 +424,15 @@ export default function TermsPage() {
                                             </Label>
                                         </div>
 
-                                        <div className="flex items-start space-x-3 p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/70 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                                        <div className="flex items-start space-x-3 p-4 rounded-lg border border-border bg-muted/40 dark:bg-card hover:bg-muted/40 dark:hover:bg-card transition-colors">
                                             <RadioGroupItem
                                                 value="decline"
                                                 id="decline-terms"
-                                                className="text-gray-600 dark:text-gray-400 mt-0.5"
+                                                className="text-muted-foreground mt-0.5"
                                             />
                                             <Label
                                                 htmlFor="decline-terms"
-                                                className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer leading-relaxed"
+                                                className="text-sm font-medium text-muted-foreground cursor-pointer leading-relaxed"
                                             >
                                                 I do not accept the terms of the License Agreement
                                             </Label>
@@ -444,7 +444,7 @@ export default function TermsPage() {
                                         <Button
                                             variant="outline"
                                             onClick={() => setShowDeclineDialog(true)}
-                                            className="w-full sm:w-auto border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                                            className="w-full sm:w-auto border-border text-muted-foreground hover:bg-muted/40 dark:hover:bg-card"
                                             size="lg"
                                         >
                                             <X className="w-4 h-4 mr-2" />
@@ -483,7 +483,7 @@ export default function TermsPage() {
             <AlertDialog open={showDeclineDialog} onOpenChange={setShowDeclineDialog}>
                 <AlertDialogContent className="max-w-md">
                     <AlertDialogHeader>
-                        <AlertDialogTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                        <AlertDialogTitle className="flex items-center gap-2 text-caution">
                             <AlertTriangle className="h-5 w-5" />
                             Terms Agreement Required
                         </AlertDialogTitle>
@@ -497,7 +497,7 @@ export default function TermsPage() {
                     <AlertDialogFooter>
                         <AlertDialogCancel
                             onClick={() => setShowDeclineDialog(false)}
-                            className="border-gray-300 dark:border-gray-600"
+                            className="border-border"
                         >
                             Return to Terms
                         </AlertDialogCancel>

@@ -364,7 +364,7 @@ export default function SecuritySettingsPanel({
             {/* Auto-lock Settings Section */}
             <div className="space-y-4">
               <div className="flex items-center">
-                <Clock className="h-5 w-5 text-amber-600 mr-2" />
+                <Clock className="h-5 w-5 text-caution mr-2" />
                 <h3 className="text-lg font-medium">Auto-lock Settings</h3>
               </div>
 
@@ -439,7 +439,7 @@ export default function SecuritySettingsPanel({
             {/* Biometric Authentication Section */}
             <div className="space-y-4">
               <div className="flex items-center">
-                <Fingerprint className="h-5 w-5 text-green-600 mr-2" />
+                <Fingerprint className="h-5 w-5 text-primary mr-2" />
                 <h3 className="text-lg font-medium">Biometric Authentication</h3>
               </div>
 
@@ -497,9 +497,9 @@ export default function SecuritySettingsPanel({
                   )}
                 </div>
               ) : (
-                <Alert className="bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700">
-                  <Info className="h-4 w-4 text-amber-600" />
-                  <AlertDescription className="text-amber-800 dark:text-amber-200">
+                <Alert className="bg-caution/10 border-caution/30">
+                  <Info className="h-4 w-4 text-caution" />
+                  <AlertDescription className="text-caution">
                     Biometric authentication is not supported on this device or browser.
                   </AlertDescription>
                 </Alert>
@@ -509,7 +509,7 @@ export default function SecuritySettingsPanel({
             {/* Security Audit Log Section */}
             <div className="space-y-4">
               <div className="flex items-center">
-                <FileText className="h-5 w-5 text-red-600 mr-2" />
+                <FileText className="h-5 w-5 text-destructive mr-2" />
                 <h3 className="text-lg font-medium">Security Audit Log</h3>
               </div>
 
@@ -623,7 +623,7 @@ export default function SecuritySettingsPanel({
                   {paginatedEntries.map((entry) => (
                     <Card
                       key={entry.id}
-                      className={`overflow-hidden ${!entry.success ? 'border-red-200 dark:border-red-900' : ''}`}
+                      className={`overflow-hidden ${!entry.success ? 'border-destructive/30' : ''}`}
                     >
                       <div
                         className="p-3 cursor-pointer hover:bg-muted/50"
@@ -806,7 +806,7 @@ export default function SecuritySettingsPanel({
           <DrawerContent>
             <DrawerHeader className="text-center">
               <DrawerTitle className="flex items-center justify-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-red-500" />
+                <AlertTriangle className="h-5 w-5 text-destructive" />
                 Clear Security Audit Log
               </DrawerTitle>
               <DrawerDescription>
@@ -815,7 +815,7 @@ export default function SecuritySettingsPanel({
               </DrawerDescription>
             </DrawerHeader>
             <DrawerFooter className="gap-2">
-              <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={clearAuditLog}>
+              <Button className="bg-destructive hover:bg-destructive text-white" onClick={clearAuditLog}>
                 Clear Log
               </Button>
               <Button variant="outline" onClick={() => setIsClearDialogOpen(false)}>
@@ -826,10 +826,10 @@ export default function SecuritySettingsPanel({
         </Drawer>
       ) : (
         <AlertDialog open={isClearDialogOpen} onOpenChange={setIsClearDialogOpen}>
-          <AlertDialogContent className="dark:bg-gray-800 border dark:border-gray-700">
+          <AlertDialogContent className="dark:bg-card border dark:border-border">
             <AlertDialogHeader>
               <AlertDialogTitle className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-red-500" />
+                <AlertTriangle className="h-5 w-5 text-destructive" />
                 Clear Security Audit Log
               </AlertDialogTitle>
               <AlertDialogDescription>
@@ -840,7 +840,7 @@ export default function SecuritySettingsPanel({
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
-                className="bg-red-600 hover:bg-red-700 text-white"
+                className="bg-destructive hover:bg-destructive text-white"
                 onClick={clearAuditLog}
               >
                 Clear Log

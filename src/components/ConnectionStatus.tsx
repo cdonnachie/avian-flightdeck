@@ -122,7 +122,7 @@ export default function ConnectionStatus({ className = '' }: ConnectionStatusPro
           </CardTitle>
           <Badge
             variant={isConnected ? 'default' : 'destructive'}
-            className={`flex items-center gap-1 ${isConnected ? 'bg-green-500 hover:bg-green-600' : ''}`}
+            className={`flex items-center gap-1 ${isConnected ? 'bg-primary hover:bg-primary' : ''}`}
           >
             {isConnected ? (
               <>

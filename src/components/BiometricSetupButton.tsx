@@ -185,14 +185,14 @@ export default function BiometricSetupButton({
           <input
             type={showPassword ? "text" : "password"}
             placeholder="Enter wallet password"
-            className="w-full bg-white/10 border-0 text-white px-4 py-3 pr-12 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full bg-card/10 border-0 text-white px-4 py-3 pr-12 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             disabled={isLoading}
           />
           <button
             type="button"
-            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
+            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-white"
             onClick={() => setShowPassword(!showPassword)}
             disabled={isLoading}
           >
@@ -205,14 +205,14 @@ export default function BiometricSetupButton({
         </div>
         <div className="flex gap-3 mt-2">
           <button
-            className="flex-1 py-3 px-4 bg-transparent border border-gray-600 text-white rounded-lg hover:bg-white/5"
+            className="flex-1 py-3 px-4 bg-transparent border border-border text-white rounded-lg hover:bg-card/5"
             onClick={() => setShowPasswordInput(false)}
             disabled={isLoading}
           >
             Cancel
           </button>
           <button
-            className="flex-1 py-3 px-4 bg-transparent border border-blue-500 text-white rounded-lg hover:bg-blue-900/30 flex items-center justify-center"
+            className="flex-1 py-3 px-4 bg-transparent border border-primary/30 text-white rounded-lg hover:bg-primary/10 flex items-center justify-center"
             onClick={handleSetupBiometrics}
             disabled={isLoading || !password}
           >

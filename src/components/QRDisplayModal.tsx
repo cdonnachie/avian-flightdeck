@@ -91,11 +91,11 @@ export default function QRDisplayModal({ isOpen, onClose, address, label }: QRDi
           )}
 
           {label && (
-            <div className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">{label}</div>
+            <div className="mb-2 text-sm font-medium text-muted-foreground">{label}</div>
           )}
 
-          <div className="mb-4 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
-            <div className="text-xs font-mono text-gray-600 dark:text-gray-300 break-all">
+          <div className="mb-4 p-3 bg-muted/40 dark:bg-card rounded-lg">
+            <div className="text-xs font-mono text-muted-foreground break-all">
               {address}
             </div>
           </div>
@@ -103,7 +103,7 @@ export default function QRDisplayModal({ isOpen, onClose, address, label }: QRDi
           <div className="flex gap-2">
             <button
               onClick={copyAddress}
-              className="flex-1 flex items-center justify-center py-2 px-3 text-sm bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors"
+              className="flex-1 flex items-center justify-center py-2 px-3 text-sm bg-muted/40 dark:bg-card hover:bg-muted/40 dark:hover:bg-card text-muted-foreground rounded-lg transition-colors"
             >
               <Copy className="w-4 h-4 mr-1" />
               Copy
@@ -111,7 +111,7 @@ export default function QRDisplayModal({ isOpen, onClose, address, label }: QRDi
             <button
               onClick={downloadQRCode}
               disabled={!qrDataUrl}
-              className="flex-1 flex items-center justify-center py-2 px-3 text-sm bg-avian-600 hover:bg-avian-700 disabled:bg-gray-400 text-white rounded-lg transition-colors"
+              className="flex-1 flex items-center justify-center py-2 px-3 text-sm bg-avian-600 hover:bg-avian-700 disabled:bg-card text-white rounded-lg transition-colors"
             >
               <Download className="w-4 h-4 mr-1" />
               Download

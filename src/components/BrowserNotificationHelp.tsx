@@ -30,25 +30,25 @@ export const BrowserNotificationHelp: React.FC = () => {
   }, []);
 
   return (
-    <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-      <h3 className="flex items-center gap-2 text-blue-800 dark:text-blue-300 font-medium">
+    <div className="p-4 bg-primary/10 rounded-lg">
+      <h3 className="flex items-center gap-2 text-primary font-medium">
         <Info size={16} />
         Browser Notification Settings
       </h3>
 
-      <p className="text-sm mt-2 text-blue-700 dark:text-blue-200">
+      <p className="text-sm mt-2 text-primary">
         You&apos;ve enabled notifications, but they might not always appear as pop-up banners. To
         ensure you see important alerts, you may need to adjust your {browserName} settings.
       </p>
 
       <Accordion type="single" collapsible className="mt-2">
         <AccordionItem value="browser-settings">
-          <AccordionTrigger className="text-sm font-medium text-blue-800 dark:text-blue-300 py-2">
+          <AccordionTrigger className="text-sm font-medium text-primary py-2">
             How to configure {browserName} notification settings
           </AccordionTrigger>
           <AccordionContent>
             {browserName === 'Brave' && (
-              <div className="space-y-3 text-sm text-blue-700 dark:text-blue-200">
+              <div className="space-y-3 text-sm text-primary">
                 <p>Follow these steps to ensure Brave shows notification banners:</p>
                 <ol className="list-decimal list-inside space-y-2 ml-2">
                   <li>Click the menu button (three lines) in the top right</li>
@@ -66,14 +66,14 @@ export const BrowserNotificationHelp: React.FC = () => {
                     is enabled
                   </li>
                 </ol>
-                <div className="mt-3 flex items-center gap-2 text-blue-600 dark:text-blue-300">
+                <div className="mt-3 flex items-center gap-2 text-primary">
                   <CheckCircle2 size={16} />
                   <span>Restart Brave after making these changes</span>
                 </div>
               </div>
             )}
             {browserName === 'Chrome' && (
-              <div className="space-y-3 text-sm text-blue-700 dark:text-blue-200">
+              <div className="space-y-3 text-sm text-primary">
                 <p>Follow these steps to ensure Chrome shows notification banners:</p>
                 <ol className="list-decimal list-inside space-y-2 ml-2">
                   <li>Click the menu button (three dots) in the top right</li>
@@ -88,7 +88,7 @@ export const BrowserNotificationHelp: React.FC = () => {
               </div>
             )}
             {browserName === 'Firefox' && (
-              <div className="space-y-3 text-sm text-blue-700 dark:text-blue-200">
+              <div className="space-y-3 text-sm text-primary">
                 <p>Follow these steps to ensure Firefox shows notification banners:</p>
                 <ol className="list-decimal list-inside space-y-2 ml-2">
                   <li>Click the menu button (three lines) in the top right</li>
@@ -109,7 +109,7 @@ export const BrowserNotificationHelp: React.FC = () => {
               </div>
             )}
             {browserName !== 'Brave' && browserName !== 'Chrome' && browserName !== 'Firefox' && (
-              <div className="text-sm text-blue-700 dark:text-blue-200">
+              <div className="text-sm text-primary">
                 <p>Check your browser settings to ensure:</p>
                 <ul className="list-disc list-inside space-y-2 mt-2 ml-2">
                   <li>Notification permissions are granted for this website</li>
@@ -126,7 +126,7 @@ export const BrowserNotificationHelp: React.FC = () => {
         <Button
           variant="outline"
           size="sm"
-          className="text-blue-700 dark:text-blue-300 border-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40"
+          className="text-primary border-primary/30 hover:bg-primary/10 dark:hover:bg-primary/10"
           onClick={() => {
             if (testNotification) {
               testNotification();

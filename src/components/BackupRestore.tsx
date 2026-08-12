@@ -141,23 +141,23 @@ export function BackupRestore() {
 
                 {/* Backup Preview */}
                 {backupPreview && (
-                    <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700">
+                    <Card className="bg-primary/10 border-primary/30">
                         <CardContent className="pt-6">
                             <div className="flex items-center mb-2">
-                                <FileText className="w-4 h-4 mr-2 text-blue-600" />
-                                <span className="font-medium text-blue-900 dark:text-blue-200">
+                                <FileText className="w-4 h-4 mr-2 text-primary" />
+                                <span className="font-medium text-primary">
                                     Backup Preview
                                 </span>
                             </div>
-                            <div className="text-sm text-blue-800 dark:text-blue-300 space-y-1">
+                            <div className="text-sm text-primary space-y-1">
                                 <p>• Created: {new Date(backupPreview.timestamp).toLocaleDateString()}</p>
                                 <p>• Version: {backupPreview.version}</p>
                                 <p>• Wallets: {backupPreview.wallets.length}</p>
                                 <p>• Address Book entries: {backupPreview.addressBook.length}</p>
                                 <p>• Type: {backupPreview.metadata.backupType}</p>
                                 {backupPreview.wallets.some((w) => w.isEncrypted) && (
-                                    <Alert className="mt-2 bg-yellow-100 dark:bg-yellow-900/30 border-yellow-300 dark:border-yellow-600">
-                                        <AlertDescription className="text-yellow-800 dark:text-yellow-200 text-xs">
+                                    <Alert className="mt-2 bg-caution/10 border-caution/30">
+                                        <AlertDescription className="text-caution text-xs">
                                             ⚠️ This backup contains encrypted wallets. You'll need the individual
                                             wallet passwords when accessing them.
                                         </AlertDescription>
@@ -192,9 +192,9 @@ export function BackupRestore() {
                                     onClick={() => setShowRestorePassword(!showRestorePassword)}
                                 >
                                     {showRestorePassword ? (
-                                        <EyeOff className="h-4 w-4 text-gray-500" />
+                                        <EyeOff className="h-4 w-4 text-muted-foreground" />
                                     ) : (
-                                        <Eye className="h-4 w-4 text-gray-500" />
+                                        <Eye className="h-4 w-4 text-muted-foreground" />
                                     )}
                                 </Button>
                             </div>
@@ -274,10 +274,10 @@ export function BackupRestore() {
                                 </Label>
                             </div>
                         </div>
-                        <Alert className="mt-2 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700">
+                        <Alert className="mt-2 bg-caution/10 border-caution/30">
                             <div className="flex items-start">
-                                <AlertCircle className="w-4 h-4 mr-2 text-amber-600 mt-0.5" />
-                                <AlertDescription className="text-xs text-amber-800 dark:text-amber-200">
+                                <AlertCircle className="w-4 h-4 mr-2 text-caution mt-0.5" />
+                                <AlertDescription className="text-xs text-caution">
                                     <p className="font-medium">Warning:</p>
                                     <p>
                                         If "Overwrite existing" is checked, this will replace your current
