@@ -13,7 +13,7 @@ import { StorageService } from './StorageService';
 // lock screen — does not pull the secp256k1 build. The elliptic-curve validation it needs on the
 // legacy-upgrade path is loaded lazily via initializeCrypto() below, and bip39 lazily at its one
 // use site, so neither is in the initial bundle.
-import { secureEncrypt, decryptData, legacyDecrypt } from '../wallet/encryption';
+import { secureEncrypt, decryptData } from '../wallet/encryption';
 import { securityLogger } from '@/lib/Logger';
 import { isBrowser } from '@/lib/utils';
 
@@ -765,7 +765,7 @@ export class SecurityService {
 
         try {
           // Validate password by attempting to decrypt the private key
-          const { decrypted, wasLegacy } = await decryptData(activeWallet.privateKey, password);
+          const { decrypted, format } = await decryptData(activeWallet.privateKey, password);
 
           // The legacy format carries no authentication tag, so a wrong password does not
           // reliably fail — it can decrypt to plausible-looking rubbish. Checking that the
@@ -790,8 +790,10 @@ export class SecurityService {
             throw new Error('Decrypted value is not a valid private key, password incorrect.');
           }
 
-          // If the key was using legacy encryption, upgrade it now.
-          if (wasLegacy) {
+          // Upgrade the stored ciphertext to the current (v2) KDF profile if it isn't already —
+          // this covers both the old interactive-scrypt (v1) format and the unauthenticated legacy
+          // format. The key was just validated as a real WIF, so re-encrypting it is safe.
+          if (format !== 'v2') {
             securityLogger.info(`Upgrading encryption for wallet: ${activeWallet.name}`);
             const newEncryptedKey = await secureEncrypt(decrypted, password);
 
@@ -799,8 +801,11 @@ export class SecurityService {
             // Also upgrade the mnemonic if it exists
             if (activeWallet.mnemonic) {
               try {
-                // We can use the legacy decrypt directly since we know it's an old format
-                const decryptedMnemonic = legacyDecrypt(activeWallet.mnemonic, password);
+                // Decrypt in whatever format it is stored (v1/legacy), then re-seal as v2.
+                const { decrypted: decryptedMnemonic } = await decryptData(
+                  activeWallet.mnemonic,
+                  password,
+                );
                 // Same reasoning as the key above: only store something that is demonstrably
                 // a real mnemonic, or the user's recovery phrase is lost. bip39 is loaded lazily
                 // so it stays out of the initial bundle.

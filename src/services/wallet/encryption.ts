@@ -63,44 +63,102 @@ const IV_LENGTH = 16;
 const SALT_LENGTH = 64;
 const TAG_LENGTH = 16;
 
-/** Scrypt work factors, shared by encrypt and decrypt so a value round-trips. */
-const SCRYPT = { N: 16384, r: 8, p: 1, dkLen: 32 } as const;
+type ScryptParams = { N: number; r: number; p: number; dkLen: number };
+
+/**
+ * Scrypt work factors. V1 is the original interactive setting (~16 MB) — kept only so ciphertext
+ * written before the hardening still decrypts. V2 is the hardened profile (~64 MB) used for every
+ * new value; it is recorded in each v2 blob's header so decryption never has to guess, and a future
+ * bump is just another profile without a format change. See docs/proposals/scrypt-kdf-hardening.md.
+ */
+const SCRYPT_V1: ScryptParams = { N: 16384, r: 8, p: 1, dkLen: 32 };
+const SCRYPT_V2: ScryptParams = { N: 65536, r: 8, p: 1, dkLen: 32 };
+
+/** Prefix marking the versioned, self-describing format: `v2.<base64 header>.<base64 body>`. */
+const V2_PREFIX = 'v2.';
+
+/** Which on-disk format a value was decrypted from. Drives the re-encrypt-on-unlock upgrade. */
+export type EncryptionFormat = 'v1' | 'v2' | 'legacy';
+
+function deriveKey(password: string, salt: Buffer, params: ScryptParams): Promise<Buffer> {
+  return scryptPromise(Buffer.from(password, 'utf-8'), salt, params.N, params.r, params.p, params.dkLen);
+}
+
+function gcmDecrypt(key: Buffer, iv: Buffer, tag: Buffer, ciphertext: Buffer): string {
+  const decipher = createDecipheriv(ALGORITHM, key, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+}
+
+interface ParsedBlob {
+  params: ScryptParams;
+  salt: Buffer;
+  iv: Buffer;
+  tag: Buffer;
+  ciphertext: Buffer;
+}
+
+// Slice a raw `salt ‖ iv ‖ tag ‖ ciphertext` buffer into its parts.
+function sliceBlob(bin: Buffer, params: ScryptParams): ParsedBlob {
+  return {
+    params,
+    salt: bin.subarray(0, SALT_LENGTH),
+    iv: bin.subarray(SALT_LENGTH, SALT_LENGTH + IV_LENGTH),
+    tag: bin.subarray(SALT_LENGTH + IV_LENGTH, SALT_LENGTH + IV_LENGTH + TAG_LENGTH),
+    ciphertext: bin.subarray(SALT_LENGTH + IV_LENGTH + TAG_LENGTH),
+  };
+}
+
+// Parse a `v2.<base64 header>.<base64 body>` blob, reading the KDF params from its header.
+function parseV2(encrypted: string): ParsedBlob {
+  const parts = encrypted.split('.');
+  if (parts.length !== 3 || parts[0] !== 'v2') {
+    throw new Error('Malformed v2 ciphertext');
+  }
+  const header = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
+  const params: ScryptParams = {
+    N: header.N,
+    r: header.r,
+    p: header.p,
+    dkLen: header.dkLen ?? 32,
+  };
+  if (
+    !Number.isInteger(params.N) ||
+    !Number.isInteger(params.r) ||
+    !Number.isInteger(params.p) ||
+    !Number.isInteger(params.dkLen)
+  ) {
+    throw new Error('Invalid v2 KDF parameters');
+  }
+  return sliceBlob(Buffer.from(parts[2], 'base64'), params);
+}
 
 export async function secureEncrypt(data: string, password: string): Promise<string> {
   const salt = randomBytes(SALT_LENGTH);
-  const key = await scryptPromise(
-    Buffer.from(password, 'utf-8'),
-    salt,
-    SCRYPT.N,
-    SCRYPT.r,
-    SCRYPT.p,
-    SCRYPT.dkLen,
-  );
+  const key = await deriveKey(password, salt, SCRYPT_V2);
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, key, iv);
   const encrypted = Buffer.concat([cipher.update(data, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
-  return Buffer.concat([salt, iv, tag, encrypted]).toString('hex');
+  const header = Buffer.from(
+    JSON.stringify({ kdf: 'scrypt', ...SCRYPT_V2 }),
+    'utf-8',
+  ).toString('base64');
+  const body = Buffer.concat([salt, iv, tag, encrypted]).toString('base64');
+  return `${V2_PREFIX}${header}.${body}`;
 }
 
-export async function secureDecrypt(encryptedHex: string, password: string): Promise<string> {
-  const encryptedData = Buffer.from(encryptedHex, 'hex');
-  const salt = encryptedData.subarray(0, SALT_LENGTH);
-  const iv = encryptedData.subarray(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
-  const tag = encryptedData.subarray(SALT_LENGTH + IV_LENGTH, SALT_LENGTH + IV_LENGTH + TAG_LENGTH);
-  const encrypted = encryptedData.subarray(SALT_LENGTH + IV_LENGTH + TAG_LENGTH);
-  const key = await scryptPromise(
-    Buffer.from(password, 'utf-8'),
-    salt,
-    SCRYPT.N,
-    SCRYPT.r,
-    SCRYPT.p,
-    SCRYPT.dkLen,
-  );
-  const decipher = createDecipheriv(ALGORITHM, key, iv);
-  decipher.setAuthTag(tag);
-  const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
-  return decrypted.toString('utf8');
+export async function secureDecrypt(encryptedText: string, password: string): Promise<string> {
+  // v2: self-describing — read the params from the header.
+  if (encryptedText.startsWith(V2_PREFIX)) {
+    const { params, salt, iv, tag, ciphertext } = parseV2(encryptedText);
+    const key = await deriveKey(password, salt, params);
+    return gcmDecrypt(key, iv, tag, ciphertext);
+  }
+  // v1: hex `salt ‖ iv ‖ tag ‖ ciphertext` derived with the original interactive factors.
+  const { salt, iv, tag, ciphertext } = sliceBlob(Buffer.from(encryptedText, 'hex'), SCRYPT_V1);
+  const key = await deriveKey(password, salt, SCRYPT_V1);
+  return gcmDecrypt(key, iv, tag, ciphertext);
 }
 
 /**
@@ -136,11 +194,13 @@ export function legacyDecrypt(encryptedData: string, password: string): string {
 export async function decryptData(
   encryptedData: string,
   password: string,
-): Promise<{ decrypted: string; wasLegacy: boolean }> {
+): Promise<{ decrypted: string; wasLegacy: boolean; format: EncryptionFormat }> {
   try {
-    // The current format is hex; non-hex legacy data fails here and falls through.
+    // v2 is `v2.`-prefixed; the current format is hex; non-hex legacy data fails here and falls
+    // through. `format` lets callers upgrade v1/legacy blobs to v2 after a successful unlock.
     const decrypted = await secureDecrypt(encryptedData, password);
-    return { decrypted, wasLegacy: false };
+    const format: EncryptionFormat = encryptedData.startsWith(V2_PREFIX) ? 'v2' : 'v1';
+    return { decrypted, wasLegacy: false, format };
   } catch (secureError) {
     walletLogger.debug('Secure decryption failed, attempting legacy method', {
       error: secureError instanceof Error ? secureError.message : 'Unknown error',
@@ -148,7 +208,7 @@ export async function decryptData(
 
     try {
       const decrypted = legacyDecrypt(encryptedData, password);
-      return { decrypted, wasLegacy: true };
+      return { decrypted, wasLegacy: true, format: 'legacy' };
     } catch (legacyError) {
       walletLogger.error('Decryption failed for both secure and legacy methods.', {
         secureError: secureError instanceof Error ? secureError.message : 'Unknown error',

@@ -190,8 +190,8 @@ describe('unlocking a wallet still on the legacy encryption format', () => {
     expect(await securityService.unlockWallet(TEST_PASSWORD)).toBe(true);
 
     const stored = await StorageService.getWalletById(created.id!);
-    // Upgraded blobs are scrypt/AES-GCM hex, not CryptoJS base64.
-    expect(stored?.privateKey).toMatch(/^[0-9a-f]+$/);
+    // Upgraded blobs are the current versioned scrypt/AES-GCM format, not CryptoJS base64.
+    expect(stored?.privateKey).toMatch(/^v2\./);
     expect((await decryptData(stored!.privateKey, TEST_PASSWORD)).decrypted).toBe(WIF);
   });
 
