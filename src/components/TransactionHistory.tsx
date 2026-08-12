@@ -146,12 +146,7 @@ interface TransactionHistoryProps {
 }
 
 export function TransactionHistory({ className }: TransactionHistoryProps) {
-  const {
-    address,
-    refreshTransactionHistory,
-    processingProgress,
-    reprocessTransactionHistoryProgressive,
-  } = useWallet();
+  const { address, refreshTransactionHistory, processingProgress } = useWallet();
   const [transactions, setTransactions] = useState<EnhancedTransactionData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -164,8 +159,10 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
     try {
       setIsRefreshing(true);
 
-      // Use the progressive method that updates UI in real-time
-      await reprocessTransactionHistoryProgressive();
+      // Incremental refresh: pull only new transactions rather than re-fetching the entire
+      // history. A full re-sync (reclassify everything) is still available via the balance
+      // card's long-press.
+      await refreshTransactionHistory();
 
       // Final reload after processing is complete
       const finalTxHistory = await StorageService.getTransactionHistory(address);
@@ -181,7 +178,7 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
     } finally {
       setIsRefreshing(false);
     }
-  }, [address, reprocessTransactionHistoryProgressive]);
+  }, [address, refreshTransactionHistory]);
 
   const loadTransactions = useCallback(async () => {
     if (!address) return;
