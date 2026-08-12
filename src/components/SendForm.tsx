@@ -24,6 +24,7 @@ import { QRScanResult } from '@/types/addressBook';
 import { UTXOSelectionSettings } from './UTXOSelectionSettings';
 import { UTXOOverview } from './UTXOOverview';
 import { UTXOSelector } from './UTXOSelector';
+import SendReviewDialog from './SendReviewDialog';
 
 // Import Shadcn UI components
 import { Button } from '@/components/ui/button';
@@ -82,6 +83,7 @@ export default function SendForm() {
   });
   const [isConsolidatingToSelf, setIsConsolidatingToSelf] = useState(false);
   const [showUTXOSelector, setShowUTXOSelector] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [manuallySelectedUTXOs, setManuallySelectedUTXOs] = useState<EnhancedUTXO[]>([]);
   const [subtractFeeFromAmount, setSubtractFeeFromAmount] = useState(false);
   const [customChangeAddress, setCustomChangeAddress] = useState('');
@@ -189,17 +191,23 @@ export default function SendForm() {
       return;
     }
 
+    // All checks passed — show the review. Nothing is authorised or signed until the user
+    // confirms there; the actual auth + send path (proceedToAuthAndSend) is unchanged.
+    setReviewOpen(true);
+  };
+
+  // Runs after the user confirms the review: authenticate, then send. Extracted verbatim from the
+  // old inline handleSubmit path so the money-moving flow is untouched — only gated by the review.
+  const proceedToAuthAndSend = async () => {
     try {
-      // Always require authentication for transactions, regardless of stored password
       let authPassword = '';
 
       if (isEncrypted) {
-        // Always request authentication using the SecurityContext's requireAuth method
         const authResult = await requireAuth('Authenticate to send transaction');
 
         if (!authResult.success || !authResult.password) {
-          // User canceled authentication or it failed
           setError('Authentication required to send transaction');
+          setReviewOpen(false);
           return;
         }
 
@@ -207,10 +215,11 @@ export default function SendForm() {
         setUsingBiometricAuth(wasBiometricAuth);
       }
 
-      // Proceed with sending the transaction using the acquired password
       await sendTransactionWithAuth(authPassword);
+      setReviewOpen(false);
     } catch (error: any) {
       setError('Authentication failed: ' + (error.message || 'Unknown error'));
+      setReviewOpen(false);
     }
   };
 
@@ -1411,6 +1420,46 @@ export default function SendForm() {
           feeRate={utxoOptions.feeRate || 10000}
           maxInputs={utxoOptions.maxInputs || 100}
         />
+
+        {(() => {
+          const amountSats = Math.floor(parseFloat(amount || '0') * 100000000);
+          const feeSats = 10000;
+          const totalSats = subtractFeeFromAmount ? amountSats : amountSats + feeSats;
+          const recipientSats = subtractFeeFromAmount
+            ? Math.max(0, amountSats - feeSats)
+            : amountSats;
+          const fmt = (s: number) => (s / 100000000).toFixed(8);
+          const manualCount = manuallySelectedUTXOs.length;
+          const inputsLabel =
+            utxoOptions.strategy === CoinSelectionStrategy.MANUAL
+              ? `${manualCount} UTXO${manualCount === 1 ? '' : 's'} · manual`
+              : 'Automatic · best-fit';
+          return (
+            <SendReviewDialog
+              open={reviewOpen}
+              onOpenChange={setReviewOpen}
+              onConfirm={proceedToAuthAndSend}
+              onEditInputs={() => {
+                setReviewOpen(false);
+                setShowUTXOSelector(true);
+              }}
+              isSending={isSending}
+              amount={amount}
+              toAddress={toAddress}
+              feeAVN={fmt(feeSats)}
+              totalAVN={fmt(totalSats)}
+              recipientReceivesAVN={fmt(recipientSats)}
+              subtractFee={subtractFeeFromAmount}
+              inputsLabel={inputsLabel}
+              changeAddress={customChangeAddress || undefined}
+              fromLabel={
+                fromDerivedAddress
+                  ? `Derived · ${fromDerivedAddress.slice(0, 10)}…${fromDerivedAddress.slice(-6)}`
+                  : undefined
+              }
+            />
+          );
+        })()}
 
         {/* Manual UTXO Selection Notice */}
         {utxoOptions.strategy === CoinSelectionStrategy.MANUAL && (
