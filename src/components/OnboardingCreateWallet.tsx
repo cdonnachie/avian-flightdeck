@@ -2,23 +2,8 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import * as bip39 from 'bip39';
-import {
-    ArrowLeft,
-    ArrowRight,
-    Eye,
-    EyeOff,
-    Copy,
-    Check,
-    RefreshCw,
-    ShieldCheck,
-    AlertTriangle,
-    Lock,
-} from 'lucide-react';
+import { Eye, EyeOff, Copy, RefreshCw, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import PasswordStrengthChecker, { PasswordStrength } from '@/components/PasswordStrength';
 import type { WalletCreationData } from '@/components/WalletCreationForm';
 
@@ -32,6 +17,14 @@ type Step = 'details' | 'backup' | 'confirm' | 'secure';
 const STEPS: Step[] = ['details', 'backup', 'confirm', 'secure'];
 const MIN_PASSWORD_LENGTH = 8;
 const CONFIRM_COUNT = 3;
+
+// Preflight-sequence labels shown in the left rail, one per wizard step.
+const RAIL: Record<Step, { no: string; title: string; sub: string }> = {
+    details: { no: '01', title: 'Identify', sub: 'name & phrase length' },
+    backup: { no: '02', title: 'Recovery key', sub: 'write it down' },
+    confirm: { no: '03', title: 'Verify', sub: 'confirm the phrase' },
+    secure: { no: '04', title: 'Seal', sub: 'set a password' },
+};
 
 // Fisher–Yates shuffle (app runtime; deterministic randomness not required here).
 function shuffle<T>(arr: T[]): T[] {
@@ -165,37 +158,50 @@ export default function OnboardingCreateWallet({
         setStep(STEPS[stepIndex - 1]);
     };
 
-    // ---- render helpers ----------------------------------------------------
-    const titles: Record<Step, string> = {
-        details: 'Name your wallet',
-        backup: 'Back up your recovery phrase',
-        confirm: 'Confirm your recovery phrase',
-        secure: 'Set a password',
-    };
-
     return (
-        <Card className="max-w-lg mx-auto">
-            <CardHeader className="space-y-3">
-                {/* progress */}
-                <div className="flex items-center gap-1.5" aria-hidden>
+        <div className="ob-console">
+            <aside className="ob-rail">
+                <div className="ob-label">Sequence</div>
+                <ol className="ob-seq">
                     {STEPS.map((s, i) => (
-                        <span
-                            key={s}
-                            className={`h-1 flex-1 rounded-full transition-colors ${i <= stepIndex ? 'bg-primary' : 'bg-muted'}`}
-                        />
+                        <li key={s} className={i === stepIndex ? 'active' : i < stepIndex ? 'done' : ''}>
+                            <span className="ob-seq__no">{RAIL[s].no}</span>
+                            <span className="ob-seq__t">
+                                {RAIL[s].title}
+                                <small>{RAIL[s].sub}</small>
+                            </span>
+                            <span className="ob-seq__dot" />
+                        </li>
+                    ))}
+                </ol>
+                <div className="ob-rail__note">
+                    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
+                        <path d="M7 1.5 L13 12 H1 Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+                        <path d="M7 6 v3 M7 10.3 v0.3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    </svg>
+                    Keys are generated on this device. Nothing here is sent to a server.
+                </div>
+            </aside>
+
+            <main className="ob-panel">
+                <div className="ob-strip" aria-hidden>
+                    {STEPS.map((s, i) => (
+                        <span key={s} className={i <= stepIndex ? 'on' : ''} />
                     ))}
                 </div>
-                <CardTitle className="text-xl">{titles[step]}</CardTitle>
-            </CardHeader>
 
-            <CardContent className="space-y-5">
                 {/* STEP 1 — details */}
                 {step === 'details' && (
-                    <div className="space-y-5">
-                        <div className="space-y-2">
-                            <Label htmlFor="wallet-name">Wallet name</Label>
-                            <Input
+                    <div>
+                        <div className="ob-head ob-head--sm">
+                            <span className="ob-label">01 · Identify</span>
+                            <h2>Name your wallet</h2>
+                        </div>
+                        <div className="ob-field">
+                            <label className="ob-field__lbl" htmlFor="wallet-name">Wallet name</label>
+                            <input
                                 id="wallet-name"
+                                className="ob-input"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
                                 placeholder="Main Wallet"
@@ -203,121 +209,101 @@ export default function OnboardingCreateWallet({
                                 maxLength={50}
                             />
                         </div>
-                        <div className="space-y-2">
-                            <Label>Recovery phrase length</Label>
-                            <div className="flex gap-2 rounded-lg border border-input bg-background p-1">
+                        <div className="ob-field">
+                            <span className="ob-field__lbl">Recovery phrase length</span>
+                            <div className="ob-seg">
                                 {(['12', '24'] as const).map((len) => (
                                     <button
                                         key={len}
                                         type="button"
+                                        className={mnemonicLength === len ? 'is-on' : ''}
                                         onClick={() => setMnemonicLength(len)}
-                                        className={`flex-1 rounded-md py-2 text-sm font-medium transition-colors ${
-                                            mnemonicLength === len
-                                                ? 'bg-primary/15 text-primary'
-                                                : 'text-muted-foreground hover:text-foreground'
-                                        }`}
                                     >
                                         {len} words
                                     </button>
                                 ))}
                             </div>
-                            <p className="text-xs text-muted-foreground">
-                                Both are secure. 24 words offers extra margin; 12 is easier to write down.
-                            </p>
+                            <span className="ob-hint">
+                                Both are secure. 24 words adds margin; 12 is easier to write down.
+                            </span>
                         </div>
                     </div>
                 )}
 
                 {/* STEP 2 — backup / reveal */}
                 {step === 'backup' && (
-                    <div className="space-y-4">
-                        <p className="text-sm text-muted-foreground">
-                            Write these {words.length} words down in order and keep them offline. They are
-                            the only way to restore this wallet — FlightDeck can&apos;t recover them for you.
+                    <div>
+                        <div className="ob-head ob-head--sm">
+                            <span className="ob-label">02 · Recovery key</span>
+                            <h2>Write these words down, in order</h2>
+                        </div>
+                        <p className="ob-lede">
+                            This phrase is the only way to restore the wallet — FlightDeck can&apos;t
+                            recover it for you. Keep it offline.
                         </p>
 
-                        <div className="relative">
-                            <div
-                                className={`grid grid-cols-2 gap-2 sm:grid-cols-3 ${revealed ? '' : 'select-none blur-sm'}`}
-                            >
+                        <div className="ob-seedwrap">
+                            <div className={`ob-seed${revealed ? '' : ' blur'}`}>
                                 {words.map((word, i) => (
-                                    <div
-                                        key={i}
-                                        className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-3 py-2"
-                                    >
-                                        <span className="w-5 text-right font-mono text-xs text-muted-foreground">
-                                            {i + 1}
-                                        </span>
-                                        <span className="font-mono text-sm" data-testid="seed-word">
-                                            {word}
-                                        </span>
+                                    <div key={i} className="ob-word">
+                                        <i>{i + 1}</i>
+                                        <b data-testid="seed-word">{word}</b>
                                     </div>
                                 ))}
                             </div>
                             {!revealed && (
-                                <button
-                                    type="button"
-                                    onClick={() => setRevealed(true)}
-                                    className="absolute inset-0 grid place-items-center"
-                                >
-                                    <span className="flex items-center gap-2 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium shadow-sm">
-                                        <Eye className="h-4 w-4 text-primary" /> Tap to reveal
-                                    </span>
+                                <button type="button" className="ob-reveal" onClick={() => setRevealed(true)}>
+                                    <Eye className="h-4 w-4" /> Tap to reveal
                                 </button>
                             )}
                         </div>
 
-                        <div className="flex items-start gap-2.5 rounded-lg border border-caution/30 bg-caution/10 p-3 text-sm">
-                            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-caution" />
-                            <span>
-                                Anyone with these words owns the funds. Never share them, and never type them
-                                into a website.
-                            </span>
+                        <div className="ob-warn">
+                            <AlertTriangle className="h-4 w-4" />
+                            Anyone with these words owns the funds. Never share them, and never type
+                            them into a website.
                         </div>
 
                         {revealed && (
-                            <div className="flex items-center justify-between">
-                                <Button variant="ghost" size="sm" onClick={copyPhrase} className="gap-2">
+                            <div className="ob-seedbar">
+                                <button type="button" className="ob-mini" onClick={copyPhrase}>
                                     <Copy className="h-4 w-4" /> Copy
-                                </Button>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
+                                </button>
+                                <button
+                                    type="button"
+                                    className="ob-mini ob-mini--muted"
                                     onClick={() => regenerate(mnemonicLength)}
-                                    className="gap-2 text-muted-foreground"
                                 >
                                     <RefreshCw className="h-4 w-4" /> Regenerate
-                                </Button>
+                                </button>
                             </div>
                         )}
 
-                        <label className="flex cursor-pointer items-center gap-2.5 text-sm">
+                        <label className="ob-arm">
                             <input
                                 type="checkbox"
                                 checked={writtenDown}
                                 disabled={!revealed}
                                 onChange={(e) => setWrittenDown(e.target.checked)}
-                                className="h-4 w-4 accent-[hsl(var(--primary))] disabled:opacity-50"
                             />
-                            <span className={revealed ? '' : 'text-muted-foreground'}>
-                                I&apos;ve written my recovery phrase down and stored it safely.
-                            </span>
+                            <span>I&apos;ve written my recovery phrase down and stored it safely.</span>
                         </label>
                     </div>
                 )}
 
                 {/* STEP 3 — confirm */}
                 {step === 'confirm' && (
-                    <div className="space-y-4">
-                        <p className="text-sm text-muted-foreground">
+                    <div>
+                        <div className="ob-head ob-head--sm">
+                            <span className="ob-label">03 · Verify</span>
+                            <h2>Confirm your recovery phrase</h2>
+                        </div>
+                        <p className="ob-lede">
                             Tap the words to fill positions{' '}
-                            <span className="font-medium text-foreground">
-                                {positions.map((p) => `#${p + 1}`).join(', ')}
-                            </span>{' '}
-                            in order, to confirm your backup.
+                            <b>{positions.map((p) => `#${p + 1}`).join(', ')}</b>, in order.
                         </p>
 
-                        <div className="flex gap-2">
+                        <div className="ob-slots">
                             {positions.map((pos, slot) => {
                                 const bankId = assignments[slot];
                                 const filled = bankId !== null;
@@ -325,28 +311,17 @@ export default function OnboardingCreateWallet({
                                     <button
                                         key={slot}
                                         type="button"
+                                        className={`ob-slot${filled ? ' filled' : ''}`}
                                         onClick={() => clearSlot(slot)}
-                                        className={`flex-1 rounded-lg border px-2 py-2.5 text-center transition-colors ${
-                                            filled
-                                                ? 'border-primary bg-primary/10'
-                                                : 'border-dashed border-border'
-                                        }`}
                                     >
-                                        <span
-                                            className="block text-[0.6rem] text-muted-foreground"
-                                            data-testid="confirm-slot-pos"
-                                        >
-                                            #{pos + 1}
-                                        </span>
-                                        <span className="font-mono text-sm">
-                                            {filled ? bank[bankId!].word : '·····'}
-                                        </span>
+                                        <small data-testid="confirm-slot-pos">#{pos + 1}</small>
+                                        <b>{filled ? bank[bankId!].word : '·····'}</b>
                                     </button>
                                 );
                             })}
                         </div>
 
-                        <div className="flex flex-wrap gap-2">
+                        <div className="ob-bank">
                             {bank.map((entry) => {
                                 const used = assignedIds.has(entry.id);
                                 return (
@@ -356,11 +331,7 @@ export default function OnboardingCreateWallet({
                                         data-testid="bank-word"
                                         onClick={() => tapWord(entry.id)}
                                         disabled={used}
-                                        className={`rounded-md border px-3 py-1.5 font-mono text-sm transition-colors ${
-                                            used
-                                                ? 'border-border bg-muted/40 text-muted-foreground opacity-50'
-                                                : 'border-border hover:border-primary hover:text-primary'
-                                        }`}
+                                        className={`ob-bankw${used ? ' used' : ''}`}
                                     >
                                         {entry.word}
                                     </button>
@@ -369,7 +340,7 @@ export default function OnboardingCreateWallet({
                         </div>
 
                         {assignments.every((a) => a !== null) && !confirmValid && (
-                            <p className="text-sm text-destructive">
+                            <p className="ob-err">
                                 That order doesn&apos;t match. Tap a slot to clear it and try again.
                             </p>
                         )}
@@ -378,95 +349,107 @@ export default function OnboardingCreateWallet({
 
                 {/* STEP 4 — secure */}
                 {step === 'secure' && (
-                    <div className="space-y-4">
-                        <p className="text-sm text-muted-foreground">
-                            This password encrypts the wallet on this device. You&apos;ll enter it to unlock
-                            and to authorise signatures.
+                    <div>
+                        <div className="ob-head ob-head--sm">
+                            <span className="ob-label">04 · Seal</span>
+                            <h2>Set a password</h2>
+                        </div>
+                        <p className="ob-lede">
+                            This password encrypts the wallet on this device. You&apos;ll enter it to
+                            unlock and to authorise signatures.
                         </p>
-                        <div className="space-y-2">
-                            <Label htmlFor="new-password">Password</Label>
-                            <div className="relative">
-                                <Input
+                        <div className="ob-field">
+                            <label className="ob-field__lbl" htmlFor="new-password">Password</label>
+                            <div className="ob-inwrap">
+                                <input
                                     id="new-password"
+                                    className="ob-input"
+                                    style={{ paddingRight: 40 }}
                                     type={showPassword ? 'text' : 'password'}
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     placeholder="At least 8 characters"
                                     autoComplete="new-password"
-                                    className="pr-10"
                                     autoFocus
                                 />
                                 <button
                                     type="button"
+                                    className="ob-eye"
                                     onClick={() => setShowPassword((v) => !v)}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                                 >
                                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                 </button>
                             </div>
-                            <PasswordStrengthChecker
-                                password={password}
-                                onStrengthChange={(s) => setStrength(s)}
-                                showSuggestions={false}
-                            />
+                            <div className="mt-2">
+                                <PasswordStrengthChecker
+                                    password={password}
+                                    onStrengthChange={(s) => setStrength(s)}
+                                    showSuggestions={false}
+                                />
+                            </div>
                         </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="confirm-password">Confirm password</Label>
-                            <Input
+                        <div className="ob-field">
+                            <label className="ob-field__lbl" htmlFor="confirm-password">Confirm password</label>
+                            <input
                                 id="confirm-password"
+                                className="ob-input"
                                 type={showPassword ? 'text' : 'password'}
                                 value={confirmPassword}
                                 onChange={(e) => setConfirmPassword(e.target.value)}
                                 autoComplete="new-password"
                             />
                             {confirmPassword.length > 0 && password !== confirmPassword && (
-                                <p className="text-xs text-destructive">Passwords don&apos;t match.</p>
+                                <p className="ob-err">Passwords don&apos;t match.</p>
                             )}
                         </div>
-                        <div className="flex items-start gap-2.5 rounded-lg border border-primary/25 bg-primary/5 p-3 text-sm">
-                            <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
+                        <div className="ob-note">
+                            <ShieldCheck className="h-4 w-4" />
                             <span>
-                                Encrypted with scrypt + AES-256-GCM.{' '}
-                                <b className="text-primary">There&apos;s no reset</b> — if you lose this
-                                password, restore from your recovery phrase.
+                                Encrypted with scrypt + AES-256-GCM. <b>There&apos;s no reset</b> — if
+                                you lose this password, restore from your recovery phrase.
                             </span>
                         </div>
                     </div>
                 )}
 
                 {/* nav */}
-                <div className="flex gap-2 pt-1">
-                    <Button variant="ghost" onClick={goBack} disabled={isSubmitting} className="gap-2">
-                        <ArrowLeft className="h-4 w-4" /> Back
-                    </Button>
+                <div className="ob-nav">
+                    <button
+                        type="button"
+                        className="ob-btn ob-btn--ghost"
+                        onClick={goBack}
+                        disabled={isSubmitting}
+                    >
+                        ← {stepIndex === 0 ? 'Setup' : 'Back'}
+                    </button>
                     {step === 'details' && (
-                        <Button onClick={goNext} disabled={!detailsValid} className="ml-auto gap-2">
-                            Continue <ArrowRight className="h-4 w-4" />
-                        </Button>
+                        <button type="button" className="ob-btn ob-btn--go" onClick={goNext} disabled={!detailsValid}>
+                            Continue →
+                        </button>
                     )}
                     {step === 'backup' && (
-                        <Button onClick={goNext} disabled={!writtenDown} className="ml-auto gap-2">
-                            Continue <ArrowRight className="h-4 w-4" />
-                        </Button>
+                        <button type="button" className="ob-btn ob-btn--go" onClick={goNext} disabled={!writtenDown}>
+                            Continue →
+                        </button>
                     )}
                     {step === 'confirm' && (
-                        <Button onClick={goNext} disabled={!confirmValid} className="ml-auto gap-2">
-                            Continue <ArrowRight className="h-4 w-4" />
-                        </Button>
+                        <button type="button" className="ob-btn ob-btn--go" onClick={goNext} disabled={!confirmValid}>
+                            Continue →
+                        </button>
                     )}
                     {step === 'secure' && (
-                        <Button
+                        <button
+                            type="button"
+                            className="ob-btn ob-btn--go"
                             onClick={handleCreate}
                             disabled={!passwordValid || isSubmitting}
-                            className="ml-auto gap-2"
                         >
-                            <Lock className="h-4 w-4" />
                             {isSubmitting ? 'Creating…' : 'Create wallet'}
-                        </Button>
+                        </button>
                     )}
                 </div>
-            </CardContent>
-        </Card>
+            </main>
+        </div>
     );
 }

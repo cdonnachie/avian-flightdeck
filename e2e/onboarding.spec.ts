@@ -21,8 +21,7 @@ test.describe('onboarding — guided create wallet', () => {
 
     await page.goto('/onboarding');
 
-    // Welcome → method selection → Create.
-    await page.getByRole('button', { name: 'Get Started' }).click();
+    // Onboarding opens on method selection → Create.
     await page.getByText('Create New Wallet').click();
 
     // Step 1 — details.
@@ -56,7 +55,7 @@ test.describe('onboarding — guided create wallet', () => {
     await page.getByRole('button', { name: /Create wallet/ }).click();
 
     // Creation runs scrypt, so allow time; success proves the wallet was written.
-    await expect(page.getByText('Setup Complete!')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText('Wallet armed')).toBeVisible({ timeout: 60_000 });
   });
 
   test('a wrong confirmation is rejected and cannot proceed', async ({ page }) => {
@@ -67,7 +66,6 @@ test.describe('onboarding — guided create wallet', () => {
     });
 
     await page.goto('/onboarding');
-    await page.getByRole('button', { name: 'Get Started' }).click();
     await page.getByText('Create New Wallet').click();
     await page.getByLabel('Wallet name').fill('Careless Wallet');
     await page.getByRole('button', { name: 'Continue' }).click();
