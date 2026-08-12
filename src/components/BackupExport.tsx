@@ -78,7 +78,7 @@ export function BackupExport() {
                         <div className="flex items-center space-x-2">
                             <RadioGroupItem value="full" id="full" />
                             <Label htmlFor="full" className="flex items-center cursor-pointer">
-                                <Database className="w-4 h-4 mr-2 text-blue-600" />
+                                <Database className="w-4 h-4 mr-2 text-primary" />
                                 <div>
                                     <span className="font-medium">Full Backup</span>
                                     <p className="text-xs text-muted-foreground">
@@ -90,7 +90,7 @@ export function BackupExport() {
                         <div className="flex items-center space-x-2">
                             <RadioGroupItem value="wallets" id="wallets" />
                             <Label htmlFor="wallets" className="flex items-center cursor-pointer">
-                                <FileText className="w-4 h-4 mr-2 text-green-600" />
+                                <FileText className="w-4 h-4 mr-2 text-primary" />
                                 <div>
                                     <span className="font-medium">Wallets Only</span>
                                     <p className="text-xs text-muted-foreground">
@@ -111,7 +111,7 @@ export function BackupExport() {
                             onCheckedChange={(checked) => setUseEncryption(checked as boolean)}
                         />
                         <Label htmlFor="encryption" className="flex items-center cursor-pointer">
-                            <Lock className="w-4 h-4 mr-2 text-amber-600" />
+                            <Lock className="w-4 h-4 mr-2 text-caution" />
                             <span className="font-medium">Encrypt backup file</span>
                         </Label>
                     </div>
@@ -142,9 +142,9 @@ export function BackupExport() {
                                     onClick={() => setShowPassword(!showPassword)}
                                 >
                                     {showPassword ? (
-                                        <EyeOff className="h-4 w-4 text-gray-500" />
+                                        <EyeOff className="h-4 w-4 text-muted-foreground" />
                                     ) : (
-                                        <Eye className="h-4 w-4 text-gray-500" />
+                                        <Eye className="h-4 w-4 text-muted-foreground" />
                                     )}
                                 </Button>
                             </div>
@@ -168,9 +168,9 @@ export function BackupExport() {
                                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                                 >
                                     {showConfirmPassword ? (
-                                        <EyeOff className="h-4 w-4 text-gray-500" />
+                                        <EyeOff className="h-4 w-4 text-muted-foreground" />
                                     ) : (
-                                        <Eye className="h-4 w-4 text-gray-500" />
+                                        <Eye className="h-4 w-4 text-muted-foreground" />
                                     )}
                                 </Button>
                             </div>
@@ -180,14 +180,14 @@ export function BackupExport() {
 
                 {/* Backup Summary */}
                 {backupSummary && (
-                    <Alert className="bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700">
+                    <Alert className="bg-primary/10 border-primary/30">
                         <div className="flex items-center mb-2">
-                            <CheckCircle className="w-4 h-4 mr-2 text-green-600" />
-                            <span className="font-medium text-green-900 dark:text-green-200">
+                            <CheckCircle className="w-4 h-4 mr-2 text-primary" />
+                            <span className="font-medium text-primary">
                                 Backup Created Successfully
                             </span>
                         </div>
-                        <AlertDescription className="text-sm text-green-800 dark:text-green-300 space-y-1">
+                        <AlertDescription className="text-sm text-primary space-y-1">
                             <p>• {backupSummary.walletsCount} wallets backed up</p>
                             <p>• {backupSummary.addressesCount} address book entries backed up</p>
                             <p>• Type: {backupSummary.backupType}</p>

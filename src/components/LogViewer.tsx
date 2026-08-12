@@ -346,15 +346,15 @@ export function LogViewer({ isOpen, onClose }: LogViewerProps) {
   const getLevelColorClass = (level: string) => {
     switch (level) {
       case 'ERROR':
-        return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400';
+        return 'bg-destructive/10 text-destructive dark:bg-destructive/10 dark:text-destructive';
       case 'WARN':
-        return 'bg-amber-100 text-amber-800 dark:bg-amber-900/20 dark:text-amber-400';
+        return 'bg-caution/10 text-caution dark:bg-caution/10 dark:text-caution';
       case 'INFO':
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400';
+        return 'bg-primary/10 text-primary dark:bg-primary/10 dark:text-primary';
       case 'DEBUG':
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400';
+        return 'bg-muted/40 text-foreground dark:bg-card dark:text-muted-foreground';
       default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400';
+        return 'bg-muted/40 text-foreground dark:bg-card dark:text-muted-foreground';
     }
   };
 
@@ -393,7 +393,7 @@ export function LogViewer({ isOpen, onClose }: LogViewerProps) {
               <Button
                 onClick={confirmClearLogs}
                 className={
-                  selectedLoggerName === 'all' ? 'bg-red-500 hover:bg-red-600 text-white' : ''
+                  selectedLoggerName === 'all' ? 'bg-destructive hover:bg-destructive text-white' : ''
                 }
               >
                 {selectedLoggerName === 'all' ? 'Clear All Loggers' : 'Clear Logs'}
@@ -422,7 +422,7 @@ export function LogViewer({ isOpen, onClose }: LogViewerProps) {
               <AlertDialogAction
                 onClick={confirmClearLogs}
                 className={
-                  selectedLoggerName === 'all' ? 'bg-red-500 hover:bg-red-600 text-white' : ''
+                  selectedLoggerName === 'all' ? 'bg-destructive hover:bg-destructive text-white' : ''
                 }
               >
                 {selectedLoggerName === 'all' ? 'Clear All Loggers' : 'Clear Logs'}
@@ -436,7 +436,7 @@ export function LogViewer({ isOpen, onClose }: LogViewerProps) {
         <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <span className="text-amber-500 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 p-1.5 rounded-md">
+              <span className="text-caution bg-caution/10 p-1.5 rounded-md">
                 <Bug className="h-5 w-5" />
               </span>
               Log Viewer
@@ -473,7 +473,7 @@ export function LogViewer({ isOpen, onClose }: LogViewerProps) {
                             <div className="flex items-center justify-between w-full">
                               <span>{displayName}</span>
                               {hasDebugEnabled && (
-                                <span className="ml-2 px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-xs rounded font-medium">
+                                <span className="ml-2 px-1.5 py-0.5 bg-caution/10 text-caution text-xs rounded font-medium">
                                   DEBUG
                                 </span>
                               )}
@@ -505,7 +505,7 @@ export function LogViewer({ isOpen, onClose }: LogViewerProps) {
                           <div className="flex items-center justify-between w-full">
                             <span>{displayName}</span>
                             {hasDebugEnabled && (
-                              <span className="ml-2 px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-xs rounded font-medium">
+                              <span className="ml-2 px-1.5 py-0.5 bg-caution/10 text-caution text-xs rounded font-medium">
                                 DEBUG
                               </span>
                             )}
@@ -542,10 +542,10 @@ export function LogViewer({ isOpen, onClose }: LogViewerProps) {
                       selectedLoggerName === 'error_boundaries' ||
                       selectedLoggerName === 'security_audit'
                     }
-                    className={isDebugEnabled ? 'data-[state=checked]:bg-amber-500' : ''}
+                    className={isDebugEnabled ? 'data-[state=checked]:bg-caution' : ''}
                   />
                   <Label
-                    className={`text-xs whitespace-nowrap ${isDebugEnabled ? 'font-medium text-amber-500' : 'text-muted-foreground'}`}
+                    className={`text-xs whitespace-nowrap ${isDebugEnabled ? 'font-medium text-caution' : 'text-muted-foreground'}`}
                     title={
                       selectedLoggerName === 'all'
                         ? 'Debug mode can only be set per individual logger'
@@ -660,7 +660,7 @@ export function LogViewer({ isOpen, onClose }: LogViewerProps) {
             <div className="flex-1 text-sm text-muted-foreground">
               {filteredLogs.length} of {logs.length} log entries
               {selectedLoggerName === 'security_audit' && (
-                <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                <div className="text-xs text-caution mt-1">
                   Security audit entries can only be cleared from Security Settings
                 </div>
               )}

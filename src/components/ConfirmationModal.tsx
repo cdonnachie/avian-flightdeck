@@ -56,7 +56,7 @@ export default function ConfirmationModal({
       {warningText && (
         <Alert
           variant={isDestructive ? 'destructive' : 'default'}
-          className={`my-2 ${isDestructive ? '' : 'border-yellow-500 text-yellow-700 dark:text-yellow-300'}`}
+          className={`my-2 ${isDestructive ? '' : 'border-caution/30 text-caution'}`}
         >
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>{warningText}</AlertDescription>

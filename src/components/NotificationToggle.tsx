@@ -62,8 +62,8 @@ export function NotificationToggle() {
       disabled={loading}
       className={`flex items-center gap-2 ${
         notificationsEnabled
-          ? 'bg-green-600 hover:bg-green-700 text-white'
-          : 'text-gray-600 dark:text-gray-300'
+          ? 'bg-primary hover:bg-primary text-white'
+          : 'text-muted-foreground'
       }`}
     >
       {loading ? (

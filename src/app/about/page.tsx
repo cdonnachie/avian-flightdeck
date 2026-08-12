@@ -551,12 +551,12 @@ export default function AboutPage() {
                                         </div>
                                     </div>
 
-                                    <div className="bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-950/30 dark:to-red-950/30 border border-orange-200 dark:border-orange-800 p-6 rounded-lg">
-                                        <h4 className="font-semibold mb-3 flex items-center gap-2 text-orange-800 dark:text-orange-200">
+                                    <div className="bg-gradient-to-r from-caution to-destructive dark:from-caution dark:to-destructive border border-caution/30 p-6 rounded-lg">
+                                        <h4 className="font-semibold mb-3 flex items-center gap-2 text-caution">
                                             <Lock className="h-4 w-4" />
                                             Security Notice
                                         </h4>
-                                        <p className="text-orange-700 dark:text-orange-300 leading-relaxed">
+                                        <p className="text-caution leading-relaxed">
                                             This wallet stores all data locally on your device. Never share your recovery
                                             phrases or passwords. Always verify addresses before sending transactions.
                                         </p>

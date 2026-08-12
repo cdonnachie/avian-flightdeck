@@ -31,7 +31,7 @@ export default function AddressInput({
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={`pr-20 font-mono ${error ? 'border-red-500' : ''} ${className}`}
+        className={`pr-20 font-mono ${error ? 'border-destructive/30' : ''} ${className}`}
         disabled={disabled}
       />
       <div className="absolute right-2 top-1/2 transform -translate-y-1/2 z-10">

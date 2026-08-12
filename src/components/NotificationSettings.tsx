@@ -378,11 +378,11 @@ export default function NotificationSettings({ isOpen, onClose }: NotificationSe
                   }}
                   disabled={permissionState === 'denied' || !isEnabled}
                 />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary"></div>
+                <div className="w-11 h-6 bg-muted/40 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer dark:bg-card peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-card after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-border peer-checked:bg-primary"></div>
               </label>
             </div>
             {walletNotifications[activeWalletAddress] === true && (
-              <div className="mt-3 flex items-center gap-2 text-xs text-green-600 dark:text-green-400">
+              <div className="mt-3 flex items-center gap-2 text-xs text-primary">
                 <AlertCircle className="w-3 h-3" />
                 <span>Notifications are enabled for this wallet</span>
               </div>
@@ -585,9 +585,9 @@ export default function NotificationSettings({ isOpen, onClose }: NotificationSe
 
               {/* Add informational text when price alerts are disabled */}
               {preferences.priceAlerts === false && (
-                <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md">
-                  <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                <div className="flex items-center gap-2 p-3 bg-caution/10 border border-caution/30 rounded-md">
+                  <AlertCircle className="w-4 h-4 text-caution" />
+                  <p className="text-xs text-caution">
                     Price alerts are currently disabled
                   </p>
                 </div>
@@ -779,7 +779,7 @@ function WalletNotificationsList({
               checked={walletNotifications[wallet.address] === true}
               onChange={(e) => toggleWalletNotifications(wallet.address, e.target.checked)}
             />
-            <div className="w-9 h-5 bg-input peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-ring peer-focus:ring-offset-2 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-background after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-primary"></div>
+            <div className="w-9 h-5 bg-input peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-ring peer-focus:ring-offset-2 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-background after:border-border after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-border peer-checked:bg-primary"></div>
           </label>
         </div>
       ))}

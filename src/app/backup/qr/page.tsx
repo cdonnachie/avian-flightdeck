@@ -616,7 +616,7 @@ export default function BackupQRPage() {
                                     {backupChunks.length > 0 ? (
                                         <div className="space-y-6">
                                             <div className="flex flex-col items-center">
-                                                <div className="bg-white p-6 rounded-lg shadow-sm border">
+                                                <div className="bg-card p-6 rounded-lg shadow-sm border">
                                                     <QRCodeSVG
                                                         value={backupChunks[currentChunkIndex]}
                                                         size={isMobile ? 280 : 320}
@@ -741,9 +741,9 @@ export default function BackupQRPage() {
                                                             onClick={() => setShowBackupPassword(!showBackupPassword)}
                                                         >
                                                             {showBackupPassword ? (
-                                                                <EyeOff className="h-4 w-4 text-gray-500" />
+                                                                <EyeOff className="h-4 w-4 text-muted-foreground" />
                                                             ) : (
-                                                                <Eye className="h-4 w-4 text-gray-500" />
+                                                                <Eye className="h-4 w-4 text-muted-foreground" />
                                                             )}
                                                         </Button>
                                                     </div>
@@ -803,7 +803,7 @@ export default function BackupQRPage() {
                                                                     <div
                                                                         key={chunkNumber}
                                                                         className={`w-10 h-10 rounded text-sm font-medium flex items-center justify-center border ${isScanned
-                                                                            ? 'bg-green-500 text-white border-green-600'
+                                                                            ? 'bg-primary text-white border-primary/30'
                                                                             : 'bg-muted text-muted-foreground border-border'
                                                                             }`}
                                                                         title={`QR Code ${chunkNumber} - ${isScanned ? 'Scanned' : 'Not scanned'}`}
@@ -900,9 +900,9 @@ export default function BackupQRPage() {
                                                             onClick={() => setShowRestorePassword(!showRestorePassword)}
                                                         >
                                                             {showRestorePassword ? (
-                                                                <EyeOff className="h-4 w-4 text-gray-500" />
+                                                                <EyeOff className="h-4 w-4 text-muted-foreground" />
                                                             ) : (
-                                                                <Eye className="h-4 w-4 text-gray-500" />
+                                                                <Eye className="h-4 w-4 text-muted-foreground" />
                                                             )}
                                                         </Button>
                                                     </div>
@@ -984,9 +984,9 @@ export default function BackupQRPage() {
                                                                 onClick={() => setShowRestorePassword(!showRestorePassword)}
                                                             >
                                                                 {showRestorePassword ? (
-                                                                    <EyeOff className="h-4 w-4 text-gray-500" />
+                                                                    <EyeOff className="h-4 w-4 text-muted-foreground" />
                                                                 ) : (
-                                                                    <Eye className="h-4 w-4 text-gray-500" />
+                                                                    <Eye className="h-4 w-4 text-muted-foreground" />
                                                                 )}
                                                             </Button>
                                                         </div>

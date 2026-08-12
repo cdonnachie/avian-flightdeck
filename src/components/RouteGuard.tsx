@@ -73,7 +73,7 @@ export default function RouteGuard({
     // Show loading screen while checking
     if (isChecking) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-sky-50 via-blue-50 to-cyan-50 dark:from-gray-900 dark:via-blue-950 dark:to-gray-900 flex items-center justify-center relative">
+            <div className="min-h-screen bg-gradient-to-br from-card to-background flex items-center justify-center relative">
                 <GradientBackground>
                     <div className="flex flex-col items-center space-y-4 z-10">
                         <Image src="/avian_spinner.png" alt="Loading..." width={96} height={96} unoptimized />

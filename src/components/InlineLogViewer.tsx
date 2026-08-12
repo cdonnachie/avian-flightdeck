@@ -431,15 +431,15 @@ export function InlineLogViewer({ className = "" }: InlineLogViewerProps = {}) {
     const getLevelColorClass = (level: string) => {
         switch (level) {
             case 'ERROR':
-                return 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400';
+                return 'bg-destructive/10 text-destructive dark:bg-destructive/10 dark:text-destructive';
             case 'WARN':
-                return 'bg-amber-100 text-amber-800 dark:bg-amber-900/20 dark:text-amber-400';
+                return 'bg-caution/10 text-caution dark:bg-caution/10 dark:text-caution';
             case 'INFO':
-                return 'bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400';
+                return 'bg-primary/10 text-primary dark:bg-primary/10 dark:text-primary';
             case 'DEBUG':
-                return 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400';
+                return 'bg-muted/40 text-foreground dark:bg-card dark:text-muted-foreground';
             default:
-                return 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400';
+                return 'bg-muted/40 text-foreground dark:bg-card dark:text-muted-foreground';
         }
     };
 
@@ -489,7 +489,7 @@ export function InlineLogViewer({ className = "" }: InlineLogViewerProps = {}) {
                                 onClick={confirmClearLogs}
                                 className={
                                     selectedLoggerName === 'all'
-                                        ? 'bg-red-500 hover:bg-red-600 text-white'
+                                        ? 'bg-destructive hover:bg-destructive text-white'
                                         : ''
                                 }
                             >
@@ -526,7 +526,7 @@ export function InlineLogViewer({ className = "" }: InlineLogViewerProps = {}) {
                                 onClick={confirmClearLogs}
                                 className={
                                     selectedLoggerName === 'all'
-                                        ? 'bg-red-500 hover:bg-red-600 text-white'
+                                        ? 'bg-destructive hover:bg-destructive text-white'
                                         : ''
                                 }
                             >
@@ -684,7 +684,7 @@ export function InlineLogViewer({ className = "" }: InlineLogViewerProps = {}) {
                                 onClick={confirmClearLogs}
                                 className={
                                     selectedLoggerName === 'all'
-                                        ? 'bg-red-500 hover:bg-red-600 text-white'
+                                        ? 'bg-destructive hover:bg-destructive text-white'
                                         : ''
                                 }
                             >
@@ -721,7 +721,7 @@ export function InlineLogViewer({ className = "" }: InlineLogViewerProps = {}) {
                                 onClick={confirmClearLogs}
                                 className={
                                     selectedLoggerName === 'all'
-                                        ? 'bg-red-500 hover:bg-red-600 text-white'
+                                        ? 'bg-destructive hover:bg-destructive text-white'
                                         : ''
                                 }
                             >
@@ -734,7 +734,7 @@ export function InlineLogViewer({ className = "" }: InlineLogViewerProps = {}) {
 
             {/* Header */}
             <div className="p-4 border-b flex items-center gap-2">
-                <Bug className="h-5 w-5 text-amber-500" />
+                <Bug className="h-5 w-5 text-caution" />
                 <h2 className="text-lg font-semibold">Log Viewer</h2>
                 <span className="ml-auto text-sm text-muted-foreground">
                     View and manage application logs
@@ -772,7 +772,7 @@ export function InlineLogViewer({ className = "" }: InlineLogViewerProps = {}) {
                                             <div className="flex items-center justify-between w-full">
                                                 <span className="truncate">{displayName}</span>
                                                 {hasDebugEnabled && (
-                                                    <span className="ml-2 px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-xs rounded font-medium shrink-0">
+                                                    <span className="ml-2 px-1.5 py-0.5 bg-caution/10 text-caution text-xs rounded font-medium shrink-0">
                                                         DEBUG
                                                     </span>
                                                 )}
@@ -815,7 +815,7 @@ export function InlineLogViewer({ className = "" }: InlineLogViewerProps = {}) {
                                         <div className="flex items-center justify-between w-full">
                                             <span className="truncate">{displayName}</span>
                                             {hasDebugEnabled && (
-                                                <span className="ml-2 px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-xs rounded font-medium shrink-0">
+                                                <span className="ml-2 px-1.5 py-0.5 bg-caution/10 text-caution text-xs rounded font-medium shrink-0">
                                                     DEBUG
                                                 </span>
                                             )}

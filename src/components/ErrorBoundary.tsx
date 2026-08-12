@@ -207,15 +207,15 @@ Timestamp: ${new Date().toISOString()}
 
       // Default error UI
       return (
-        <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50 dark:bg-gray-900">
+        <div className="min-h-screen flex items-center justify-center p-4 bg-muted/40 dark:bg-card">
           <Card className="w-full max-w-2xl">
             <CardHeader className="text-center">
               <div className="flex justify-center mb-4">
-                <div className="rounded-full bg-red-100 dark:bg-red-900/30 p-3">
-                  <AlertTriangle className="h-8 w-8 text-red-600 dark:text-red-400" />
+                <div className="rounded-full bg-destructive/10 p-3">
+                  <AlertTriangle className="h-8 w-8 text-destructive" />
                 </div>
               </div>
-              <CardTitle className="text-xl text-red-600 dark:text-red-400">
+              <CardTitle className="text-xl text-destructive">
                 {this.props.isolate ? 'Component Error' : 'Application Error'}
               </CardTitle>
               <CardDescription>
@@ -256,12 +256,12 @@ Timestamp: ${new Date().toISOString()}
               )}
 
               {process.env.NODE_ENV === 'development' && this.state.error && (
-                <Alert className="border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-900/30">
-                  <AlertTriangle className="h-4 w-4 text-orange-600" />
-                  <AlertTitle className="text-orange-800 dark:text-orange-200">
+                <Alert className="border-caution/30 bg-caution/10 dark:border-caution/30 dark:bg-caution/10">
+                  <AlertTriangle className="h-4 w-4 text-caution" />
+                  <AlertTitle className="text-caution">
                     Development Error Details
                   </AlertTitle>
-                  <AlertDescription className="text-orange-700 dark:text-orange-300">
+                  <AlertDescription className="text-caution">
                     <div className="space-y-2 mt-2">
                       <div>
                         <strong>Error:</strong> {this.state.error.message}
@@ -271,7 +271,7 @@ Timestamp: ${new Date().toISOString()}
                           <summary className="cursor-pointer text-sm font-medium">
                             Stack Trace
                           </summary>
-                          <pre className="mt-2 text-xs bg-orange-100 dark:bg-orange-900/50 p-2 rounded overflow-x-auto">
+                          <pre className="mt-2 text-xs bg-caution/10 p-2 rounded overflow-x-auto">
                             {this.state.error.stack}
                           </pre>
                         </details>
@@ -335,7 +335,7 @@ Timestamp: ${new Date().toISOString()}
                     <span>
                       {' '}
                       or report this error with ID:{' '}
-                      <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">
+                      <code className="bg-muted/40 dark:bg-card px-1 rounded">
                         {this.state.errorId.slice(0, 8)}
                       </code>
                     </span>
