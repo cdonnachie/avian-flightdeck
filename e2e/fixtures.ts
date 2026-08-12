@@ -180,16 +180,16 @@ export async function setScreenLock(page: Page, enabled: boolean) {
  * this window, so it only has to be done once.
  */
 async function unlockWallet(page: Page) {
-  const unlockButton = page.getByRole('button', { name: 'Unlock Wallet' });
+  const unlockButton = page.getByRole('button', { name: 'Unlock', exact: true });
   await expect(unlockButton).toBeVisible({ timeout: 30_000 });
 
   // The lock screen's password field carries no id, unlike the one in AuthenticationDialog.
-  await page.getByPlaceholder('Enter your wallet password').fill(WALLET_PASSWORD);
+  await page.getByPlaceholder('Password').fill(WALLET_PASSWORD);
   await unlockButton.click();
 
   // Wait for the lock screen itself to go, not for the button: it only changes its label to
   // "Unlocking…" while scrypt runs, which would otherwise let a test navigate away mid-unlock.
-  await expect(page.getByText('Wallet Locked')).toBeHidden({ timeout: 60_000 });
+  await expect(page.getByText('Wallet locked')).toBeHidden({ timeout: 60_000 });
 }
 
 export const test = base.extend<{ walletPage: Page }>({
