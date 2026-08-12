@@ -21,6 +21,7 @@ import {
   Edit2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import WalletCreationWizard from '@/components/WalletCreationWizard';
 import WalletCreationForm, {
   WalletCreationMode,
   WalletCreationData,
@@ -816,22 +817,22 @@ export function WalletManager({ onWalletSelect, onClose }: WalletManagerProps) {
           </TabsContent>
 
           <TabsContent value="create" className="mt-4">
-            <WalletCreationForm
-              mode="create"
+            <WalletCreationWizard
               onSubmit={async (data) => {
                 try {
                   setIsCreating(true);
 
-                  // Use WalletService to create a proper wallet with real keys
+                  // Use WalletService to create a proper wallet with real keys. The wizard has the
+                  // user confirm their phrase, so create from that exact mnemonic (not a fresh one).
                   const { WalletService } = await import('@/services/wallet/WalletService');
                   const walletService = new WalletService();
 
                   const newWallet = await walletService.createNewWallet({
-                    name: data.name,
+                    name: data.name.trim(),
                     password: data.password,
                     useMnemonic: true,
+                    mnemonic: data.mnemonic,
                     passphrase: data.passphrase, // Pass the optional BIP39 passphrase
-                    mnemonicLength: data.mnemonicLength === '24' ? 256 : 128, // Convert to entropy bits
                     makeActive: true,
                   });
 

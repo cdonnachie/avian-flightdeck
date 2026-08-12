@@ -1,12 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import * as bip39 from 'bip39';
 import { Eye, EyeOff, Copy, RefreshCw, AlertTriangle, ShieldCheck } from 'lucide-react';
-import { toast } from 'sonner';
-import PasswordStrengthChecker, { PasswordStrength } from '@/components/PasswordStrength';
+import PasswordStrengthChecker from '@/components/PasswordStrength';
 import type { WalletCreationData } from '@/components/WalletCreationForm';
-import { generateWalletName } from '@/lib/walletName';
+import { useCreateWalletWizard, WIZARD_STEPS, WizardStep } from '@/hooks/useCreateWalletWizard';
 
 interface OnboardingCreateWalletProps {
     onSubmit: (data: WalletCreationData) => Promise<void>;
@@ -14,169 +11,32 @@ interface OnboardingCreateWalletProps {
     isSubmitting: boolean;
 }
 
-type Step = 'details' | 'backup' | 'confirm' | 'secure';
-const STEPS: Step[] = ['details', 'backup', 'confirm', 'secure'];
-const MIN_PASSWORD_LENGTH = 8;
-const CONFIRM_COUNT = 3;
-
 // Preflight-sequence labels shown in the left rail, one per wizard step.
-const RAIL: Record<Step, { no: string; title: string; sub: string }> = {
+const RAIL: Record<WizardStep, { no: string; title: string; sub: string }> = {
     details: { no: '01', title: 'Identify', sub: 'name & phrase length' },
     backup: { no: '02', title: 'Recovery key', sub: 'write it down' },
     confirm: { no: '03', title: 'Verify', sub: 'confirm the phrase' },
     secure: { no: '04', title: 'Seal', sub: 'set a password' },
 };
 
-// Fisher–Yates shuffle (app runtime; deterministic randomness not required here).
-function shuffle<T>(arr: T[]): T[] {
-    const a = [...arr];
-    for (let i = a.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a;
-}
-
-// Pick `count` distinct indices from [0, length).
-function pickPositions(length: number, count: number): number[] {
-    const idx = shuffle(Array.from({ length }, (_, i) => i)).slice(0, count);
-    return idx.sort((a, b) => a - b);
-}
-
+/** Committed-dark "instrument" skin of the guided create-wallet wizard, used in onboarding. */
 export default function OnboardingCreateWallet({
     onSubmit,
     onCancel,
     isSubmitting,
 }: OnboardingCreateWalletProps) {
-    const [step, setStep] = useState<Step>('details');
-
-    // details
-    const [name, setName] = useState('');
-    const [mnemonicLength, setMnemonicLength] = useState<'12' | '24'>('12');
-
-    // backup
-    const [mnemonic, setMnemonic] = useState('');
-    const [revealed, setRevealed] = useState(false);
-    const [writtenDown, setWrittenDown] = useState(false);
-
-    // confirm
-    const [positions, setPositions] = useState<number[]>([]);
-    // slot -> bank entry id (index into `bank`), or null
-    const [assignments, setAssignments] = useState<(number | null)[]>([]);
-
-    // secure
-    const [password, setPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
-    const [showPassword, setShowPassword] = useState(false);
-    const [strength, setStrength] = useState<PasswordStrength>(null);
-
-    const words = useMemo(() => (mnemonic ? mnemonic.trim().split(/\s+/) : []), [mnemonic]);
-
-    // Word bank for the confirm step: every mnemonic word, shuffled, then given an id equal to its
-    // position in the shuffled array — so `bank[id]` resolves to the same entry the button rendered.
-    const bank = useMemo(
-        () => shuffle(words).map((word, id) => ({ id, word })),
-        // Re-shuffle only when the mnemonic itself changes.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [mnemonic],
-    );
-
-    const regenerate = useCallback((length: '12' | '24') => {
-        const entropyBits = length === '24' ? 256 : 128;
-        const next = bip39.generateMnemonic(entropyBits);
-        setMnemonic(next);
-        setRevealed(false);
-        setWrittenDown(false);
-        const wordCount = length === '24' ? 24 : 12;
-        setPositions(pickPositions(wordCount, CONFIRM_COUNT));
-        setAssignments(Array(CONFIRM_COUNT).fill(null));
-    }, []);
-
-    // Generate on mount and whenever the requested length changes.
-    useEffect(() => {
-        regenerate(mnemonicLength);
-    }, [mnemonicLength, regenerate]);
-
-    // Suggest a creative bird-themed name on mount; the user can keep it, edit it, or re-roll.
-    // Guard against the async suggestion landing after the user has already typed something.
-    const nameTouched = useRef(false);
-    useEffect(() => {
-        generateWalletName().then((suggested) => {
-            if (!nameTouched.current) setName(suggested);
-        });
-    }, []);
-
-    const rollName = async () => setName(await generateWalletName());
-
-    const stepIndex = STEPS.indexOf(step);
-
-    // ---- validation --------------------------------------------------------
-    const detailsValid = name.trim().length > 0;
-    const confirmValid = useMemo(
-        () =>
-            assignments.length === positions.length &&
-            assignments.every(
-                (bankId, slot) => bankId !== null && bank[bankId]?.word === words[positions[slot]],
-            ),
-        [assignments, positions, bank, words],
-    );
-    const passwordValid =
-        password.length >= MIN_PASSWORD_LENGTH && password === confirmPassword;
-
-    // ---- confirm interactions ---------------------------------------------
-    const assignedIds = useMemo(() => new Set(assignments.filter((x) => x !== null)), [assignments]);
-
-    const tapWord = (bankId: number) => {
-        if (assignedIds.has(bankId)) return;
-        const nextEmpty = assignments.indexOf(null);
-        if (nextEmpty === -1) return;
-        const next = [...assignments];
-        next[nextEmpty] = bankId;
-        setAssignments(next);
-    };
-
-    const clearSlot = (slot: number) => {
-        if (assignments[slot] === null) return;
-        const next = [...assignments];
-        next[slot] = null;
-        setAssignments(next);
-    };
-
-    const copyPhrase = async () => {
-        try {
-            await navigator.clipboard.writeText(mnemonic);
-            toast.warning('Recovery phrase copied', {
-                description:
-                    'Clear your clipboard afterwards — anything you copy can be read by other apps.',
-            });
-        } catch {
-            toast.error('Could not copy the recovery phrase');
-        }
-    };
-
-    const handleCreate = async () => {
-        if (!passwordValid || !confirmValid) return;
-        await onSubmit({
-            name: name.trim(),
-            password,
-            mnemonic,
-            mnemonicLength,
-        });
-    };
-
-    const goNext = () => setStep(STEPS[Math.min(stepIndex + 1, STEPS.length - 1)]);
-    const goBack = () => {
-        if (stepIndex === 0) return onCancel();
-        setStep(STEPS[stepIndex - 1]);
-    };
+    const w = useCreateWalletWizard({ onSubmit, onCancel });
 
     return (
         <div className="ob-console">
             <aside className="ob-rail">
                 <div className="ob-label">Sequence</div>
                 <ol className="ob-seq">
-                    {STEPS.map((s, i) => (
-                        <li key={s} className={i === stepIndex ? 'active' : i < stepIndex ? 'done' : ''}>
+                    {WIZARD_STEPS.map((s, i) => (
+                        <li
+                            key={s}
+                            className={i === w.stepIndex ? 'active' : i < w.stepIndex ? 'done' : ''}
+                        >
                             <span className="ob-seq__no">{RAIL[s].no}</span>
                             <span className="ob-seq__t">
                                 {RAIL[s].title}
@@ -197,13 +57,13 @@ export default function OnboardingCreateWallet({
 
             <main className="ob-panel">
                 <div className="ob-strip" aria-hidden>
-                    {STEPS.map((s, i) => (
-                        <span key={s} className={i <= stepIndex ? 'on' : ''} />
+                    {WIZARD_STEPS.map((s, i) => (
+                        <span key={s} className={i <= w.stepIndex ? 'on' : ''} />
                     ))}
                 </div>
 
                 {/* STEP 1 — details */}
-                {step === 'details' && (
+                {w.step === 'details' && (
                     <div>
                         <div className="ob-head ob-head--sm">
                             <span className="ob-label">01 · Identify</span>
@@ -212,18 +72,15 @@ export default function OnboardingCreateWallet({
                         <div className="ob-field">
                             <div className="ob-field__row">
                                 <label className="ob-field__lbl" htmlFor="wallet-name">Wallet name</label>
-                                <button type="button" className="ob-mini" onClick={rollName}>
+                                <button type="button" className="ob-mini" onClick={w.rollName}>
                                     <RefreshCw className="h-3.5 w-3.5" /> Suggest
                                 </button>
                             </div>
                             <input
                                 id="wallet-name"
                                 className="ob-input"
-                                value={name}
-                                onChange={(e) => {
-                                    nameTouched.current = true;
-                                    setName(e.target.value);
-                                }}
+                                value={w.name}
+                                onChange={(e) => w.onNameChange(e.target.value)}
                                 placeholder="Main Wallet"
                                 autoFocus
                                 maxLength={50}
@@ -236,8 +93,8 @@ export default function OnboardingCreateWallet({
                                     <button
                                         key={len}
                                         type="button"
-                                        className={mnemonicLength === len ? 'is-on' : ''}
-                                        onClick={() => setMnemonicLength(len)}
+                                        className={w.mnemonicLength === len ? 'is-on' : ''}
+                                        onClick={() => w.setMnemonicLength(len)}
                                     >
                                         {len} words
                                     </button>
@@ -251,7 +108,7 @@ export default function OnboardingCreateWallet({
                 )}
 
                 {/* STEP 2 — backup / reveal */}
-                {step === 'backup' && (
+                {w.step === 'backup' && (
                     <div>
                         <div className="ob-head ob-head--sm">
                             <span className="ob-label">02 · Recovery key</span>
@@ -263,16 +120,16 @@ export default function OnboardingCreateWallet({
                         </p>
 
                         <div className="ob-seedwrap">
-                            <div className={`ob-seed${revealed ? '' : ' blur'}`}>
-                                {words.map((word, i) => (
+                            <div className={`ob-seed${w.revealed ? '' : ' blur'}`}>
+                                {w.words.map((word, i) => (
                                     <div key={i} className="ob-word">
                                         <i>{i + 1}</i>
                                         <b data-testid="seed-word">{word}</b>
                                     </div>
                                 ))}
                             </div>
-                            {!revealed && (
-                                <button type="button" className="ob-reveal" onClick={() => setRevealed(true)}>
+                            {!w.revealed && (
+                                <button type="button" className="ob-reveal" onClick={() => w.setRevealed(true)}>
                                     <Eye className="h-4 w-4" /> Tap to reveal
                                 </button>
                             )}
@@ -284,15 +141,15 @@ export default function OnboardingCreateWallet({
                             them into a website.
                         </div>
 
-                        {revealed && (
+                        {w.revealed && (
                             <div className="ob-seedbar">
-                                <button type="button" className="ob-mini" onClick={copyPhrase}>
+                                <button type="button" className="ob-mini" onClick={w.copyPhrase}>
                                     <Copy className="h-4 w-4" /> Copy
                                 </button>
                                 <button
                                     type="button"
                                     className="ob-mini ob-mini--muted"
-                                    onClick={() => regenerate(mnemonicLength)}
+                                    onClick={() => w.regenerate(w.mnemonicLength)}
                                 >
                                     <RefreshCw className="h-4 w-4" /> Regenerate
                                 </button>
@@ -302,9 +159,9 @@ export default function OnboardingCreateWallet({
                         <label className="ob-arm">
                             <input
                                 type="checkbox"
-                                checked={writtenDown}
-                                disabled={!revealed}
-                                onChange={(e) => setWrittenDown(e.target.checked)}
+                                checked={w.writtenDown}
+                                disabled={!w.revealed}
+                                onChange={(e) => w.setWrittenDown(e.target.checked)}
                             />
                             <span>I&apos;ve written my recovery phrase down and stored it safely.</span>
                         </label>
@@ -312,7 +169,7 @@ export default function OnboardingCreateWallet({
                 )}
 
                 {/* STEP 3 — confirm */}
-                {step === 'confirm' && (
+                {w.step === 'confirm' && (
                     <div>
                         <div className="ob-head ob-head--sm">
                             <span className="ob-label">03 · Verify</span>
@@ -320,36 +177,36 @@ export default function OnboardingCreateWallet({
                         </div>
                         <p className="ob-lede">
                             Tap the words to fill positions{' '}
-                            <b>{positions.map((p) => `#${p + 1}`).join(', ')}</b>, in order.
+                            <b>{w.positions.map((p) => `#${p + 1}`).join(', ')}</b>, in order.
                         </p>
 
                         <div className="ob-slots">
-                            {positions.map((pos, slot) => {
-                                const bankId = assignments[slot];
+                            {w.positions.map((pos, slot) => {
+                                const bankId = w.assignments[slot];
                                 const filled = bankId !== null;
                                 return (
                                     <button
                                         key={slot}
                                         type="button"
                                         className={`ob-slot${filled ? ' filled' : ''}`}
-                                        onClick={() => clearSlot(slot)}
+                                        onClick={() => w.clearSlot(slot)}
                                     >
                                         <small data-testid="confirm-slot-pos">#{pos + 1}</small>
-                                        <b>{filled ? bank[bankId!].word : '·····'}</b>
+                                        <b>{filled ? w.bank[bankId!].word : '·····'}</b>
                                     </button>
                                 );
                             })}
                         </div>
 
                         <div className="ob-bank">
-                            {bank.map((entry) => {
-                                const used = assignedIds.has(entry.id);
+                            {w.bank.map((entry) => {
+                                const used = w.assignedIds.has(entry.id);
                                 return (
                                     <button
                                         key={entry.id}
                                         type="button"
                                         data-testid="bank-word"
-                                        onClick={() => tapWord(entry.id)}
+                                        onClick={() => w.tapWord(entry.id)}
                                         disabled={used}
                                         className={`ob-bankw${used ? ' used' : ''}`}
                                     >
@@ -359,7 +216,7 @@ export default function OnboardingCreateWallet({
                             })}
                         </div>
 
-                        {assignments.every((a) => a !== null) && !confirmValid && (
+                        {w.assignments.every((a) => a !== null) && !w.confirmValid && (
                             <p className="ob-err">
                                 That order doesn&apos;t match. Tap a slot to clear it and try again.
                             </p>
@@ -368,7 +225,7 @@ export default function OnboardingCreateWallet({
                 )}
 
                 {/* STEP 4 — secure */}
-                {step === 'secure' && (
+                {w.step === 'secure' && (
                     <div>
                         <div className="ob-head ob-head--sm">
                             <span className="ob-label">04 · Seal</span>
@@ -385,9 +242,9 @@ export default function OnboardingCreateWallet({
                                     id="new-password"
                                     className="ob-input"
                                     style={{ paddingRight: 40 }}
-                                    type={showPassword ? 'text' : 'password'}
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
+                                    type={w.showPassword ? 'text' : 'password'}
+                                    value={w.password}
+                                    onChange={(e) => w.setPassword(e.target.value)}
                                     placeholder="At least 8 characters"
                                     autoComplete="new-password"
                                     autoFocus
@@ -395,16 +252,16 @@ export default function OnboardingCreateWallet({
                                 <button
                                     type="button"
                                     className="ob-eye"
-                                    onClick={() => setShowPassword((v) => !v)}
-                                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                    onClick={() => w.setShowPassword((v) => !v)}
+                                    aria-label={w.showPassword ? 'Hide password' : 'Show password'}
                                 >
-                                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                    {w.showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                 </button>
                             </div>
                             <div className="mt-2">
                                 <PasswordStrengthChecker
-                                    password={password}
-                                    onStrengthChange={(s) => setStrength(s)}
+                                    password={w.password}
+                                    onStrengthChange={(s) => w.setStrength(s)}
                                     showSuggestions={false}
                                 />
                             </div>
@@ -414,20 +271,22 @@ export default function OnboardingCreateWallet({
                             <input
                                 id="confirm-password"
                                 className="ob-input"
-                                type={showPassword ? 'text' : 'password'}
-                                value={confirmPassword}
-                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                type={w.showPassword ? 'text' : 'password'}
+                                value={w.confirmPassword}
+                                onChange={(e) => w.setConfirmPassword(e.target.value)}
                                 autoComplete="new-password"
                             />
-                            {confirmPassword.length > 0 && password !== confirmPassword && (
+                            {w.confirmPassword.length > 0 && w.password !== w.confirmPassword && (
                                 <p className="ob-err">Passwords don&apos;t match.</p>
                             )}
                         </div>
                         <div className="ob-note">
                             <ShieldCheck className="h-4 w-4" />
                             <span>
-                                Encrypted with scrypt + AES-256-GCM. <b>There&apos;s no reset</b> — if
-                                you lose this password, restore from your recovery phrase.
+                                Encrypted locally with AES-256-GCM using a key derived from your
+                                password with scrypt — your password never leaves this device.{' '}
+                                <b>There&apos;s no reset</b>: if you lose it, restore from your
+                                recovery phrase.
                             </span>
                         </div>
                     </div>
@@ -438,32 +297,32 @@ export default function OnboardingCreateWallet({
                     <button
                         type="button"
                         className="ob-btn ob-btn--ghost"
-                        onClick={goBack}
+                        onClick={w.goBack}
                         disabled={isSubmitting}
                     >
-                        ← {stepIndex === 0 ? 'Setup' : 'Back'}
+                        ← {w.stepIndex === 0 ? 'Setup' : 'Back'}
                     </button>
-                    {step === 'details' && (
-                        <button type="button" className="ob-btn ob-btn--go" onClick={goNext} disabled={!detailsValid}>
+                    {w.step === 'details' && (
+                        <button type="button" className="ob-btn ob-btn--go" onClick={w.goNext} disabled={!w.detailsValid}>
                             Continue →
                         </button>
                     )}
-                    {step === 'backup' && (
-                        <button type="button" className="ob-btn ob-btn--go" onClick={goNext} disabled={!writtenDown}>
+                    {w.step === 'backup' && (
+                        <button type="button" className="ob-btn ob-btn--go" onClick={w.goNext} disabled={!w.writtenDown}>
                             Continue →
                         </button>
                     )}
-                    {step === 'confirm' && (
-                        <button type="button" className="ob-btn ob-btn--go" onClick={goNext} disabled={!confirmValid}>
+                    {w.step === 'confirm' && (
+                        <button type="button" className="ob-btn ob-btn--go" onClick={w.goNext} disabled={!w.confirmValid}>
                             Continue →
                         </button>
                     )}
-                    {step === 'secure' && (
+                    {w.step === 'secure' && (
                         <button
                             type="button"
                             className="ob-btn ob-btn--go"
-                            onClick={handleCreate}
-                            disabled={!passwordValid || isSubmitting}
+                            onClick={w.handleCreate}
+                            disabled={!w.passwordValid || isSubmitting}
                         >
                             {isSubmitting ? 'Creating…' : 'Create wallet'}
                         </button>
