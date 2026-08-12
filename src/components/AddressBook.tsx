@@ -241,7 +241,10 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
   });
 
   return (
-    <div className="space-y-4 mx-2 my-2 flex flex-col min-h-0">
+    // Content flows naturally and the single outer ScrollArea (in AddressBookDrawer) owns scrolling.
+    // Avoid a second, bounded scroll region here: a tall Edit/Add form used to overflow a fixed-
+    // height flex column and clip its Save/Cancel buttons with no way to reach them.
+    <div className="space-y-4 mx-2 my-2">
       {/* Header */}
       <div className="flex items-center justify-between flex-shrink-0">
         <h3 className="text-sm font-medium text-foreground dark:text-white">
@@ -740,10 +743,10 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
         </div>
       )}
 
-      {/* Address List */}
-      <div
-        className={`space-y-2 ${isAddingNew || editingId ? 'max-h-64 overflow-y-auto' : 'flex-1 overflow-y-auto'} min-h-0 border-t border-avian-100 dark:border-avian-800 pt-2`}
-      >
+      {/* Address List — no inner scroll; the outer ScrollArea scrolls the whole panel so an open
+          Edit/Add form and its action buttons always stay reachable. */}
+      <div className="space-y-2 border-t border-avian-100 dark:border-avian-800 pt-2">
+
         {filteredAddresses.length === 0 ? (
           searchQuery ? (
             <EmptyState
