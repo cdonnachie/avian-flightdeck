@@ -5,6 +5,7 @@ import { useWallet } from '@/contexts/WalletContext';
 import { useNotifications } from '@/contexts/NotificationContext';
 import WatchAddressService, { WatchAddress } from '@/services/wallet/WatchAddressService';
 import { RefreshCw, Clipboard, Trash2, Eye, Save, BellRing, Minus, Plus } from 'lucide-react';
+import { EmptyState } from '@/components/EmptyState';
 import { StorageService } from '@/services/core/StorageService';
 
 // Shadcn UI components
@@ -441,11 +442,11 @@ export default function WatchAddressesPanel() {
           </div>
 
           {watchedAddresses.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-muted-foreground">
-                No addresses being watched yet.
-              </p>
-            </div>
+            <EmptyState
+              icon={Eye}
+              title="No watched addresses"
+              description="Watch any Avian address to follow its balance and activity without importing keys."
+            />
           ) : (
             <div className="space-y-4">
               {watchedAddresses.map((item) => (

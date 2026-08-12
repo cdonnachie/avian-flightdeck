@@ -14,7 +14,9 @@ import {
   QrCode,
   Camera,
   Share2,
+  BookUser,
 } from 'lucide-react';
+import { EmptyState } from '@/components/EmptyState';
 import { StorageService } from '@/services/core/StorageService';
 import { SavedAddress, DEFAULT_CATEGORIES, QRScanResult } from '@/types/addressBook';
 import { toast } from 'sonner';
@@ -743,9 +745,19 @@ export default function AddressBook({ onSelectAddress, currentAddress }: Address
         className={`space-y-2 ${isAddingNew || editingId ? 'max-h-64 overflow-y-auto' : 'flex-1 overflow-y-auto'} min-h-0 border-t border-avian-100 dark:border-avian-800 pt-2`}
       >
         {filteredAddresses.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            {searchQuery ? 'No addresses match your search' : 'No saved addresses'}
-          </div>
+          searchQuery ? (
+            <EmptyState
+              icon={Search}
+              title="No matches"
+              description="No saved addresses match your search."
+            />
+          ) : (
+            <EmptyState
+              icon={BookUser}
+              title="No saved addresses"
+              description="Save the people and services you send to, so you don't have to paste addresses each time."
+            />
+          )
         ) : (
           filteredAddresses.map((address) => (
             <div
