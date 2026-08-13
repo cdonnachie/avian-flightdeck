@@ -50,7 +50,6 @@ export default function Home() {
     // null = still determining; false = no wallet on device (show the landing page); true = dashboard
     const [walletExists, setWalletExists] = useState<boolean | null>(null);
     const [showAboutModal, setShowAboutModal] = useState(false);
-    const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
     const [termsAccepted, setTermsAccepted] = useState<boolean | null>(null);
 
     const fullRefreshRequestedRef = useRef(false);
@@ -114,24 +113,6 @@ export default function Home() {
         return `${address.slice(0, 8)}...${address.slice(-8)}`;
     };
 
-    const handleCopyAddress = async (address: string) => {
-        try {
-            await navigator.clipboard.writeText(address);
-            setCopiedAddress(address);
-            toast.success('Address copied to clipboard', {
-                description: 'Wallet address has been copied successfully',
-            });
-
-            // Reset the copied state after 2 seconds
-            setTimeout(() => {
-                setCopiedAddress(null);
-            }, 2000);
-        } catch (error) {
-            toast.error('Copy Failed', {
-                description: 'Could not copy address to clipboard',
-            });
-        }
-    };
     const handleRefresh = async () => {
         try {
             setIsRefreshing(true);
@@ -263,16 +244,13 @@ export default function Home() {
                     className="mb-6"
                     balance={balance}
                     balanceStatus={balanceStatus}
-                    address={address ?? null}
                     isLoading={isLoading}
                     processingProgress={processingProgress}
                     isRefreshing={isRefreshing}
-                    copied={copiedAddress === address}
                     formatBalance={formatBalance}
                     onRefresh={handleRefresh}
                     onRefreshMouseDown={handleRefreshMouseDown}
                     onRefreshMouseUp={handleRefreshMouseUp}
-                    onCopy={handleCopyAddress}
                 />
 
                 {/* Navigation Tabs */}
@@ -337,16 +315,13 @@ export default function Home() {
                     className="mb-8"
                     balance={balance}
                     balanceStatus={balanceStatus}
-                    address={address ?? null}
                     isLoading={isLoading}
                     processingProgress={processingProgress}
                     isRefreshing={isRefreshing}
-                    copied={copiedAddress === address}
                     formatBalance={formatBalance}
                     onRefresh={handleRefresh}
                     onRefreshMouseDown={handleRefreshMouseDown}
                     onRefreshMouseUp={handleRefreshMouseUp}
-                    onCopy={handleCopyAddress}
                 />
 
                 <div className="grid grid-cols-12 gap-6">

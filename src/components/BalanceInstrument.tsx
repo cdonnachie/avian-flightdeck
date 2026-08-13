@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { RefreshCw, Loader, Copy } from 'lucide-react';
+import { RefreshCw, Loader } from 'lucide-react';
 
 /**
  * Animate a number toward `target`, easing from its previous value (0 on first mount) over ~1.2s —
@@ -49,7 +49,8 @@ function useCountUp(target: number): number {
  * BalanceInstrument — the wallet's primary flight display.
  *
  * An always-dark "cockpit" surface (in both light and dark themes) carrying the
- * balance readout, a mainnet annunciator, and the receive address. The state
+ * balance readout and a mainnet annunciator. The active address is shown in the
+ * Wallet card, so it is not repeated here. The state
  * branches (loading / unavailable / stale / processing) and their data-testids
  * are preserved exactly from the original balance card, so the E2E balance
  * contract is unchanged: the figure renders as a single "<value> AVN" text node,
@@ -66,32 +67,26 @@ interface ProcessingProgress {
 interface BalanceInstrumentProps {
     balance: number;
     balanceStatus: 'live' | 'stale' | 'unknown';
-    address: string | null;
     isLoading: boolean;
     processingProgress: ProcessingProgress;
     isRefreshing: boolean;
-    copied: boolean;
     formatBalance: (balance: number) => string;
     onRefresh: () => void;
     onRefreshMouseDown: () => void;
     onRefreshMouseUp: () => void;
-    onCopy: (address: string) => void;
     className?: string;
 }
 
 export function BalanceInstrument({
     balance,
     balanceStatus,
-    address,
     isLoading,
     processingProgress,
     isRefreshing,
-    copied,
     formatBalance,
     onRefresh,
     onRefreshMouseDown,
     onRefreshMouseUp,
-    onCopy,
     className = '',
 }: BalanceInstrumentProps) {
     // The figure spins up from 0 on load and eases to each new value after a refresh.
@@ -101,16 +96,9 @@ export function BalanceInstrument({
         <section
             className={`relative overflow-hidden rounded-2xl border border-[#24404A] bg-[linear-gradient(180deg,#163139,#122730)] shadow-[0_30px_60px_-40px_rgba(0,0,0,0.8)] ${className}`}
         >
-            {/* artificial-horizon backdrop */}
-            <div aria-hidden className="pointer-events-none absolute inset-0 opacity-50">
-                <div className="absolute inset-x-0 top-0 bottom-[42%] bg-[linear-gradient(180deg,#16525C,#123E46)]" />
-                <div className="absolute inset-x-0 top-[58%] bottom-0 bg-[linear-gradient(180deg,#1A1F52,#12163A)]" />
-                <div className="absolute inset-x-0 top-[58%] h-0.5 bg-[#34F5C6] opacity-60 shadow-[0_0_12px_rgba(52,245,198,0.5)]" />
-            </div>
-
-            <div className="relative p-6">
+            <div className="relative flex min-h-[168px] flex-col p-6">
                 {/* top strip: label + annunciator + refresh */}
-                <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="mb-6 flex items-center justify-between gap-3">
                     <span className="fd-label text-[#9DB4BC]">Total balance · Mainnet</span>
                     <div className="flex items-center gap-2">
                         <span className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-[rgba(4,18,26,0.5)] px-2.5 py-1.5">
@@ -164,24 +152,13 @@ export function BalanceInstrument({
                     )}
                 </div>
 
-                {/* address + copy */}
-                <div className="mt-4 flex items-center gap-1.5 font-mono text-xs text-[#9DB4BC] md:text-sm">
-                    <span className="truncate">{address ? address : 'No wallet loaded'}</span>
-                    {address && (
-                        <button
-                            onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                onCopy(address);
-                            }}
-                            className="flex-shrink-0 rounded p-1 text-[#9DB4BC] transition-colors hover:bg-white/10 hover:text-white"
-                            title="Copy address to clipboard"
-                        >
-                            <Copy size={14} className={copied ? 'text-[#34F5C6]' : ''} />
-                        </button>
-                    )}
+                {/* artificial-horizon ground: a mint line just below the readout, then a night wash
+                    filling the rest of the card. Flowing it under the readout (instead of at a fixed
+                    percentage of the card) keeps the line clear of the number at any font size. */}
+                <div aria-hidden className="pointer-events-none relative -mx-6 -mb-6 mt-5 flex-1">
+                    <div className="absolute inset-x-0 top-0 h-0.5 bg-[#34F5C6] opacity-50 shadow-[0_0_12px_rgba(52,245,198,0.4)]" />
+                    <div className="absolute inset-x-0 top-0 bottom-0 bg-[linear-gradient(180deg,rgba(26,31,82,0.45),rgba(18,22,58,0.55))]" />
                 </div>
-
             </div>
 
             {/* history-sync progress: a thin bar pinned to the bottom edge of the card so it signals
