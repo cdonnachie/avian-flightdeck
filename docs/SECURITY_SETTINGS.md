@@ -7,8 +7,8 @@ This document covers important security configuration settings for the Avian Fli
 The Avian FlightDeck Wallet implements a client-side security model that doesn't rely on server-side environment variables for encryption. Instead, it uses:
 
 1. **User-provided passwords** for encryption of sensitive data
-2. **Scrypt key derivation** with strong parameters for password-based encryption
-3. **AES-GCM encryption** for secure storage of private keys and mnemonics
+2. **Argon2id key derivation** (a memory-hard KDF, run in WebAssembly) with strong parameters for password-based encryption, tuned so an unlock takes a few hundred milliseconds. Data written by earlier scrypt and CryptoJS builds is still read and is transparently re-encrypted to the current format on the next successful unlock.
+3. **AES-256-GCM encryption** for secure storage of private keys and mnemonics
 
 ## Local Storage Security
 

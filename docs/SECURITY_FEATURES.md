@@ -1,28 +1,10 @@
 # Security Features Implementation Summary
 
-## ✅ Implemen### 7. **Privacy-Preserving Wallet Storage**
-
-- **Files**: `src/services/wallet/WalletService.ts`
-- **Features**:
-  - Secure local storage of wallet data
-  - Optional encryption of sensitive information
-  - Complete client-side privacy protection
-  - No transmission of private keys or seed phrases
-
-### 8. **Encrypted Local Storage**
-
-- **File**: `src/services/StorageService.ts`
-- **Features**:
-  - AES-GCM encrypted local storage
-  - Password-derived key generation
-  - Secure storage of wallet data, preferences, and transactions
-  - Resilient against local storage attacks
-
-### 9. **Debug and Audit Tools**es
+## ✅ Implemented Security Features
 
 ### 1. **Client-Side Data Protection**
 
-- **File**: `src/services/StorageService.ts`
+- **File**: `src/services/core/StorageService.ts`
 - **Features**:
   - Secure client-side storage model
   - Encrypted storage of sensitive information
@@ -31,7 +13,7 @@
 
 ### 2. **Biometric Authentication (Fingerprint/Face ID)**
 
-- **File**: `src/services/SecurityService.ts`
+- **File**: `src/services/core/SecurityService.ts`
 - **Features**:
   - WebAuthn-based biometric authentication
   - Fallback methods for different device types
@@ -40,16 +22,17 @@
 
 ### 3. **Auto-lock Timer**
 
-- **File**: `src/services/SecurityService.ts`
+- **File**: `src/services/core/SecurityService.ts`
 - **Features**:
   - Configurable timeout settings (1 minute to 4 hours)
   - Activity tracking and automatic lock on inactivity
-  - Manual lock functionality
+  - Durable manual lock — the Lock action survives a page refresh
+  - Multi-wallet lock screen with an unlock picker, so forgetting one wallet's password never locks you out of the others; biometric unlock is scoped to its own wallet
   - Lock state management and notifications
 
 ### 4. **Security Audit Log**
 
-- **File**: `src/services/SecurityService.ts`
+- **File**: `src/services/core/SecurityService.ts`
 - **Features**:
   - Comprehensive logging of security events
   - Tracks wallet operations, authentication attempts, and security actions
@@ -87,10 +70,10 @@
 
 ### 7. **Encrypted Local Storage**
 
-- **File**: `src/services/StorageService.ts`
+- **File**: `src/services/core/StorageService.ts`
 - **Features**:
-  - AES-GCM encrypted local storage
-  - Password-derived key generation
+  - AES-256-GCM encrypted local storage
+  - Argon2id password-derived key generation
   - Secure storage of wallet data, preferences, and transactions
   - Resilient against local storage attacks
 
@@ -116,7 +99,7 @@
 
 ### 10. **Application-level Permissions**
 
-- **File**: `src/services/PermissionsService.ts`
+- **File**: `src/services/provider/PermissionService.ts`
 - **Features**:
   - Fine-grained control of sensitive actions
   - Permission checks before critical operations
@@ -130,8 +113,9 @@
   - Optional encryption of sensitive information
   - User control over data persistence
 - **Encryption Implementation**:
-  - AES encryption of private keys and seed phrases
-  - Password-based key derivation for security
+  - AES-256-GCM (authenticated) encryption of private keys and seed phrases
+  - Argon2id password-based key derivation (memory-hard, run in WebAssembly), tuned so an unlock takes a few hundred milliseconds
+  - Self-describing versioned ciphertext: each blob records the KDF and its parameters in a header, so older scrypt/CryptoJS blobs still decrypt and are transparently re-encrypted to the current format on the next successful unlock
   - Client-side only operations with proper error handling
 
 - **Authentication Flow**:
@@ -184,7 +168,7 @@
    - Configure transaction requirements
 
 3. **Monitor Security**:
-   - Security events are securely logged server-side
+   - Security events are logged locally on the device (nothing is sent to a server)
    - Monitor unlock attempts in security panel
 
 4. **Manual Security Actions**:

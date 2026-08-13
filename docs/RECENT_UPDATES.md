@@ -2,6 +2,39 @@
 
 This document tracks recent enhancements to the Avian FlightDeck Wallet application.
 
+## Flight-deck refresh (2026)
+
+### Brand & UI/UX
+
+- **Instrument-panel design language**: A committed "flight deck" look — night ground, mint→cyan
+  gradients, Roboto Mono readouts, and an artificial-horizon motif — carried across the app.
+- **New-visitor landing page** at `/` (shown only when no wallet exists), with an animated
+  primary-flight-display that levels its horizon once on load (respecting reduced-motion).
+- **Guided onboarding wizard** for creating a wallet, unified with Wallet Management's create flow
+  behind one headless hook (`useCreateWalletWizard`) and two theme-aware skins.
+- **Dashboard balance count-up** animation and fuller layout; refreshed lock/auth, Avian Connect,
+  settings, and backup/security surfaces.
+
+### Security
+
+- **Argon2id key derivation** (via `hash-wasm`, run in WebAssembly) replaces scrypt for
+  password-based encryption, paired with **AES-256-GCM**. The ciphertext format is versioned and
+  self-describing, so older scrypt and CryptoJS blobs still decrypt and are transparently
+  re-encrypted to the current format on the next successful unlock. Parameters are tuned so an
+  unlock takes a few hundred milliseconds.
+- **Multi-wallet lock screen**: an unlock picker so forgetting one wallet's password never locks you
+  out of the others; biometric unlock is scoped to its own wallet.
+- **Durable manual lock**: the Lock action now survives a page refresh even with the open-time wall
+  off.
+- **Terms acceptance** moved to wallet creation; the public landing page is the entry point.
+
+### Testing & tooling
+
+- E2E coverage expanded beyond Avian Connect to the landing page, onboarding, the lock screen,
+  balance, and empty states.
+- E2E builds use cheap Argon2id parameters (`pnpm build:e2e` / `pnpm test:e2e`) so browser unlocks
+  stay fast and deterministic; production builds keep the hardened defaults.
+
 ## Latest Features (July 2025)
 
 ### Enhanced User Experience
