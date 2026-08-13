@@ -359,6 +359,7 @@ export default function OnboardingPage() {
                 open={showBackupQRModal}
                 onClose={() => setShowBackupQRModal(false)}
                 mode="restore-only"
+                onRestored={() => router.push('/')}
             />
         </div>
     );

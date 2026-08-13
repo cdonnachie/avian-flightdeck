@@ -99,4 +99,21 @@ test.describe('onboarding — guided create wallet', () => {
     await expect(page.getByText("That order doesn't match", { exact: false })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Continue' })).toBeDisabled();
   });
+
+  test('restore-from-QR opens inline, without navigating to the backup page', async ({ page }) => {
+    await page.routeWebSocket(/.*/, (ws) => ws.close());
+    await page.addInitScript(() => {
+      localStorage.setItem('terms-accepted', 'true');
+      localStorage.setItem('terms-accepted-date', new Date().toISOString());
+    });
+
+    await page.goto('/onboarding');
+    await page.getByRole('button', { name: /Encrypted backup/ }).click();
+    await page.getByRole('button', { name: /Scan QR codes/ }).click();
+
+    // The QR transfer UI opens in place (a dialog) — we stayed on /onboarding rather than being
+    // sent to the full /backup/qr page.
+    await expect(page.getByRole('button', { name: 'Start Camera Scan' })).toBeVisible();
+    await expect(page).toHaveURL(/\/onboarding/);
+  });
 });
