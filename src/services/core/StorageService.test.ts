@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { StorageService } from './StorageService';
+import { inspectEncryptionFormat } from '@/services/wallet/encryption';
 import { resetStorage } from '@/test/helpers';
 
 const ADDRESS_A = 'RAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
@@ -17,6 +18,51 @@ const createWallet = (overrides: Record<string, unknown> = {}) =>
 
 beforeEach(() => {
   resetStorage();
+});
+
+describe('biometric password migration', () => {
+  // A real scrypt v2 blob: decrypts with secureKey 'golden-scrypt2-pw' to 'golden scrypt v2 secret'.
+  // Stands in for a biometric credential enrolled before the move to Argon2id.
+  const SCRYPT_BIO_BLOB =
+    'v2.eyJrZGYiOiJzY3J5cHQiLCJOIjoxNjM4NCwiciI6OCwicCI6MSwiZGtMZW4iOjMyfQ==.RdYnkfB8LnYg74SIohSK3Dc/PZM8JcDwD9taYVX9ALekeIkdW+2iJidL8VgsbWL3cqrMI+yrpy1yqAfhRqAEPLzZQAAqLPDWlcHMqDFKenRMoQLDZNH016KuRlNKJomXNxlq17DMR7GrBtvJL4jc4KymqkdF0qo=';
+  const SECURE_KEY = 'golden-scrypt2-pw';
+  const EXPECTED_PW = 'golden scrypt v2 secret';
+
+  it('recovers the password and re-seals an older scrypt blob as Argon2id on read', async () => {
+    const wallet = await createWallet();
+    // Seed a biometric password sealed in the pre-Argon2id scrypt format.
+    await StorageService.saveWalletWithBiometricData(
+      { ...wallet, encryptedBiometricPassword: SCRYPT_BIO_BLOB },
+      [1, 2, 3],
+    );
+    expect(inspectEncryptionFormat(SCRYPT_BIO_BLOB)).toBe('scrypt');
+
+    const recovered = await StorageService.getEncryptedWalletPassword(SECURE_KEY, ADDRESS_A);
+    expect(recovered).toBe(EXPECTED_PW);
+
+    // The stored blob is upgraded to Argon2id, so future biometric logins skip the slow scrypt path…
+    const after = await StorageService.getWalletByAddress(ADDRESS_A);
+    expect(after?.encryptedBiometricPassword).toBeTruthy();
+    expect(inspectEncryptionFormat(after!.encryptedBiometricPassword!)).toBe('argon2id');
+    // …and it still unlocks to the same password.
+    expect(await StorageService.getEncryptedWalletPassword(SECURE_KEY, ADDRESS_A)).toBe(EXPECTED_PW);
+  });
+
+  it('leaves an already-Argon2id biometric blob untouched', async () => {
+    await createWallet();
+    await StorageService.setEncryptedWalletPassword(SECURE_KEY, 'my-wallet-pw', ADDRESS_A);
+    const before = (await StorageService.getWalletByAddress(ADDRESS_A))?.encryptedBiometricPassword;
+    expect(inspectEncryptionFormat(before!)).toBe('argon2id');
+
+    expect(await StorageService.getEncryptedWalletPassword(SECURE_KEY, ADDRESS_A)).toBe(
+      'my-wallet-pw',
+    );
+
+    // No needless rewrite: secureEncrypt uses a fresh salt/IV each call, so an untouched blob is
+    // byte-for-byte identical.
+    const after = (await StorageService.getWalletByAddress(ADDRESS_A))?.encryptedBiometricPassword;
+    expect(after).toBe(before);
+  });
 });
 
 describe('creating wallets', () => {
