@@ -2311,6 +2311,20 @@ export class WalletService {
         return request;
     }
 
+    // Order a raw get_history list newest-first, in place: mempool entries (height <= 0) first, then
+    // confirmed transactions by descending block height. get_history only carries tx_hash + height,
+    // so this is approximate within a single block — good enough to surface recent activity first.
+    private sortHistoryNewestFirst(history: Array<{ tx_hash: string; height: number }>): void {
+        history.sort((a, b) => {
+            const aUnconfirmed = (a.height ?? 0) <= 0;
+            const bUnconfirmed = (b.height ?? 0) <= 0;
+            if (aUnconfirmed !== bUnconfirmed) {
+                return aUnconfirmed ? -1 : 1;
+            }
+            return (b.height ?? 0) - (a.height ?? 0);
+        });
+    }
+
     /**
      * Process transaction history for a wallet address
      * @param address - The wallet address
@@ -2329,6 +2343,12 @@ export class WalletService {
             if (!txHistory || txHistory.length === 0) {
                 return;
             }
+
+            // Process newest-first so the transactions a user actually looks at land in storage (and
+            // on screen) first, while older history backfills behind them. get_history's own order is
+            // not guaranteed, so sort explicitly for deterministic behaviour: mempool entries
+            // (height <= 0) first, then confirmed transactions by descending block height.
+            this.sortHistoryNewestFirst(txHistory);
 
             // Get existing transactions from local storage.
             // getTransactionHistory falls back to matching the counterparty address when a wallet

@@ -589,6 +589,29 @@ describe('sync efficiency', () => {
     expect(await historyFor(WALLET_A)).toHaveLength(COUNT);
   });
 
+  it('fetches newest-first: unconfirmed, then highest block height', async () => {
+    await ownWallets(WALLET_A);
+    const A = 'a'.repeat(64); // height 100 (oldest)
+    const B = 'b'.repeat(64); // height 300 (newest confirmed)
+    const C = 'c'.repeat(64); // height 0   (unconfirmed / mempool)
+    const D = 'd'.repeat(64); // height 200
+    const received = { vin: [from(EXTERNAL)], vout: [out(WALLET_A, 1)] };
+    const electrum = createElectrum(
+      { [A]: received, [B]: received, [C]: received, [D]: received },
+      [
+        { tx_hash: A, height: 100 },
+        { tx_hash: B, height: 300 },
+        { tx_hash: C, height: 0 },
+        { tx_hash: D, height: 200 },
+      ],
+    );
+
+    await new WalletService(electrum as never).processTransactionHistory(WALLET_A);
+
+    const fetchOrder = electrum.getTransaction.mock.calls.map(([hash]) => hash);
+    expect(fetchOrder).toEqual([C, B, D, A]); // mempool, then 300 → 200 → 100
+  });
+
   it('reads the chain tip once for the whole sync, not per transaction', async () => {
     await ownWallets(WALLET_A);
     const electrum = createElectrum(
