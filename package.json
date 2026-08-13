@@ -14,7 +14,8 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
+    "build:e2e": "cross-env NEXT_PUBLIC_SCRYPT_N=16384 next build",
+    "test:e2e": "cross-env NEXT_PUBLIC_SCRYPT_N=16384 playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "find-unused-code": "pnpm exec eslint src --no-error-on-unmatched-pattern --ext .ts,.tsx --rule \"no-unused-vars: error\" --quiet && pnpm exec knip"

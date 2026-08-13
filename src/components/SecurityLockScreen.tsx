@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Lock, Fingerprint, Eye, EyeOff, Shield, Clock, ArrowRight } from 'lucide-react';
 import { securityService } from '@/services/core/SecurityService';
 import { StorageService } from '@/services/core/StorageService';
@@ -9,11 +9,14 @@ import ThemeSwitcher from '@/components/ThemeSwitcher';
 import BiometricSetupButton from '@/components/BiometricSetupButton';
 
 interface SecurityLockScreenProps {
-  onUnlock: (password?: string) => void;
+  // `switchedWallet` tells the provider the active wallet changed (a multi-wallet pick), so it can
+  // reload the wallet context onto the newly-unlocked wallet.
+  onUnlock: (password?: string, switchedWallet?: boolean) => void;
   lockReason?: 'timeout' | 'manual' | 'failed_auth';
 }
 
 interface ActiveWalletInfo {
+  id?: number;
   name: string;
   address: string;
   isEncrypted: boolean;
@@ -27,6 +30,9 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
   const [biometricSupported, setBiometricSupported] = useState(false);
   const [biometricSetup, setBiometricSetup] = useState(false);
   const [activeWallet, setActiveWallet] = useState<ActiveWalletInfo | null>(null);
+  const [wallets, setWallets] = useState<ActiveWalletInfo[]>([]);
+  // The wallet the app had loaded when the wall came up; used to tell if a pick actually switched.
+  const originalActiveIdRef = useRef<number | undefined>(undefined);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isLockedOut, setIsLockedOut] = useState(false);
@@ -116,19 +122,56 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
 
   const loadActiveWalletInfo = async () => {
     try {
-      const wallet = await StorageService.getActiveWallet();
-      if (wallet) {
+      const all = await StorageService.getAllWallets();
+      const list: ActiveWalletInfo[] = all.map((w) => ({
+        id: w.id,
+        name: w.name,
+        address: w.address,
+        isEncrypted: w.isEncrypted,
+      }));
+      setWallets(list);
+
+      const active = all.find((w) => w.isActive) ?? all[0];
+      if (active) {
+        // Remember which wallet the app had loaded so we can reload the context only if a pick
+        // actually switches away from it.
+        if (originalActiveIdRef.current === undefined) {
+          originalActiveIdRef.current = active.id;
+        }
         setActiveWallet({
-          name: wallet.name,
-          address: wallet.address,
-          isEncrypted: wallet.isEncrypted,
+          id: active.id,
+          name: active.name,
+          address: active.address,
+          isEncrypted: active.isEncrypted,
         });
       }
     } catch (error) {
-      toast.error('Failed to load active wallet', {
+      toast.error('Failed to load wallets', {
         description: error instanceof Error ? error.message : 'Unknown error',
       });
     }
+  };
+
+  // Pick a different wallet to sign into. Switching it active up front means the existing password
+  // and biometric unlock paths (which target the active wallet) apply to the chosen one — so
+  // forgetting one wallet's password never locks you out of the others.
+  const selectWallet = async (id: number) => {
+    if (id === activeWallet?.id) return;
+    const target = wallets.find((w) => w.id === id);
+    if (!target) return;
+    setPassword('');
+    setError('');
+    setSuccess('');
+    try {
+      await StorageService.switchToWallet(id);
+    } catch (e) {
+      toast.error('Could not switch wallet', {
+        description: e instanceof Error ? e.message : 'Unknown error',
+      });
+      return;
+    }
+    // Re-check biometrics for the newly-active wallet (handled by the activeWallet effect).
+    setActiveWallet(target);
   };
 
   const checkBiometricSupport = async () => {
@@ -195,6 +238,17 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
       return;
     }
 
+    // Make sure the picked wallet is the active one before validating. The switch also runs on
+    // selection; awaiting it here as well closes any race between selecting and clicking unlock, so
+    // a password is only ever validated against the wallet the user actually chose.
+    if (activeWallet?.id !== undefined) {
+      try {
+        await StorageService.switchToWallet(activeWallet.id);
+      } catch {
+        /* fall through — unlockWallet re-reads the active wallet and fails closed on mismatch */
+      }
+    }
+
     // If wallet doesn't require a password, unlock immediately
     if (!activeWallet?.isEncrypted) {
       handleUnlockSuccess('No password required for this wallet');
@@ -239,8 +293,10 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
       description: message,
     });
     // Hand the password back so the key is available for silent re-auth this session (password
-    // unlocks only; biometric/no-password unlocks pass nothing and re-prompt on demand).
-    onUnlock(password);
+    // unlocks only; biometric/no-password unlocks pass nothing and re-prompt on demand). The second
+    // flag tells the provider to reload the wallet context when the pick switched wallets.
+    const switchedWallet = activeWallet?.id !== originalActiveIdRef.current;
+    onUnlock(password, switchedWallet);
   };
 
   const handleBiometricUnlock = async () => {
@@ -258,12 +314,17 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
     setError('');
 
     try {
-      // Debug wallet information
-      const wallet = await StorageService.getActiveWallet();
+      // Make sure the picked wallet is active before biometric unlock targets it.
+      if (activeWallet?.id !== undefined) {
+        try {
+          await StorageService.switchToWallet(activeWallet.id);
+        } catch {
+          /* fall through */
+        }
+      }
 
       // With biometric authentication, the password is retrieved from secure storage
       // The second parameter 'true' indicates to use biometric authentication
-
       const success = await securityService.unlockWallet(undefined, true);
 
       if (success) {
@@ -535,15 +596,39 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
 
               <h1 className="text-xl font-semibold text-[#E6F0F2]">Wallet locked</h1>
               <p className="mt-1 text-sm text-[#9DB4BC]">
-                {activeWallet?.isEncrypted
-                  ? 'Enter your password to resume'
-                  : getLockReasonMessage()}
+                {wallets.length > 1
+                  ? 'Choose a wallet and enter its password'
+                  : activeWallet?.isEncrypted
+                    ? 'Enter your password to resume'
+                    : getLockReasonMessage()}
               </p>
-              {activeWallet && (
-                <p className="mt-2 font-mono text-xs text-[#6b8088]">
-                  {activeWallet.name} · {activeWallet.address.slice(0, 8)}…
-                  {activeWallet.address.slice(-6)}
-                </p>
+
+              {wallets.length > 1 ? (
+                <div className="mt-4 text-left">
+                  <label className="sr-only" htmlFor="wallet-select">
+                    Wallet to unlock
+                  </label>
+                  <select
+                    id="wallet-select"
+                    value={activeWallet?.id ?? ''}
+                    onChange={(e) => selectWallet(Number(e.target.value))}
+                    disabled={isLoading}
+                    className="w-full rounded-lg border border-[#24404A] bg-[rgba(4,18,26,0.6)] px-3.5 py-2.5 font-mono text-sm text-[#E6F0F2] focus:border-[#34F5C6] focus:outline-none disabled:opacity-60"
+                  >
+                    {wallets.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.name} · {w.address.slice(0, 8)}…{w.address.slice(-6)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                activeWallet && (
+                  <p className="mt-2 font-mono text-xs text-[#6b8088]">
+                    {activeWallet.name} · {activeWallet.address.slice(0, 8)}…
+                    {activeWallet.address.slice(-6)}
+                  </p>
+                )
               )}
 
               {activeWallet?.isEncrypted ? (

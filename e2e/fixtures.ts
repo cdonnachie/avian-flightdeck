@@ -94,6 +94,46 @@ export async function seedWallet(page: Page) {
 }
 
 /**
+ * Adds a second, non-active encrypted wallet with its own password. Call after seedWallet (the DB
+ * exists by then). It reuses the same key material — the lock-screen picker keys on wallet id, and
+ * unlock validates against each wallet's own encrypted blob, so a distinct password is enough to
+ * exercise "sign into a different wallet". Does not reload; the caller (e.g. setScreenLock) does.
+ */
+export async function seedExtraWallet(page: Page, name: string, password: string) {
+  const record: SeedRecord = {
+    name,
+    // The wallets store has a unique index on address, so this must differ from the first wallet.
+    // Unlock validates the decrypted key (a real WIF), not that it matches this address, so a
+    // distinct placeholder is enough to exercise the multi-wallet picker.
+    address: 'RSecondWa11etAddressXXXXXXXXXXXXXX',
+    privateKey: await secureEncrypt(WALLET_WIF, password),
+    isEncrypted: true,
+    isActive: false,
+    createdAt: new Date(),
+    lastAccessed: new Date(),
+  };
+
+  await page.evaluate(
+    ({ dbName, wallet }) =>
+      new Promise<void>((resolve, reject) => {
+        const request = indexedDB.open(dbName);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          const db = request.result;
+          const transaction = db.transaction('wallets', 'readwrite');
+          transaction.objectStore('wallets').put(wallet);
+          transaction.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          transaction.onerror = () => reject(transaction.error);
+        };
+      }),
+    { dbName: DB_NAME, wallet: record },
+  );
+}
+
+/**
  * Sets the opt-in screen-lock wall on or off. It updates the settings record the app already
  * created on boot (updating the existing record avoids the unique `key` index conflict a fresh
  * insert would hit) and reloads so it takes effect. Call after seedWallet.

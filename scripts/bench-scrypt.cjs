@@ -19,8 +19,8 @@ const { randomBytes } = require('crypto');
 
 const PROFILES = [
   { N: 16384, r: 8, p: 1 }, // current v1 — too weak, shown for reference
-  { N: 32768, r: 8, p: 1 },
-  { N: 65536, r: 8, p: 1 }, // current v2 candidate
+  { N: 32768, r: 8, p: 1 }, // current v2 default
+  { N: 65536, r: 8, p: 1 },
   { N: 131072, r: 8, p: 1 },
 ];
 
