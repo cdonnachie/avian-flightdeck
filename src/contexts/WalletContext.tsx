@@ -152,6 +152,20 @@ export function WalletProvider({ children }: WalletProviderProps) {
     currentTx?: string;
   }>({ isProcessing: false, processed: 0, total: 0 });
 
+  // Wallet activation callbacks, shared by the initial load and by re-activation after a server
+  // switch so both wire up the same balance/progress handling.
+  const handleWalletBalanceUpdate = useCallback((data: { balance: number }) => {
+    setBalance(data.balance);
+    setBalanceStatus('live');
+  }, []);
+
+  const handleWalletProgress = useCallback(
+    (processed: number, total: number, currentTx?: string) => {
+      setProcessingProgress({ isProcessing: total > 0, processed, total, currentTx });
+    },
+    [],
+  );
+
   const initializeWallet = async () => {
     try {
       setIsLoading(true);
@@ -164,6 +178,10 @@ export function WalletProvider({ children }: WalletProviderProps) {
       const { WalletService } = await import('@/services/wallet/WalletService');
       const walletService = new WalletService(electrumService);
       setWallet(walletService);
+
+      // Re-apply the user's saved server choice before connecting — the ElectrumService defaults to
+      // the first server, so without this a reload silently reverts the selection.
+      await walletService.restoreSelectedServer();
 
       // Update server info
       setServerInfo(walletService.getElectrumServerInfo());
@@ -195,19 +213,8 @@ export function WalletProvider({ children }: WalletProviderProps) {
         // Initialize wallet with subscription for real-time updates
         await walletService.initializeWallet(
           activeWallet.address,
-          (data) => {
-            setBalance(data.balance);
-            setBalanceStatus('live');
-          },
-          (processed, total, currentTx) => {
-            // Set processing progress during initial transaction loading
-            setProcessingProgress({
-              isProcessing: total > 0,
-              processed,
-              total,
-              currentTx,
-            });
-          },
+          handleWalletBalanceUpdate,
+          handleWalletProgress,
         );
 
         // Clear processing progress when initialization is complete
@@ -622,9 +629,23 @@ export function WalletProvider({ children }: WalletProviderProps) {
 
     try {
       setIsLoading(true);
+      // Switches server, persists the choice, and reconnects if we were connected.
       await wallet.selectElectrumServer(index);
       setIsConnected(wallet.isConnectedToElectrum());
       setServerInfo(wallet.getElectrumServerInfo());
+
+      // Switching servers tears down the old socket, which also drops its address subscriptions.
+      // Re-activate the active wallet on the new server so balance and history updates resume —
+      // otherwise the wallet looks "stuck" until a reload.
+      const activeWallet = await StorageService.getActiveWallet();
+      if (activeWallet?.address) {
+        await wallet.initializeWallet(
+          activeWallet.address,
+          handleWalletBalanceUpdate,
+          handleWalletProgress,
+        );
+        setProcessingProgress({ isProcessing: false, processed: 0, total: 0 });
+      }
     } catch (error) {
       walletContextLogger.error('Failed to select ElectrumX server:', error);
       throw error;

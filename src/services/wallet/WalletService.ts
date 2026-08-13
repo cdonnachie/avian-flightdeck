@@ -1300,14 +1300,46 @@ export class WalletService {
 
     async selectElectrumServer(index: number): Promise<void> {
         try {
+            // Capture the connection state up front: selectServer() tears the socket down, so
+            // checking afterwards always reads "disconnected" and the reconnect never fired — that
+            // was the bug where switching servers left the wallet dead until a reload.
+            const wasConnected = this.isConnectedToElectrum();
+            if (wasConnected) {
+                // Await a full disconnect so the old socket is closed before we open the new one.
+                await this.disconnectFromElectrum();
+            }
+
             this.electrum.selectServer(index);
-            // Reconnect to the new server
-            if (this.isConnectedToElectrum()) {
+
+            // Persist the choice so it survives a reload.
+            const host = this.electrum.getCurrentServer()?.host;
+            if (host) {
+                await StorageService.setSelectedElectrumServer(host);
+            }
+
+            if (wasConnected) {
                 await this.connectToElectrum();
             }
         } catch (error) {
             walletLogger.error('Error selecting ElectrumX server:', error);
             throw error;
+        }
+    }
+
+    /**
+     * Re-apply the user's last saved ElectrumX server before connecting. The ElectrumService always
+     * constructs with the first server as its default, so without this a reload silently reverts to
+     * it. Call this after constructing the service and before connecting. A saved host that no longer
+     * exists (the server list changed) just falls back to the default.
+     */
+    async restoreSelectedServer(): Promise<void> {
+        try {
+            const host = await StorageService.getSelectedElectrumServer();
+            if (host) {
+                this.electrum.selectServerByHost(host);
+            }
+        } catch (error) {
+            walletLogger.warn('Could not restore the saved ElectrumX server; using default', error);
         }
     }
 
