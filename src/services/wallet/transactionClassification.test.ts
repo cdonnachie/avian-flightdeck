@@ -538,3 +538,72 @@ describe('bookkeeping', () => {
     ).resolves.toBeUndefined();
   });
 });
+
+describe('sync efficiency', () => {
+  it('fetches a shared parent transaction only once across the whole sync', async () => {
+    await ownWallets(WALLET_A);
+    const PARENT = 'p'.repeat(64);
+    const SEND_1 = '1'.repeat(64);
+    const SEND_2 = '2'.repeat(64);
+    const SEND_3 = '3'.repeat(64);
+    // Three sends that each spend an output of the same funding tx. The inputs carry no address, so
+    // classification must resolve them from the parent — which the per-sync cache should pull once.
+    const spendParent = { vin: [{ txid: PARENT, vout: 0 }], vout: [out(EXTERNAL, 1)] };
+    const electrum = createElectrum(
+      {
+        [PARENT]: { vout: [out(WALLET_A, 100)] },
+        [SEND_1]: spendParent,
+        [SEND_2]: spendParent,
+        [SEND_3]: spendParent,
+      },
+      [
+        { tx_hash: SEND_1, height: 990 },
+        { tx_hash: SEND_2, height: 990 },
+        { tx_hash: SEND_3, height: 990 },
+      ],
+    );
+
+    await new WalletService(electrum as never).processTransactionHistory(WALLET_A);
+
+    const parentCalls = electrum.getTransaction.mock.calls.filter(([hash]) => hash === PARENT);
+    expect(parentCalls).toHaveLength(1);
+    // 3 history txs + 1 shared parent = 4 (not 3 + 3 without the cache).
+    expect(electrum.getTransaction).toHaveBeenCalledTimes(4);
+    expect(await historyFor(WALLET_A)).toHaveLength(3);
+  });
+
+  it('records every transaction in a history larger than the concurrency limit', async () => {
+    await ownWallets(WALLET_A);
+    const COUNT = 30; // comfortably above HISTORY_SYNC_CONCURRENCY
+    const transactions: Record<string, TxDetails> = {};
+    const history: { tx_hash: string; height: number }[] = [];
+    for (let i = 0; i < COUNT; i++) {
+      const hash = i.toString(16).padStart(64, '0');
+      transactions[hash] = { time: 1_700_000_000 + i, vin: [from(EXTERNAL)], vout: [out(WALLET_A, i + 1)] };
+      history.push({ tx_hash: hash, height: 900 + i });
+    }
+    const electrum = createElectrum(transactions, history);
+
+    await new WalletService(electrum as never).processTransactionHistory(WALLET_A);
+
+    expect(await historyFor(WALLET_A)).toHaveLength(COUNT);
+  });
+
+  it('reads the chain tip once for the whole sync, not per transaction', async () => {
+    await ownWallets(WALLET_A);
+    const electrum = createElectrum(
+      {
+        ['1'.repeat(64)]: { vin: [from(EXTERNAL)], vout: [out(WALLET_A, 1)] },
+        ['2'.repeat(64)]: { vin: [from(EXTERNAL)], vout: [out(WALLET_A, 2)] },
+      },
+      [
+        { tx_hash: '1'.repeat(64), height: 990 },
+        { tx_hash: '2'.repeat(64), height: 991 },
+      ],
+    );
+
+    await new WalletService(electrum as never).processTransactionHistory(WALLET_A);
+
+    expect(electrum.getCurrentBlockHeight).toHaveBeenCalledTimes(1);
+  });
+});

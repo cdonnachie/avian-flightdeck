@@ -23,6 +23,12 @@ import {
 import * as bitcoinMessage from 'bitcoinjs-message';
 import { randomBytes, createHash, createCipheriv, createDecipheriv, createHmac } from 'crypto';
 import { secureEncrypt, secureDecrypt, decryptData, legacyDecrypt } from './encryption';
+import { runWithConcurrency } from './concurrency';
+
+// How many transaction.get requests to keep in flight while syncing history. Electrum matches
+// responses by id, so a small pool cuts the latency of a large sync ~N-fold without hammering the
+// server. Kept modest to stay friendly to public ElectrumX nodes.
+const HISTORY_SYNC_CONCURRENCY = 12;
 
 // Re-exported so existing importers of these helpers from WalletService keep working. New code
 // that only needs encryption should import from './encryption' directly, to avoid pulling the
@@ -2232,18 +2238,45 @@ export class WalletService {
 
         try {
             const currentHeight = await this.electrum.getCurrentBlockHeight();
-            if (currentHeight === 0) {
-                // If we can't get current height, assume 1 confirmation for confirmed transactions
-                return 1;
-            }
-
-            const confirmations = Math.max(0, currentHeight - blockHeight + 1);
-            return confirmations;
+            return this.confirmationsAtHeight(blockHeight, currentHeight);
         } catch (error) {
             walletLogger.error('Error calculating confirmations:', error);
             // Fallback: return 1 for confirmed transactions, 0 for unconfirmed
             return blockHeight ? 1 : 0;
         }
+    }
+
+    // Synchronous confirmation count against an already-known chain tip. Lets a bulk sync fetch the
+    // tip once instead of calling getCurrentBlockHeight for every transaction.
+    private confirmationsAtHeight(blockHeight?: number, currentHeight?: number): number {
+        if (!blockHeight) return 0; // Unconfirmed
+        if (!currentHeight) return 1; // Tip unknown but the tx is in a block — at least 1
+        return Math.max(0, currentHeight - blockHeight + 1);
+    }
+
+    // Fetch a verbose transaction, reusing a per-sync cache so the same parent transaction is never
+    // pulled from the server twice. Input-address resolution repeatedly needs a transaction's
+    // parents, and across a whole history the same parents recur constantly (a wallet's sends spend
+    // its own earlier receives), so this collapses a large share of the round-trips.
+    //
+    // The cache stores the in-flight promise, not the resolved value, so many concurrent workers
+    // asking for the same parent at once share a single request instead of each firing their own (a
+    // thundering herd the pool would otherwise create). A failed fetch is evicted so a later item
+    // can retry rather than inheriting a cached rejection.
+    private getTransactionCached(txid: string, cache?: Map<string, Promise<any>>): Promise<any> {
+        if (!cache) {
+            return this.electrum.getTransaction(txid, true);
+        }
+        const inFlight = cache.get(txid);
+        if (inFlight) {
+            return inFlight;
+        }
+        const request = this.electrum.getTransaction(txid, true).catch((error) => {
+            cache.delete(txid);
+            throw error;
+        });
+        cache.set(txid, request);
+        return request;
     }
 
     /**
@@ -2285,34 +2318,49 @@ export class WalletService {
             // Report initial progress
             onProgress?.(0, total);
 
-            // Process each transaction from history (both new and existing for updates)
-            for (const historyTx of txHistory) {
+            // Fetch the chain tip once so each transaction's confirmation count is computed locally
+            // rather than asking the server per transaction.
+            let currentHeight = 0;
+            try {
+                currentHeight = await this.electrum.getCurrentBlockHeight();
+            } catch (heightError) {
+                walletLogger.warn('Could not fetch chain tip for confirmations; using fallback', heightError);
+            }
+
+            // Shared per-sync cache so input-address resolution never refetches the same parent tx.
+            const txCache = new Map<string, Promise<any>>();
+
+            // Fetch and classify with a bounded pool of concurrent requests instead of one-at-a-time.
+            // Each worker is self-contained and swallows its own errors, so a single bad transaction
+            // never aborts the sync; progress is reported as each finishes (order is not guaranteed,
+            // but the count is monotonic).
+            await runWithConcurrency(txHistory, HISTORY_SYNC_CONCURRENCY, async (historyTx) => {
                 try {
                     // Skip already processed transactions if onlyNewTransactions is true
                     if (onlyNewTransactions && existingTxIdSet.has(historyTx.tx_hash)) {
                         // Still count as processed for progress reporting
                         processedCount++;
                         onProgress?.(processedCount, total, historyTx.tx_hash);
-                        continue;
+                        return;
                     }
-                    // Get detailed transaction information
-                    const txDetails = await this.electrum.getTransaction(historyTx.tx_hash, true);
+                    // Get detailed transaction information (cached, so parents resolve cheaply)
+                    const txDetails = await this.getTransactionCached(historyTx.tx_hash, txCache);
                     if (!txDetails) {
                         processedCount++;
                         onProgress?.(processedCount, total, historyTx.tx_hash);
-                        continue;
+                        return;
                     }
 
-                    // Classify transaction as sent or received
-                    const classification = await this.classifyTransaction(txDetails, address);
+                    // Classify transaction as sent or received, sharing the per-sync cache
+                    const classification = await this.classifyTransaction(txDetails, address, txCache);
                     if (!classification) {
                         processedCount++;
                         onProgress?.(processedCount, total, historyTx.tx_hash);
-                        continue;
+                        return;
                     }
 
-                    // Calculate proper confirmations
-                    const confirmations = await this.calculateConfirmations(historyTx.height);
+                    // Confirmations against the tip we fetched once above
+                    const confirmations = this.confirmationsAtHeight(historyTx.height, currentHeight);
 
                     // Check if we have an existing transaction of this type
                     const existingTx = existingTxMap.get(`${historyTx.tx_hash}-${classification.type}`);
@@ -2377,7 +2425,7 @@ export class WalletService {
                     processedCount++;
                     onProgress?.(processedCount, total, historyTx.tx_hash);
                 }
-            }
+            });
 
             // Report final progress
             if (total > 0) {
@@ -2583,6 +2631,7 @@ export class WalletService {
     private async classifyTransaction(
         txDetails: any,
         address: string,
+        cache?: Map<string, Promise<any>>,
     ): Promise<{
         type: 'send' | 'receive';
         amount: number;
@@ -2628,7 +2677,7 @@ export class WalletService {
                     // If no direct address, we need to look up the previous transaction output
                     else if (input.txid && input.vout !== undefined) {
                         try {
-                            const prevTxDetails = await this.electrum.getTransaction(input.txid, true);
+                            const prevTxDetails = await this.getTransactionCached(input.txid, cache);
                             if (prevTxDetails && prevTxDetails.vout && prevTxDetails.vout[input.vout]) {
                                 const prevOutput = prevTxDetails.vout[input.vout];
 
