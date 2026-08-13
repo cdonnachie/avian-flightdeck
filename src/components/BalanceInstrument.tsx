@@ -182,23 +182,25 @@ export function BalanceInstrument({
                     )}
                 </div>
 
-                {/* processing progress */}
-                {processingProgress.isProcessing && (
-                    <div className="mt-4 rounded-lg border border-white/15 bg-white/10 p-2 text-xs text-white">
-                        <div className="flex flex-wrap items-center">
-                            <Loader className="mr-1.5 h-3 w-3 flex-shrink-0 animate-spin text-white" />
-                            <span className="font-medium">
-                                Processing… {processingProgress.processed}/{processingProgress.total}
-                            </span>
-                        </div>
-                        {processingProgress.currentTx && (
-                            <div className="mt-1 truncate pl-4 text-white/80">
-                                TX: {processingProgress.currentTx.slice(0, 6)}…
-                            </div>
-                        )}
-                    </div>
-                )}
             </div>
+
+            {/* history-sync progress: a thin bar pinned to the bottom edge of the card so it signals
+                activity without growing the card and pushing the dashboard down. The running count
+                still shows in the Transaction History panel. */}
+            {processingProgress.isProcessing && processingProgress.total > 0 && (
+                <div
+                    aria-hidden
+                    className="absolute inset-x-0 bottom-0 h-0.5 bg-white/10"
+                    title={`Syncing transaction history ${processingProgress.processed}/${processingProgress.total}`}
+                >
+                    <div
+                        className="h-full bg-[#34F5C6] shadow-[0_0_8px_rgba(52,245,198,0.6)] transition-[width] duration-500 ease-out"
+                        style={{
+                            width: `${Math.min(100, (processingProgress.processed / processingProgress.total) * 100)}%`,
+                        }}
+                    />
+                </div>
+            )}
         </section>
     );
 }

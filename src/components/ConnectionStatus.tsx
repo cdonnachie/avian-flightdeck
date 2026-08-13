@@ -158,14 +158,17 @@ export default function ConnectionStatus({ className = '' }: ConnectionStatusPro
               {isLoading ? 'Connecting...' : 'Connect'}
             </Button>
           ) : (
-            <Button onClick={handleDisconnect} disabled={isLoading} variant="destructive" size="sm">
+            // Only rendered when connected, so disconnecting is always safe — don't gate it on the
+            // global loading flag, which the long history sync holds true and used to leave this
+            // (and Ping) stuck disabled.
+            <Button onClick={handleDisconnect} variant="destructive" size="sm">
               Disconnect
             </Button>
           )}
 
           <Button
             onClick={handleTest}
-            disabled={isLoading || isTesting}
+            disabled={isTesting}
             variant="secondary"
             size="sm"
           >
