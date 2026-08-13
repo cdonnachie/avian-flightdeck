@@ -3,9 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { StorageService } from '@/services/core/StorageService';
-import { Loader } from 'lucide-react';
-import GradientBackground from '@/components/GradientBackground';
-import Image from 'next/image';
+import { AttitudeIndicator } from '@/components/AttitudeIndicator';
 import { routeGuardLogger } from '@/lib/Logger';
 
 interface RouteGuardProps {
@@ -70,16 +68,16 @@ export default function RouteGuard({
         checkAccess();
     }, [router, requireTerms, requireWallet, redirectTo]);
 
-    // Show loading screen while checking
+    // Show loading screen while checking — a branded PFD "coming online" instrument.
     if (isChecking) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-card to-background flex items-center justify-center relative">
-                <GradientBackground>
-                    <div className="flex flex-col items-center space-y-4 z-10">
-                        <Image src="/avian_spinner.png" alt="Loading..." width={96} height={96} unoptimized />
-                        <p className="text-sm text-muted-foreground">Loading...</p>
+            <div className="flex min-h-screen items-center justify-center bg-[#0D1B21] px-4">
+                <div className="w-full max-w-xs">
+                    <div className="relative aspect-[4/3.1] overflow-hidden rounded-2xl border border-[#24404A] bg-[linear-gradient(180deg,#163139,#122730)] shadow-[0_40px_80px_-40px_rgba(0,0,0,0.9)]">
+                        <AttitudeIndicator />
                     </div>
-                </GradientBackground>
+                    <p className="mt-4 text-center text-sm text-[#9DB4BC]">Loading…</p>
+                </div>
             </div>
         );
     }

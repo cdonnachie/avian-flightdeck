@@ -135,6 +135,17 @@ export function BalanceInstrument({
                         aria-hidden
                         className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(26,31,82,0.45),rgba(18,22,58,0.55))]"
                     />
+                    {/* aircraft reference symbol riding the horizon line — the instrument signature,
+                        kept faint so it never competes with the figure below it. */}
+                    <svg
+                        aria-hidden
+                        viewBox="0 0 150 30"
+                        className="pointer-events-none absolute left-1/2 top-0 z-[1] w-[104px] -translate-x-1/2 -translate-y-1/2 opacity-60"
+                    >
+                        <path d="M18 15 L58 15 M92 15 L132 15" stroke="#34F5C6" strokeWidth="3.5" strokeLinecap="round" />
+                        <path d="M58 15 L64 22 M92 15 L86 22" stroke="#34F5C6" strokeWidth="3.5" strokeLinecap="round" />
+                        <circle cx="75" cy="15" r="3.4" fill="#04121a" stroke="#34F5C6" strokeWidth="2.2" />
+                    </svg>
                     <div className="fd-readout fd-glow-teal relative flex flex-wrap items-baseline gap-x-2 text-3xl font-semibold leading-none text-[#34E2D5] md:text-4xl">
                         {isLoading && !processingProgress.isProcessing ? (
                             <span className="text-[#9DB4BC]">Loading…</span>
