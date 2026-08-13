@@ -5,6 +5,7 @@ import { securityService } from '@/services/core/SecurityService';
 import { toast } from 'sonner';
 import { SecuritySettings, SecurityAuditEntry } from '@/types/security';
 import { StorageService } from '@/services/core/StorageService';
+import { inspectEncryptionFormat, EncryptionFormat } from '@/services/wallet/encryption';
 import {
   Shield,
   Fingerprint,
@@ -14,6 +15,7 @@ import {
   X,
   Info,
   AlertTriangle,
+  KeyRound,
 } from 'lucide-react';
 import { EmptyState } from '@/components/EmptyState';
 import { useMediaQuery } from '@/hooks/use-media-query';
@@ -65,6 +67,32 @@ import {
 } from '@/components/ui/drawer';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
+/**
+ * How each on-disk encryption format is presented in the read-only indicator. `argon2id` is the
+ * current, up-to-date format; the others still decrypt and are transparently re-encrypted to
+ * Argon2id the next time the wallet is unlocked with a password.
+ */
+const ENCRYPTION_FORMAT_META: Record<
+  EncryptionFormat,
+  { label: string; current: boolean; note: string }
+> = {
+  argon2id: {
+    label: 'Argon2id · AES-256-GCM',
+    current: true,
+    note: 'Current format — your password is stretched with a memory-hard key-derivation function before it encrypts your key.',
+  },
+  scrypt: {
+    label: 'scrypt · AES-256-GCM',
+    current: false,
+    note: 'An earlier format. It upgrades to Argon2id automatically the next time you unlock this wallet with your password.',
+  },
+  legacy: {
+    label: 'Legacy (CryptoJS)',
+    current: false,
+    note: 'A legacy format. It upgrades to Argon2id automatically the next time you unlock this wallet with your password.',
+  },
+};
+
 interface SecuritySettingsPanelProps {
   isOpen?: boolean;
   onClose?: () => void;
@@ -85,6 +113,11 @@ export default function SecuritySettingsPanel({
   const [expandedEntries, setExpandedEntries] = useState<Record<string, boolean>>({});
   const [currentPage, setCurrentPage] = useState(1);
   const [entriesPerPage] = useState(10); // Show 10 entries per page
+  // Read-only encryption format of the active wallet: null while unknown / no wallet,
+  // { encrypted: false } for an unencrypted wallet, otherwise the KDF its stored key uses.
+  const [encryption, setEncryption] = useState<
+    { encrypted: false } | { encrypted: true; format: EncryptionFormat } | null
+  >(null);
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isMobile = useMediaQuery('(max-width: 640px)');
 
@@ -110,10 +143,27 @@ export default function SecuritySettingsPanel({
       setBiometricSupported(capabilities.isSupported);
     };
 
+    // Inspect the active wallet's stored key by shape only — no password, no decryption.
+    const loadEncryptionInfo = async () => {
+      try {
+        const wallet = await StorageService.getActiveWallet();
+        if (!wallet) {
+          setEncryption(null);
+        } else if (!wallet.isEncrypted) {
+          setEncryption({ encrypted: false });
+        } else {
+          setEncryption({ encrypted: true, format: inspectEncryptionFormat(wallet.privateKey) });
+        }
+      } catch {
+        setEncryption(null);
+      }
+    };
+
     const init = async () => {
       await loadSettings();
       await loadAuditLog();
       await checkBiometricSupport();
+      await loadEncryptionInfo();
     };
     init();
 
@@ -362,6 +412,58 @@ export default function SecuritySettingsPanel({
 
         <CardContent className={cn('pt-6', isMobile ? 'px-4 pb-4' : '')}>
           <TabsContent value="settings" className="space-y-6 mt-0">
+            {/* Encryption format (read-only) */}
+            {encryption && (
+              <div className="space-y-4">
+                <div className="flex items-center">
+                  <KeyRound className="h-5 w-5 text-primary mr-2" />
+                  <h3 className="text-lg font-medium">Encryption</h3>
+                </div>
+
+                <Separator />
+
+                {encryption.encrypted ? (
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Label>This wallet is encrypted with</Label>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'font-mono',
+                            ENCRYPTION_FORMAT_META[encryption.format].current
+                              ? 'border-primary/40 text-primary'
+                              : 'border-caution/40 text-caution',
+                          )}
+                        >
+                          {ENCRYPTION_FORMAT_META[encryption.format].label}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {ENCRYPTION_FORMAT_META[encryption.format].note}
+                      </p>
+                    </div>
+                    {ENCRYPTION_FORMAT_META[encryption.format].current ? (
+                      <CheckCircle className="h-5 w-5 shrink-0 text-primary" aria-label="Up to date" />
+                    ) : (
+                      <AlertTriangle
+                        className="h-5 w-5 shrink-0 text-caution"
+                        aria-label="Upgrades on next unlock"
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <Alert>
+                    <AlertTriangle className="h-4 w-4 text-caution" />
+                    <AlertDescription>
+                      This wallet is not password-encrypted — its key is stored in the clear on this
+                      device. Add a password from Wallet Settings to encrypt it with Argon2id.
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+            )}
+
             {/* Auto-lock Settings Section */}
             <div className="space-y-4">
               <div className="flex items-center">

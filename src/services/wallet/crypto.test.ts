@@ -10,6 +10,7 @@ import {
   avianNetwork,
   decryptData,
   deriveAddress,
+  inspectEncryptionFormat,
   isValidWIF,
   legacyDecrypt,
   purposeForAddressType,
@@ -204,6 +205,38 @@ describe('secureEncrypt / decryptData', () => {
   it('handles an empty string as a distinct value from a failure', async () => {
     const encrypted = await secureEncrypt('', password);
     expect((await decryptData(encrypted, password)).decrypted).toBe('');
+  });
+});
+
+describe('inspectEncryptionFormat', () => {
+  // The read-only indicator classifies a stored blob by shape alone — no password, no decryption —
+  // and must agree with the format decryptData reports for the same value.
+  it('reports argon2id for a current v2 blob', async () => {
+    const encrypted = await secureEncrypt('secret', 'a-sufficiently-long-password');
+    expect(inspectEncryptionFormat(encrypted)).toBe('argon2id');
+  });
+
+  it('reports argon2id for a fixed argon2id vector without decrypting it', () => {
+    const argon2Blob =
+      'v2.eyJrZGYiOiJhcmdvbjJpZCIsIm0iOjgxOTIsInQiOjIsInAiOjEsImRrTGVuIjozMiwidiI6MTl9.noirpGLBQRyVWFgQeGt4iHtJ1JCPc1Jc7R4EcqyY3dnTz1d5EuVOYJ32TW9lUCM7Z0OuVumS2W16FJ8GTqOhoi08PwTN1vqauL5AZRv6MMGwQSujZK14zm7Zc5DgxllrvPKJDMtuth1sBFuMvwyL7JTJRwfAUw==';
+    expect(inspectEncryptionFormat(argon2Blob)).toBe('argon2id');
+  });
+
+  it('reports scrypt for a v2 header written before the Argon2id switch', () => {
+    const scryptV2Blob =
+      'v2.eyJrZGYiOiJzY3J5cHQiLCJOIjoxNjM4NCwiciI6OCwicCI6MSwiZGtMZW4iOjMyfQ==.RdYnkfB8LnYg74SIohSK3Dc/PZM8JcDwD9taYVX9ALekeIkdW+2iJidL8VgsbWL3cqrMI+yrpy1yqAfhRqAEPLzZQAAqLPDWlcHMqDFKenRMoQLDZNH016KuRlNKJomXNxlq17DMR7GrBtvJL4jc4KymqkdF0qo=';
+    expect(inspectEncryptionFormat(scryptV2Blob)).toBe('scrypt');
+  });
+
+  it('reports scrypt for a bare v1 hex blob', () => {
+    const v1Blob =
+      '7519b19070904c1411d9b13e1cf346081b8c9214501fd8a4278eae2685834ad09ec3731e2dd16448524d5a365319fa341037670e21c00595269dd356ac36af991465e08826a87069335f48e227f00ec3888fa2551702e9840e991a449c5ded107b6f12ad5b56086a6f98468c844084f4d8038b57f38ad5';
+    expect(inspectEncryptionFormat(v1Blob)).toBe('scrypt');
+  });
+
+  it('reports legacy for a CryptoJS payload', () => {
+    const legacyBlob = CryptoJS.AES.encrypt('legacy mnemonic', 'legacy-password').toString();
+    expect(inspectEncryptionFormat(legacyBlob)).toBe('legacy');
   });
 });
 
