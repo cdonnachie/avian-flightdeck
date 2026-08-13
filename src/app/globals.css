@@ -321,3 +321,84 @@
     appearance: textfield;
   }
 }
+
+/* Attitude indicator — the shared PFD instrument (see components/AttitudeIndicator.tsx).
+   A committed-dark artificial horizon: sky/ground split with a mint line, a pitch ladder, the
+   aircraft reference symbol, and an optional roll scale, with a one-time skew->level animation. */
+.att {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.att__horizon {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 58%;
+}
+.att--animate .att__horizon {
+  animation: att-level 1.8s cubic-bezier(0.16, 0.84, 0.3, 1) both;
+  will-change: transform;
+}
+.att__sky {
+  position: absolute;
+  inset: 0 0 42% 0;
+  background: linear-gradient(180deg, #16525c, #123e46);
+}
+.att__ground {
+  position: absolute;
+  inset: 58% 0 0 0;
+  background: linear-gradient(180deg, #1a1f52, #12163a);
+}
+.att__line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 58%;
+  height: 2px;
+  background: #34f5c6;
+  opacity: 0.6;
+  box-shadow: 0 0 14px rgba(52, 245, 198, 0.6);
+}
+.att__ladder {
+  position: absolute;
+  top: 58%;
+  left: 50%;
+  pointer-events: none;
+}
+.att__ladder span {
+  position: absolute;
+  left: 0;
+  transform: translateX(-50%);
+  height: 2px;
+  border-radius: 2px;
+  background: #34f5c6;
+  opacity: 0.26;
+}
+.att__aircraft {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+.att__roll {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+}
+@keyframes att-level {
+  from {
+    transform: scale(1.16) translateY(-3.4%) rotate(-5deg);
+  }
+  to {
+    transform: scale(1) translateY(0) rotate(0deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .att--animate .att__horizon {
+    animation: none !important;
+  }
+}

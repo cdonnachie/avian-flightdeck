@@ -7,6 +7,7 @@ import { StorageService } from '@/services/core/StorageService';
 import { toast } from 'sonner';
 import ThemeSwitcher from '@/components/ThemeSwitcher';
 import BiometricSetupButton from '@/components/BiometricSetupButton';
+import { AttitudeIndicator } from '@/components/AttitudeIndicator';
 
 interface SecurityLockScreenProps {
   // `switchedWallet` tells the provider the active wallet changed (a multi-wallet pick), so it can
@@ -571,12 +572,8 @@ export default function SecurityLockScreen({ onUnlock, lockReason }: SecurityLoc
       <div className="flex min-h-screen items-center justify-center px-4 py-10">
         <div className="w-full max-w-sm">
           <div className="relative overflow-hidden rounded-2xl border border-[#24404A] bg-[linear-gradient(180deg,#163139,#122730)] shadow-[0_40px_80px_-40px_rgba(0,0,0,0.9)]">
-            {/* artificial-horizon backdrop */}
-            <div aria-hidden className="pointer-events-none absolute inset-0 opacity-45">
-              <div className="absolute inset-x-0 top-0 bottom-[44%] bg-[linear-gradient(180deg,#16525C,#123E46)]" />
-              <div className="absolute inset-x-0 top-[56%] bottom-0 bg-[linear-gradient(180deg,#1A1F52,#12163A)]" />
-              <div className="absolute inset-x-0 top-[56%] h-0.5 bg-[#34F5C6] opacity-60 shadow-[0_0_12px_rgba(52,245,198,0.5)]" />
-            </div>
+            {/* artificial-horizon backdrop — the full instrument, dimmed so the form reads over it */}
+            <AttitudeIndicator className="opacity-40" />
 
             <div className="absolute right-3 top-3 z-10">
               <ThemeSwitcher />
