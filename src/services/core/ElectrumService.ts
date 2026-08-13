@@ -141,6 +141,12 @@ export class ElectrumService {
             `WebSocket closed: code=${event.code}, reason=${event.reason || 'unknown'}`,
           );
 
+          // Fail every in-flight request now. The socket is gone, so no response will ever arrive;
+          // without this each pending request would hang until its own 30s timeout, stalling a sync
+          // for half a minute every time a rate-limiting server drops the connection. Rejecting now
+          // lets callers fail fast and retry once we reconnect.
+          this.failPendingRequests(`Connection closed (code ${event.code})`);
+
           // If the socket closed before it ever opened, nothing else will settle the connect()
           // promise: onopen never fires, and this handler clears isConnecting, which defuses
           // the connection-timeout guard below. Without this reject, callers await forever and
@@ -638,6 +644,33 @@ export class ElectrumService {
     });
   }
 
+  // Reject and clear every in-flight request. Called when the socket closes so callers fail fast
+  // instead of waiting out each request's 30s timeout on a connection that is already gone.
+  private failPendingRequests(reason: string): void {
+    if (this.pendingRequests.size === 0) return;
+    const error = new Error(reason);
+    for (const { reject } of this.pendingRequests.values()) {
+      reject(error);
+    }
+    this.pendingRequests.clear();
+  }
+
+  /**
+   * Resolve once the socket is connected again, or reject after `timeoutMs`. The close handler
+   * already schedules reconnection with backoff; this lets a caller (e.g. a history sync that lost
+   * a request to a dropped connection) wait for that reconnect and retry on the fresh socket.
+   */
+  async waitForConnection(timeoutMs = 15000): Promise<void> {
+    if (this.isConnected) return;
+    const start = Date.now();
+    while (!this.isConnected) {
+      if (Date.now() - start > timeoutMs) {
+        throw new Error('Timed out waiting for Electrum reconnection');
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  }
+
   async subscribeToAddress(address: string, callback: (data: any) => void): Promise<void> {
     try {
       electrumLogger.debug(`Subscribing to address: ${address.substring(0, 5)}...`);
@@ -802,7 +835,7 @@ export class ElectrumService {
 
     this.isConnected = false;
     this.isConnecting = false;
-    this.pendingRequests.clear();
+    this.failPendingRequests('Disconnected from Electrum server');
     this.subscriptions.clear();
     this.reconnectAttempts = 0;
 

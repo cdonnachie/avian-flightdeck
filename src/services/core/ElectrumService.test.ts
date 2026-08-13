@@ -126,4 +126,9 @@ describe('connection state', () => {
     const fresh = new ElectrumService();
     await expect(fresh.getTransactionHistory(P2PKH)).resolves.toEqual([]);
   });
+
+  it('waitForConnection gives up after its timeout when the socket never comes back', async () => {
+    const fresh = new ElectrumService();
+    await expect(fresh.waitForConnection(200)).rejects.toThrow(/Timed out/);
+  });
 });
