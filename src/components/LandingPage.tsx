@@ -96,6 +96,13 @@ export default function LandingPage() {
                 <div className="fdl-horizon__sky" />
                 <div className="fdl-horizon__ground" />
                 <div className="fdl-horizon__line" />
+                {/* pitch-ladder reference marks — drift with the horizon */}
+                <div className="fdl-ladder" aria-hidden>
+                  <span style={{ top: '40%', width: 38 }} />
+                  <span style={{ top: '46%', width: 54 }} />
+                  <span style={{ top: '70%', width: 54 }} />
+                  <span style={{ top: '76%', width: 38 }} />
+                </div>
               </div>
               <svg className="fdl-aircraft" width="150" height="30" viewBox="0 0 150 30" aria-hidden>
                 <path d="M18 15 L58 15 M92 15 L132 15" stroke="#34F5C6" strokeWidth="3.5" strokeLinecap="round" />
@@ -246,11 +253,16 @@ const CSS = `
 .fdl-cta{display:flex;flex-wrap:wrap;gap:12px;}
 .fdl-pfd{border-radius:20px;border:1px solid var(--line);background:linear-gradient(180deg,var(--panel-3),var(--panel-2));padding:16px;box-shadow:0 40px 80px -50px rgba(0,0,0,0.9);}
 .fdl-pfd__screen{position:relative;aspect-ratio:4/3.1;border-radius:14px;overflow:hidden;border:1px solid rgba(230,240,242,0.08);}
-.fdl-horizon{position:absolute;inset:0;}
+.fdl-horizon{position:absolute;inset:0;transform-origin:50% 58%;animation:fdl-attitude 18s ease-in-out infinite;will-change:transform;}
 .fdl-horizon__sky{position:absolute;inset:0 0 42% 0;background:linear-gradient(180deg,var(--sky),var(--sky-2));}
 .fdl-horizon__ground{position:absolute;inset:58% 0 0 0;background:linear-gradient(180deg,var(--ground),var(--ground-2));}
 .fdl-horizon__line{position:absolute;left:0;right:0;top:58%;height:2px;background:var(--mint);opacity:0.6;box-shadow:0 0 14px rgba(52,245,198,0.6);}
-.fdl-aircraft{position:absolute;left:50%;top:58%;transform:translate(-50%,-50%);}
+.fdl-ladder{position:absolute;inset:0;pointer-events:none;}
+.fdl-ladder span{position:absolute;left:50%;transform:translateX(-50%);height:2px;border-radius:2px;background:var(--mint);opacity:0.26;}
+/* the horizon (sky/ground/line/ladder) gently pitches and rolls; the aircraft symbol stays fixed,
+   reading against it like a real attitude indicator. Oversized so the drift never reveals an edge. */
+@keyframes fdl-attitude{0%{transform:scale(1.14) translateY(-1.1%) rotate(-1deg);}25%{transform:scale(1.14) translateY(0.4%) rotate(0.5deg);}50%{transform:scale(1.14) translateY(1.2%) rotate(-0.3deg);}75%{transform:scale(1.14) translateY(-0.2%) rotate(0.9deg);}100%{transform:scale(1.14) translateY(-1.1%) rotate(-1deg);}}
+.fdl-aircraft{position:absolute;left:50%;top:58%;transform:translate(-50%,-50%);z-index:2;}
 .fdl-ann{position:absolute;top:14px;display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:0.6rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink);padding:5px 9px;border-radius:6px;background:rgba(4,18,26,0.5);border:1px solid rgba(230,240,242,0.1);}
 .fdl-ann--l{left:14px;}
 .fdl-ann--r{right:14px;}
