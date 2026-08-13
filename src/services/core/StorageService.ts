@@ -1157,6 +1157,17 @@ export class StorageService {
     }
   }
 
+  // Which ElectrumX server the user last selected, by host. Persisted so the choice survives a
+  // page reload — the ElectrumService otherwise defaults back to the first server on every load.
+  static async getSelectedElectrumServer(): Promise<string | null> {
+    const host = (await this.getPreference('selectedElectrumServerHost')) as string | null;
+    return host || null;
+  }
+
+  static async setSelectedElectrumServer(host: string): Promise<void> {
+    await this.setPreference('selectedElectrumServerHost', host);
+  }
+
   // Script hash methods
   static async getScriptHash(): Promise<string> {
     return (await this.getPreference('scripthash')) || '';
