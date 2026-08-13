@@ -52,6 +52,7 @@ function createElectrum(transactions: Record<string, TxDetails>, history?: { tx_
     broadcastTransaction: vi.fn(),
     isConnectedToServer: vi.fn(() => true),
     connect: vi.fn(async () => {}),
+    waitForConnection: vi.fn(async () => {}),
   };
 }
 
@@ -587,6 +588,24 @@ describe('sync efficiency', () => {
     await new WalletService(electrum as never).processTransactionHistory(WALLET_A);
 
     expect(await historyFor(WALLET_A)).toHaveLength(COUNT);
+  });
+
+  it('retries a fetch dropped mid-sync and still records the transaction', async () => {
+    await ownWallets(WALLET_A);
+    const electrum = createElectrum({
+      [TX_HASH]: { vin: [from(EXTERNAL)], vout: [out(WALLET_A, 3)] },
+    });
+    // Simulate a rate-limiting server dropping the first request; the retry succeeds.
+    electrum.getTransaction.mockRejectedValueOnce(new Error('Connection closed (code 1006)'));
+
+    await new WalletService(electrum as never).processTransactionHistory(WALLET_A);
+
+    const history = await historyFor(WALLET_A);
+    expect(history).toHaveLength(1);
+    expect(history[0].amount).toBe(3);
+    expect(electrum.waitForConnection).toHaveBeenCalled();
+    // Fetched at least twice: the dropped attempt plus the successful retry.
+    expect(electrum.getTransaction.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
   it('fetches newest-first: unconfirmed, then highest block height', async () => {

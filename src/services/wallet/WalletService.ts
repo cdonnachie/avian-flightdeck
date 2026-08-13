@@ -26,9 +26,15 @@ import { secureEncrypt, secureDecrypt, decryptData, legacyDecrypt } from './encr
 import { runWithConcurrency } from './concurrency';
 
 // How many transaction.get requests to keep in flight while syncing history. Electrum matches
-// responses by id, so a small pool cuts the latency of a large sync ~N-fold without hammering the
-// server. Kept modest to stay friendly to public ElectrumX nodes.
-const HISTORY_SYNC_CONCURRENCY = 12;
+// responses by id, so a small pool cuts the latency of a large sync ~N-fold. Kept deliberately low:
+// public ElectrumX nodes rate-limit per connection and will drop the socket under a burst, so a
+// gentle pool (plus retry-on-drop below) syncs reliably rather than fast-but-flaky.
+const HISTORY_SYNC_CONCURRENCY = 4;
+
+// Per-transaction fetch retries when a request fails mid-sync (a rate-limiting server dropping the
+// connection is the common cause). Between attempts we wait for the socket to reconnect and back
+// off a little, so a dropped request is recovered instead of losing that transaction.
+const TX_FETCH_ATTEMPTS = 3;
 
 // Re-exported so existing importers of these helpers from WalletService keep working. New code
 // that only needs encryption should import from './encryption' directly, to avoid pulling the
@@ -2297,18 +2303,43 @@ export class WalletService {
     // can retry rather than inheriting a cached rejection.
     private getTransactionCached(txid: string, cache?: Map<string, Promise<any>>): Promise<any> {
         if (!cache) {
-            return this.electrum.getTransaction(txid, true);
+            return this.fetchTransactionWithRetry(txid);
         }
         const inFlight = cache.get(txid);
         if (inFlight) {
             return inFlight;
         }
-        const request = this.electrum.getTransaction(txid, true).catch((error) => {
+        const request = this.fetchTransactionWithRetry(txid).catch((error) => {
             cache.delete(txid);
             throw error;
         });
         cache.set(txid, request);
         return request;
+    }
+
+    // Fetch a verbose transaction, retrying when the request fails mid-flight. The usual cause is a
+    // rate-limiting server dropping the connection, which now rejects in-flight requests immediately
+    // (see ElectrumService.failPendingRequests); between attempts we wait for the socket to
+    // reconnect and back off, so a dropped request is recovered instead of losing that transaction.
+    private async fetchTransactionWithRetry(txid: string): Promise<any> {
+        for (let attempt = 1; attempt <= TX_FETCH_ATTEMPTS; attempt++) {
+            try {
+                return await this.electrum.getTransaction(txid, true);
+            } catch (error) {
+                if (attempt === TX_FETCH_ATTEMPTS) {
+                    throw error;
+                }
+                // Wait for the connection to come back (the close handler reconnects with backoff),
+                // then pause briefly before retrying so we don't immediately re-trip the rate limit.
+                try {
+                    await this.electrum.waitForConnection();
+                } catch {
+                    // If it never reconnects, fall through and let the next attempt (or the final
+                    // throw) surface the failure.
+                }
+                await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+            }
+        }
     }
 
     // Order a raw get_history list newest-first, in place: mempool entries (height <= 0) first, then
