@@ -78,9 +78,11 @@ export function SecurityProvider({ children }: SecurityProviderProps) {
   // Get the current wallet address from WalletContext - this might be undefined on initial render
   // We need to use a try-catch because this hook might fail during SSR
   let activeWalletAddress: string | undefined;
+  let reloadActiveWallet: (() => Promise<void>) | undefined;
   try {
     const walletContext = useWallet();
     activeWalletAddress = walletContext?.address;
+    reloadActiveWallet = walletContext?.reloadActiveWallet;
   } catch (error) {
     // This is fine, we'll handle the undefined case
   }
@@ -381,14 +383,23 @@ export function SecurityProvider({ children }: SecurityProviderProps) {
   // Called by the lock screen when the user unlocks it. A password unlock hands the password back
   // so the key is available for the rest of the session; a biometric unlock does not (the next
   // sensitive action re-runs the quick biometric prompt).
-  const handleUnlock = (password?: string) => {
+  const handleUnlock = async (password?: string, switchedWallet?: boolean) => {
     // A successful unlock clears any remembered manual lock, so a later refresh does not re-lock.
     setManualLockFlag(false);
-    setScreenLocked(false);
     if (password) {
       setStoredWalletPassword(password);
       setWasBiometricAuth(false);
     }
+    // If the user signed into a different wallet from the lock screen, reload the wallet context
+    // onto it before revealing the app, so the dashboard shows the wallet they just unlocked.
+    if (switchedWallet && reloadActiveWallet) {
+      try {
+        await reloadActiveWallet();
+      } catch {
+        // Non-fatal — the wallet context can also reload on next navigation.
+      }
+    }
+    setScreenLocked(false);
   };
 
   // Show nothing while initializing to prevent flicker

@@ -3,6 +3,7 @@ import {
   expect,
   acceptTerms,
   seedWallet,
+  seedExtraWallet,
   setScreenLock,
   WALLET_ADDRESS,
   WALLET_PASSWORD,
@@ -86,5 +87,29 @@ test.describe('optional lock screen', () => {
       page.getByText(WALLET_ADDRESS).filter({ visible: true }).first(),
     ).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText('Wallet locked')).toHaveCount(0);
+  });
+
+  test('multiple wallets: pick and unlock a non-active wallet with its own password', async ({ page }) => {
+    await page.routeWebSocket(/.*/, (ws) => ws.close());
+    await acceptTerms(page);
+    await seedWallet(page); // active, unlocks with WALLET_PASSWORD
+    await seedExtraWallet(page, 'Second Wallet', 'second-wallet-pass');
+    await setScreenLock(page, true); // wall on
+
+    // With more than one wallet the lock screen offers a picker.
+    const select = page.locator('#wallet-select');
+    await expect(select).toBeVisible({ timeout: 30_000 });
+
+    // Choose the second wallet and unlock with ITS password (the first wallet's password would not
+    // decrypt it) — proving you're never locked out of the others by forgetting one's password.
+    const value = await select
+      .locator('option', { hasText: 'Second Wallet' })
+      .getAttribute('value');
+    await select.selectOption(value!);
+
+    await page.getByPlaceholder('Password').fill('second-wallet-pass');
+    await page.getByRole('button', { name: 'Unlock', exact: true }).click();
+
+    await expect(page.getByText('Wallet locked')).toBeHidden({ timeout: 60_000 });
   });
 });

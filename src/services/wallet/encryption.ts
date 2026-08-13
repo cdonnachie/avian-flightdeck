@@ -67,12 +67,21 @@ type ScryptParams = { N: number; r: number; p: number; dkLen: number };
 
 /**
  * Scrypt work factors. V1 is the original interactive setting (~16 MB) — kept only so ciphertext
- * written before the hardening still decrypts. V2 is the hardened profile (~64 MB) used for every
+ * written before the hardening still decrypts. V2 is the hardened profile (~32 MB) used for every
  * new value; it is recorded in each v2 blob's header so decryption never has to guess, and a future
  * bump is just another profile without a format change. See docs/proposals/scrypt-kdf-hardening.md.
  */
 const SCRYPT_V1: ScryptParams = { N: 16384, r: 8, p: 1, dkLen: 32 };
-const SCRYPT_V2: ScryptParams = { N: 65536, r: 8, p: 1, dkLen: 32 };
+// N is overridable at build time via NEXT_PUBLIC_SCRYPT_N for the e2e build ONLY — those tests do
+// not exercise KDF strength, and a cheap N keeps browser scrypt fast and deterministic. Production
+// builds set nothing and get the hardened default. The versioned format records the N actually
+// used, so a low-N e2e blob and a production blob remain mutually decryptable.
+const SCRYPT_V2: ScryptParams = {
+  N: Number(process.env.NEXT_PUBLIC_SCRYPT_N) || 32768,
+  r: 8,
+  p: 1,
+  dkLen: 32,
+};
 
 /** Prefix marking the versioned, self-describing format: `v2.<base64 header>.<base64 body>`. */
 const V2_PREFIX = 'v2.';

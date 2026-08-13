@@ -13,7 +13,8 @@ const BASE_URL = `http://localhost:${PORT}`;
 export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.spec.ts',
-  // Wallet operations run scrypt in the browser, which is deliberately slow.
+  // Wallet operations run scrypt in the browser, which is deliberately slow. The e2e build uses a
+  // cheap KDF N (NEXT_PUBLIC_SCRYPT_N via build:e2e / test:e2e) so these stay well within timeout.
   timeout: 90_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,
