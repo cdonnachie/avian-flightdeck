@@ -1,13 +1,16 @@
 /**
  * Password-based encryption primitives, deliberately free of any elliptic-curve dependency.
  *
- * These helpers use only scrypt + AES-GCM (current format) and CryptoJS (legacy format). Keeping
- * them in their own module — separate from WalletService, which binds ecpair/tiny-secp256k1 at
- * module load — means StorageService, SecurityService and BackupService can encrypt and decrypt
- * without dragging the ~1.7 MB secp256k1 build into the initial bundle of every route.
+ * New values are sealed with Argon2id (via the lazy-loaded WASM in `hash-wasm`) + AES-256-GCM.
+ * Older values still open: scrypt + AES-GCM (the v2 format before the Argon2id switch, and the
+ * pre-versioned v1 hex form) and the unauthenticated CryptoJS legacy format. Every v2 blob records
+ * its own KDF and parameters in a header, so decryption never has to guess. See
+ * docs/proposals/argon2id-kdf.md and docs/proposals/scrypt-kdf-hardening.md.
  *
- * Anything that needs actual key operations (signing, WIF validation, HD derivation) still lives
- * in WalletService.
+ * Keeping these in their own module — separate from WalletService, which binds ecpair/tiny-secp256k1
+ * at module load — means StorageService, SecurityService and BackupService can encrypt and decrypt
+ * without dragging the ~1.7 MB secp256k1 build into the initial bundle of every route. The Argon2id
+ * WASM is itself lazy-loaded (only needed on unlock / sign / create / backup).
  */
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
@@ -63,33 +66,55 @@ const IV_LENGTH = 16;
 const SALT_LENGTH = 64;
 const TAG_LENGTH = 16;
 
-type ScryptParams = { N: number; r: number; p: number; dkLen: number };
+type ScryptParams = { kdf: 'scrypt'; N: number; r: number; p: number; dkLen: number };
+type Argon2Params = { kdf: 'argon2id'; m: number; t: number; p: number; dkLen: number; v: number };
+type KdfParams = ScryptParams | Argon2Params;
 
 /**
- * Scrypt work factors. V1 is the original interactive setting (~16 MB) — kept only so ciphertext
- * written before the hardening still decrypts. V2 is the hardened profile (~32 MB) used for every
- * new value; it is recorded in each v2 blob's header so decryption never has to guess, and a future
- * bump is just another profile without a format change. See docs/proposals/scrypt-kdf-hardening.md.
+ * Pre-versioned v1 hex blobs carry no header, so their scrypt factors (the original interactive
+ * ~16 MB setting) are pinned here. scrypt-v2 blobs record their own N in the header, so no constant
+ * is needed for them.
  */
-const SCRYPT_V1: ScryptParams = { N: 16384, r: 8, p: 1, dkLen: 32 };
-// N is overridable at build time via NEXT_PUBLIC_SCRYPT_N for the e2e build ONLY — those tests do
-// not exercise KDF strength, and a cheap N keeps browser scrypt fast and deterministic. Production
-// builds set nothing and get the hardened default. The versioned format records the N actually
-// used, so a low-N e2e blob and a production blob remain mutually decryptable.
-const SCRYPT_V2: ScryptParams = {
-  N: Number(process.env.NEXT_PUBLIC_SCRYPT_N) || 32768,
-  r: 8,
+const SCRYPT_V1: ScryptParams = { kdf: 'scrypt', N: 16384, r: 8, p: 1, dkLen: 32 };
+
+/**
+ * Argon2id profile used for every new value. Memory-hard and side-channel resistant, and near-native
+ * speed via WASM (unlike pure-JS scrypt). Each field is written into the v2 header, so re-tuning is a
+ * one-line change with no format churn. `m` is KiB, `t` iterations, `p` parallelism, `v` the Argon2
+ * version (0x13). Overridable at build time via NEXT_PUBLIC_ARGON2_* for the e2e build ONLY — those
+ * tests do not exercise KDF strength, and cheap params keep browser derivation fast and deterministic.
+ * The versioned header keeps low-cost e2e blobs and production blobs mutually decryptable.
+ */
+const ARGON2_V2: Argon2Params = {
+  kdf: 'argon2id',
+  m: Number(process.env.NEXT_PUBLIC_ARGON2_M) || 65536,
+  t: Number(process.env.NEXT_PUBLIC_ARGON2_T) || 3,
   p: 1,
   dkLen: 32,
+  v: 0x13,
 };
 
 /** Prefix marking the versioned, self-describing format: `v2.<base64 header>.<base64 body>`. */
 const V2_PREFIX = 'v2.';
 
-/** Which on-disk format a value was decrypted from. Drives the re-encrypt-on-unlock upgrade. */
-export type EncryptionFormat = 'v1' | 'v2' | 'legacy';
+/** Which KDF a value was decrypted from. Drives the re-encrypt-on-unlock upgrade to Argon2id. */
+export type EncryptionFormat = 'argon2id' | 'scrypt' | 'legacy';
 
-function deriveKey(password: string, salt: Buffer, params: ScryptParams): Promise<Buffer> {
+async function deriveKey(password: string, salt: Buffer, params: KdfParams): Promise<Buffer> {
+  if (params.kdf === 'argon2id') {
+    // Lazy-load so the WASM never enters the initial route bundle.
+    const { argon2id } = await import('hash-wasm');
+    const hash = await argon2id({
+      password: Buffer.from(password, 'utf-8'),
+      salt,
+      parallelism: params.p,
+      iterations: params.t,
+      memorySize: params.m,
+      hashLength: params.dkLen,
+      outputType: 'binary',
+    });
+    return Buffer.from(hash);
+  }
   return scryptPromise(Buffer.from(password, 'utf-8'), salt, params.N, params.r, params.p, params.dkLen);
 }
 
@@ -100,7 +125,7 @@ function gcmDecrypt(key: Buffer, iv: Buffer, tag: Buffer, ciphertext: Buffer): s
 }
 
 interface ParsedBlob {
-  params: ScryptParams;
+  params: KdfParams;
   salt: Buffer;
   iv: Buffer;
   tag: Buffer;
@@ -108,7 +133,7 @@ interface ParsedBlob {
 }
 
 // Slice a raw `salt ‖ iv ‖ tag ‖ ciphertext` buffer into its parts.
-function sliceBlob(bin: Buffer, params: ScryptParams): ParsedBlob {
+function sliceBlob(bin: Buffer, params: KdfParams): ParsedBlob {
   return {
     params,
     salt: bin.subarray(0, SALT_LENGTH),
@@ -118,6 +143,35 @@ function sliceBlob(bin: Buffer, params: ScryptParams): ParsedBlob {
   };
 }
 
+// Read the KDF params from a v2 header (kdf defaults to scrypt for headers written before Argon2id).
+function paramsFromHeader(header: any): KdfParams {
+  if (header.kdf === 'argon2id') {
+    const params: Argon2Params = {
+      kdf: 'argon2id',
+      m: header.m,
+      t: header.t,
+      p: header.p,
+      dkLen: header.dkLen ?? 32,
+      v: header.v ?? 0x13,
+    };
+    if (![params.m, params.t, params.p, params.dkLen].every(Number.isInteger)) {
+      throw new Error('Invalid v2 Argon2id parameters');
+    }
+    return params;
+  }
+  const params: ScryptParams = {
+    kdf: 'scrypt',
+    N: header.N,
+    r: header.r,
+    p: header.p,
+    dkLen: header.dkLen ?? 32,
+  };
+  if (![params.N, params.r, params.p, params.dkLen].every(Number.isInteger)) {
+    throw new Error('Invalid v2 scrypt parameters');
+  }
+  return params;
+}
+
 // Parse a `v2.<base64 header>.<base64 body>` blob, reading the KDF params from its header.
 function parseV2(encrypted: string): ParsedBlob {
   const parts = encrypted.split('.');
@@ -125,46 +179,29 @@ function parseV2(encrypted: string): ParsedBlob {
     throw new Error('Malformed v2 ciphertext');
   }
   const header = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
-  const params: ScryptParams = {
-    N: header.N,
-    r: header.r,
-    p: header.p,
-    dkLen: header.dkLen ?? 32,
-  };
-  if (
-    !Number.isInteger(params.N) ||
-    !Number.isInteger(params.r) ||
-    !Number.isInteger(params.p) ||
-    !Number.isInteger(params.dkLen)
-  ) {
-    throw new Error('Invalid v2 KDF parameters');
-  }
-  return sliceBlob(Buffer.from(parts[2], 'base64'), params);
+  return sliceBlob(Buffer.from(parts[2], 'base64'), paramsFromHeader(header));
 }
 
 export async function secureEncrypt(data: string, password: string): Promise<string> {
   const salt = randomBytes(SALT_LENGTH);
-  const key = await deriveKey(password, salt, SCRYPT_V2);
+  const key = await deriveKey(password, salt, ARGON2_V2);
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, key, iv);
   const encrypted = Buffer.concat([cipher.update(data, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
-  const header = Buffer.from(
-    JSON.stringify({ kdf: 'scrypt', ...SCRYPT_V2 }),
-    'utf-8',
-  ).toString('base64');
+  const header = Buffer.from(JSON.stringify(ARGON2_V2), 'utf-8').toString('base64');
   const body = Buffer.concat([salt, iv, tag, encrypted]).toString('base64');
   return `${V2_PREFIX}${header}.${body}`;
 }
 
 export async function secureDecrypt(encryptedText: string, password: string): Promise<string> {
-  // v2: self-describing — read the params from the header.
+  // v2: self-describing — read the KDF and params from the header.
   if (encryptedText.startsWith(V2_PREFIX)) {
     const { params, salt, iv, tag, ciphertext } = parseV2(encryptedText);
     const key = await deriveKey(password, salt, params);
     return gcmDecrypt(key, iv, tag, ciphertext);
   }
-  // v1: hex `salt ‖ iv ‖ tag ‖ ciphertext` derived with the original interactive factors.
+  // v1: hex `salt ‖ iv ‖ tag ‖ ciphertext` derived with the original interactive scrypt factors.
   const { salt, iv, tag, ciphertext } = sliceBlob(Buffer.from(encryptedText, 'hex'), SCRYPT_V1);
   const key = await deriveKey(password, salt, SCRYPT_V1);
   return gcmDecrypt(key, iv, tag, ciphertext);
@@ -182,13 +219,24 @@ export function legacyDecrypt(encryptedData: string, password: string): string {
   return decryptedText;
 }
 
+// Report which KDF a v2 blob used (or 'scrypt' for a bare v1 hex blob), so callers can upgrade.
+function formatOfSecure(encryptedData: string): EncryptionFormat {
+  if (!encryptedData.startsWith(V2_PREFIX)) return 'scrypt';
+  try {
+    const header = JSON.parse(Buffer.from(encryptedData.split('.')[1], 'base64').toString('utf-8'));
+    return header.kdf === 'argon2id' ? 'argon2id' : 'scrypt';
+  } catch {
+    return 'scrypt';
+  }
+}
+
 /**
- * Unified decryption that handles both the current (scrypt + AES-GCM) and legacy (CryptoJS)
- * formats.
+ * Unified decryption that handles the current (Argon2id + AES-GCM), older scrypt, and legacy
+ * (CryptoJS) formats.
  *
- * IMPORTANT — the two formats give very different guarantees:
+ * IMPORTANT — the formats give very different guarantees:
  *
- * - The current format is AES-GCM, which is authenticated. A wrong password always throws.
+ * - The Argon2id/scrypt formats are AES-GCM, which is authenticated. A wrong password always throws.
  * - The legacy CryptoJS format is unauthenticated AES-CBC. There is nothing in the ciphertext to
  *   verify a password against, so a wrong password yields garbage plaintext. Usually that garbage
  *   is invalid UTF-8 and this throws, but often enough to matter it decodes cleanly and is
@@ -198,18 +246,19 @@ export function legacyDecrypt(encryptedData: string, password: string): string {
  * against what they expected — isValidWIF for a key, bip39.validateMnemonic for a mnemonic —
  * before trusting it, and certainly before writing it anywhere.
  *
- * @returns The decrypted data and whether the legacy format was used.
+ * `format` lets callers re-encrypt anything that is not yet Argon2id after a successful unlock.
+ *
+ * @returns The decrypted data, whether the legacy format was used, and which KDF it came from.
  */
 export async function decryptData(
   encryptedData: string,
   password: string,
 ): Promise<{ decrypted: string; wasLegacy: boolean; format: EncryptionFormat }> {
   try {
-    // v2 is `v2.`-prefixed; the current format is hex; non-hex legacy data fails here and falls
-    // through. `format` lets callers upgrade v1/legacy blobs to v2 after a successful unlock.
+    // v2 is `v2.`-prefixed; the pre-versioned format is hex; non-hex legacy data fails here and
+    // falls through.
     const decrypted = await secureDecrypt(encryptedData, password);
-    const format: EncryptionFormat = encryptedData.startsWith(V2_PREFIX) ? 'v2' : 'v1';
-    return { decrypted, wasLegacy: false, format };
+    return { decrypted, wasLegacy: false, format: formatOfSecure(encryptedData) };
   } catch (secureError) {
     walletLogger.debug('Secure decryption failed, attempting legacy method', {
       error: secureError instanceof Error ? secureError.message : 'Unknown error',

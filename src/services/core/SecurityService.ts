@@ -790,10 +790,10 @@ export class SecurityService {
             throw new Error('Decrypted value is not a valid private key, password incorrect.');
           }
 
-          // Upgrade the stored ciphertext to the current (v2) KDF profile if it isn't already —
-          // this covers both the old interactive-scrypt (v1) format and the unauthenticated legacy
-          // format. The key was just validated as a real WIF, so re-encrypting it is safe.
-          if (format !== 'v2') {
+          // Upgrade the stored ciphertext to the current KDF (Argon2id) if it isn't already — this
+          // covers both scrypt (v1 and v2) and the unauthenticated legacy format. The key was just
+          // validated as a real WIF, so re-encrypting it is safe.
+          if (format !== 'argon2id') {
             securityLogger.info(`Upgrading encryption for wallet: ${activeWallet.name}`);
             const newEncryptedKey = await secureEncrypt(decrypted, password);
 
