@@ -7,7 +7,7 @@
 - ✅ Tailwind CSS styling
 - ✅ PWA capabilities (next-pwa)
 - ✅ Wallet services and components
-- ✅ Cryptocurrency libraries (bitcoinjs-lib, crypto-js)
+- ✅ Cryptocurrency libraries (bitcoinjs-lib; Argon2id via hash-wasm; crypto-js for reading legacy blobs)
 - ✅ QR code generation
 - ✅ React Context for state management
 

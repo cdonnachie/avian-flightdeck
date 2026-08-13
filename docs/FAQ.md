@@ -8,7 +8,7 @@ Avian FlightDeck Wallet is a progressive web application (PWA) that provides a s
 
 ### Is my wallet data secure?
 
-Yes! Your private keys and sensitive data are encrypted using scrypt-based encryption and stored locally on your device. The wallet uses industry-standard cryptographic practices and never transmits your private keys to any server.
+Yes! Your private keys and sensitive data are encrypted with AES-256-GCM, using a key derived from your password by Argon2id (a memory-hard key-derivation function), and stored locally on your device. The wallet uses industry-standard cryptographic practices and never transmits your private keys to any server.
 
 ### Can I use this wallet on mobile devices?
 
@@ -226,9 +226,10 @@ Your transaction history is automatically synced and includes:
 
 ### What security features are available?
 
-- **Scrypt encryption**: Industry-standard key derivation
+- **Argon2id + AES-256-GCM encryption**: Memory-hard key derivation with authenticated encryption
 - **Biometric authentication**: Use fingerprint/face unlock where supported
-- **Auto-lock**: Wallet locks after inactivity
+- **Auto-lock and a durable manual lock**: Wallet locks after inactivity, and the manual lock survives a refresh
+- **Multi-wallet lock screen**: Pick which wallet to unlock, so forgetting one password never locks you out of the others
 - **Security alerts**: Notifications for important security events
 
 ### Should I enable notifications?

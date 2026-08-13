@@ -17,7 +17,7 @@ A Progressive Web App (PWA) implementation of the Avian cryptocurrency wallet, b
 - 💰 **UTXO Management**: Comprehensive UTXO overview and selection tools
 - 💾 **Comprehensive Backup**: Full wallet backup with security settings and selective backup types (Full/Wallets Only)
 - 🌐 **Progressive Web App**: Installable, offline-capable application with responsive mobile-first design
-- 🎨 **Modern UI**: Clean, responsive design with dark mode support and mobile-optimized interface
+- 🎨 **Flight-deck UI**: An "instrument panel" design language — night ground, mint→cyan gradients, mono readouts and an artificial-horizon motif — carried through the landing page, guided onboarding wizard, and dashboard. Responsive, mobile-first, with dark mode support
 - 🔧 **Wallet Settings**: Comprehensive wallet management tools with responsive modal/drawer interfaces
 - 🔔 **Notifications**: Privacy-focused push notifications for transactions and security events
 - 🐛 **Debug Tools**: In-app log viewer with debug status indicators and security audit integration
@@ -32,7 +32,7 @@ A Progressive Web App (PWA) implementation of the Avian cryptocurrency wallet, b
 - **Cryptocurrency**: bitcoinjs-lib for wallet operations
 - **QR Codes**: qrcode library for address display
 - **Icons**: Lucide React icons
-- **Encryption**: CryptoJS for wallet security
+- **Encryption**: Argon2id key derivation (hash-wasm) with AES-256-GCM; CryptoJS retained only to read legacy blobs
 - **Authentication**: WebAuthn/FIDO2 for biometric authentication
 - **Storage**: IndexedDB for persistent data storage
 - **Security**: Client-side encryption for sensitive data protection
@@ -41,7 +41,7 @@ A Progressive Web App (PWA) implementation of the Avian cryptocurrency wallet, b
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 22+
 - pnpm
 
 ### Installation
@@ -160,10 +160,10 @@ src/
 
 ### Security
 
-- Client-side private key storage
-- Optional AES encryption with user passwords
-- Biometric authentication (Face ID, Touch ID, Windows Hello)
-- Per-wallet biometric security configuration
+- Client-side private key storage — keys are generated, encrypted, and used entirely on-device
+- Password-based encryption: **AES-256-GCM** with a key derived by **Argon2id** (memory-hard KDF, tuned so unlocking takes a few hundred ms). Older scrypt and CryptoJS blobs are still read and are transparently re-encrypted to the current format on the next successful unlock
+- Optional lock screen with a durable manual lock (survives a page refresh) and a multi-wallet unlock picker, so forgetting one wallet's password never locks you out of the others
+- Biometric authentication (Face ID, Touch ID, Windows Hello), scoped per wallet
 - Security audit logging for sensitive operations
 - Secure key generation using bitcoinjs-lib
 - No private keys transmitted over network
@@ -247,10 +247,9 @@ PWA configuration is handled in:
 
 ### Testing
 
-- Test wallet operations with small amounts
-- Verify PWA installation on different devices
-- Test offline functionality
-- Validate transaction signing and broadcasting
+- **Unit / integration** (Vitest): `pnpm test` (or `pnpm test:watch`)
+- **End-to-end** (Playwright): `pnpm build:e2e` then `pnpm test:e2e`. The e2e scripts set cheap Argon2id parameters (`NEXT_PUBLIC_ARGON2_M` / `NEXT_PUBLIC_ARGON2_T`) so the browser KDF stays fast and deterministic — production builds set nothing and get the hardened defaults. See [docs/TESTING.md](docs/TESTING.md).
+- Manually: test wallet operations with small amounts, verify PWA installation and offline functionality, and validate transaction signing and broadcasting
 
 ### Security Notes
 

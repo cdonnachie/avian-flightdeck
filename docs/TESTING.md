@@ -5,7 +5,7 @@ Two suites, with different jobs:
 | Suite | Runner | Location | Covers |
 | ----- | ------ | -------- | ------ |
 | Unit / service | [Vitest](https://vitest.dev) | `src/**/*.test.ts` | Crypto, coin selection, storage, classification, backup, security |
-| End to end | [Playwright](https://playwright.dev) | `e2e/**/*.spec.ts` | Avian Connect in a real browser: popups, postMessage, redirects, approval dialogs |
+| End to end | [Playwright](https://playwright.dev) | `e2e/**/*.spec.ts` | The app in a real browser: landing, onboarding, the lock screen, balance, empty states, and Avian Connect (popups, postMessage, redirects, approval dialogs) |
 
 ```bash
 pnpm test           # Vitest, run once
@@ -13,10 +13,18 @@ pnpm test:watch     # Vitest, re-run on change
 pnpm test -- src/services/wallet    # a single directory
 pnpm test -- -t "descriptor"        # tests matching a name
 
-pnpm test:e2e           # Playwright, headless
+pnpm build:e2e          # static export with cheap KDF params (see below)
+pnpm test:e2e           # Playwright, headless — serves out/
 pnpm test:e2e:headed    # watch it drive the browser
 pnpm test:e2e:ui        # Playwright's interactive UI
 ```
+
+Both `build:e2e` and `test:e2e` set cheap Argon2id parameters (`NEXT_PUBLIC_ARGON2_M` /
+`NEXT_PUBLIC_ARGON2_T`). The KDF is memory-hard and deliberately slow at production settings —
+several seconds per unlock in a pure-WASM browser context — which blows the Playwright timeouts.
+The e2e parameters keep unlocks fast and deterministic; the versioned ciphertext records the
+parameters actually used, so a low-cost e2e blob and a production blob remain mutually decryptable.
+Production builds set nothing and get the hardened defaults.
 
 First-time setup for the E2E suite needs the browser binary:
 
@@ -66,8 +74,9 @@ Playwright drives the built app in Chromium. It exists for the things the Vitest
 cannot reach: a popup is a second real window, `postMessage` needs a real message channel, and a
 redirect round trip needs real navigation.
 
-`pnpm test:e2e` builds nothing — it starts `next start`, so **run `pnpm build` first** after
-changing app code, or set `E2E_USE_DEV=1` to run against `next dev` instead.
+`pnpm test:e2e` builds nothing — it serves the static export from `out/`, so **run `pnpm build:e2e`
+first** after changing app code (plain `pnpm build` bakes in the slow production KDF and the unlock
+steps will time out). Set `E2E_USE_DEV=1` to run against `next dev` instead.
 
 ### How a test gets a usable wallet
 
@@ -87,8 +96,8 @@ the same golden values the Vitest suite uses.
 ### Two traps worth knowing
 
 - **The lock screen's button changes label rather than disappearing.** It reads "Unlocking…" while
-  scrypt runs, so waiting for the button to go hidden lets a test navigate away mid-unlock. The
-  fixture waits for the *lock screen* to clear instead.
+  the Argon2id KDF runs, so waiting for the button to go hidden lets a test navigate away
+  mid-unlock. The fixture waits for the *lock screen* to clear instead.
 - **`window.open` reuses a window with the same name.** The wallet popup is named `avian-connect`,
   so if a previous popup is still open no new `popup` event fires and `waitForEvent('popup')` hangs
   until timeout. Close the popup before expecting a new one.
@@ -100,6 +109,11 @@ the same golden values the Vitest suite uses.
 | `e2e/avian-connect-popup.spec.ts` | connect, reject, signMessage with authentication, getAccounts, getNetwork, unsupported methods, and refusing a signature to an unconnected site |
 | `e2e/avian-connect-redirect.spec.ts` | the redirect round trip, fragment scrubbing, challenge survival across navigation, and the origin-mismatch / malformed-request guards |
 | `e2e/avian-connect-permissions.spec.ts` | remembering a site, Connected Sites, revoke, `disconnect()`, and the acceptance check that a signature verifies in Message Utilities → Verify |
+| `e2e/landing.spec.ts` | the new-visitor landing page at `/` when no wallet exists |
+| `e2e/onboarding.spec.ts` | the guided create-wallet wizard |
+| `e2e/optional-lock.spec.ts` | the optional lock screen, the durable manual lock, and the multi-wallet unlock picker |
+| `e2e/balance.spec.ts` | the dashboard balance readout when the server is unreachable — unavailable vs. last-known |
+| `e2e/empty-states.spec.ts` | empty / loading states before data arrives |
 
 The demo page carries `data-testid` hooks (`demo-address`, `demo-signature`, `demo-verification`,
 `demo-log`) so the specs do not depend on its layout.
@@ -187,7 +201,8 @@ Known gaps, in rough order of how much they would be worth adding:
 - **React components in isolation.** No `@testing-library/react` is installed. The Avian Connect
   dialogs are exercised through Playwright, but `SendForm`, `WalletCreationForm` and the contexts
   have no unit-level coverage.
-- **Onboarding, sending and backup as user journeys.** The E2E suite only covers Avian Connect;
+- **Sending and backup as user journeys.** Onboarding, the landing page, the lock screen, balance
+  and empty states have E2E coverage alongside Avian Connect, but sending and backup do not yet;
   the `walletPage` fixture is reusable for more journeys.
 - **Browsers other than Chromium.** The Playwright config declares one project; Firefox and
   WebKit would need `playwright install` for each.
