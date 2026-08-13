@@ -96,9 +96,9 @@ export function BalanceInstrument({
         <section
             className={`relative overflow-hidden rounded-2xl border border-[#24404A] bg-[linear-gradient(180deg,#163139,#122730)] shadow-[0_30px_60px_-40px_rgba(0,0,0,0.8)] ${className}`}
         >
-            <div className="relative flex min-h-[168px] flex-col p-6">
-                {/* top strip: label + annunciator + refresh */}
-                <div className="mb-6 flex items-center justify-between gap-3">
+            <div className="relative flex min-h-[176px] flex-col p-6 pb-0">
+                {/* sky: label + annunciator + refresh */}
+                <div className="mb-5 flex items-center justify-between gap-3">
                     <span className="fd-label text-[#9DB4BC]">Total balance · Mainnet</span>
                     <div className="flex items-center gap-2">
                         <span className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-[rgba(4,18,26,0.5)] px-2.5 py-1.5">
@@ -122,42 +122,47 @@ export function BalanceInstrument({
                     </div>
                 </div>
 
-                {/* readout */}
-                <div className="fd-readout fd-glow-teal flex flex-wrap items-baseline gap-x-2 text-3xl font-semibold leading-none text-[#34E2D5] md:text-4xl">
-                    {isLoading && !processingProgress.isProcessing ? (
-                        <span className="text-[#9DB4BC]">Loading…</span>
-                    ) : balanceStatus === 'unknown' ? (
-                        // No confirmed or cached figure exists; showing 0 here would read as
-                        // "your funds are gone" on a flaky connection.
-                        <span data-testid="balance-unavailable" className="flex items-baseline text-[#9DB4BC]">
-                            —
-                            <span className="ml-2 text-xs font-normal opacity-80">balance unavailable</span>
-                        </span>
-                    ) : (
-                        <>
-                            <span className="break-all">{`${formatBalance(displayBalance)} AVN`}</span>
-                            {balanceStatus === 'stale' && (
-                                <span
-                                    data-testid="balance-stale"
-                                    className="text-xs font-normal text-[#9DB4BC] opacity-80"
-                                    title="Shown from the last successful update; the server has not confirmed it yet"
-                                >
-                                    last known
-                                </span>
-                            )}
-                            {processingProgress.isProcessing && (
-                                <Loader className="h-5 w-5 animate-spin text-[#9DB4BC] opacity-70" />
-                            )}
-                        </>
-                    )}
-                </div>
-
-                {/* artificial-horizon ground: a mint line just below the readout, then a night wash
-                    filling the rest of the card. Flowing it under the readout (instead of at a fixed
-                    percentage of the card) keeps the line clear of the number at any font size. */}
-                <div aria-hidden className="pointer-events-none relative -mx-6 -mb-6 mt-5 flex-1">
-                    <div className="absolute inset-x-0 top-0 h-0.5 bg-[#34F5C6] opacity-50 shadow-[0_0_12px_rgba(52,245,198,0.4)]" />
-                    <div className="absolute inset-x-0 top-0 bottom-0 bg-[linear-gradient(180deg,rgba(26,31,82,0.45),rgba(18,22,58,0.55))]" />
+                {/* ground band: the horizon line, a night wash, and the readout sitting below the
+                    line — metadata reads in the "sky" above, the figure reads in the "ground" below,
+                    matching the landing-page PFD. The line spans the full card width and never
+                    crosses the number. */}
+                <div className="relative -mx-6 mt-auto flex flex-1 flex-col justify-center px-6 pb-6 pt-5">
+                    <div
+                        aria-hidden
+                        className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-[#34F5C6] opacity-50 shadow-[0_0_12px_rgba(52,245,198,0.4)]"
+                    />
+                    <div
+                        aria-hidden
+                        className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(26,31,82,0.45),rgba(18,22,58,0.55))]"
+                    />
+                    <div className="fd-readout fd-glow-teal relative flex flex-wrap items-baseline gap-x-2 text-3xl font-semibold leading-none text-[#34E2D5] md:text-4xl">
+                        {isLoading && !processingProgress.isProcessing ? (
+                            <span className="text-[#9DB4BC]">Loading…</span>
+                        ) : balanceStatus === 'unknown' ? (
+                            // No confirmed or cached figure exists; showing 0 here would read as
+                            // "your funds are gone" on a flaky connection.
+                            <span data-testid="balance-unavailable" className="flex items-baseline text-[#9DB4BC]">
+                                —
+                                <span className="ml-2 text-xs font-normal opacity-80">balance unavailable</span>
+                            </span>
+                        ) : (
+                            <>
+                                <span className="break-all">{`${formatBalance(displayBalance)} AVN`}</span>
+                                {balanceStatus === 'stale' && (
+                                    <span
+                                        data-testid="balance-stale"
+                                        className="text-xs font-normal text-[#9DB4BC] opacity-80"
+                                        title="Shown from the last successful update; the server has not confirmed it yet"
+                                    >
+                                        last known
+                                    </span>
+                                )}
+                                {processingProgress.isProcessing && (
+                                    <Loader className="h-5 w-5 animate-spin text-[#9DB4BC] opacity-70" />
+                                )}
+                            </>
+                        )}
+                    </div>
                 </div>
             </div>
 
