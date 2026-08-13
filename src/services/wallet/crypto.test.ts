@@ -104,17 +104,20 @@ describe('purposeForAddressType', () => {
 describe('secureEncrypt / decryptData', () => {
   const password = 'a-sufficiently-long-password';
 
-  it('round-trips a secret and writes the current v2 format', async () => {
+  it('round-trips a secret and writes the current Argon2id format', async () => {
     const encrypted = await secureEncrypt('super secret mnemonic words', password);
     const { decrypted, wasLegacy, format } = await decryptData(encrypted, password);
 
     expect(decrypted).toBe('super secret mnemonic words');
     expect(wasLegacy).toBe(false);
-    expect(format).toBe('v2');
+    expect(format).toBe('argon2id');
+    // The v2 header is self-describing and records the KDF used.
+    const header = JSON.parse(Buffer.from(encrypted.split('.')[1], 'base64').toString('utf-8'));
+    expect(header.kdf).toBe('argon2id');
   });
 
   it('still decrypts a pre-hardening v1 ciphertext, so existing wallets keep opening', async () => {
-    // A real blob produced by the original N=16384 (v1) format. Generated once with the old
+    // A real blob produced by the original N=16384 (v1) hex format. Generated once with the old
     // parameters; existing wallets are sealed exactly like this and must never be stranded.
     const v1Blob =
       '7519b19070904c1411d9b13e1cf346081b8c9214501fd8a4278eae2685834ad09ec3731e2dd16448524d5a365319fa341037670e21c00595269dd356ac36af991465e08826a87069335f48e227f00ec3888fa2551702e9840e991a449c5ded107b6f12ad5b56086a6f98468c844084f4d8038b57f38ad5';
@@ -122,7 +125,30 @@ describe('secureEncrypt / decryptData', () => {
 
     expect(decrypted).toBe('golden v1 secret phrase');
     expect(wasLegacy).toBe(false);
-    expect(format).toBe('v1');
+    expect(format).toBe('scrypt');
+  });
+
+  it('still decrypts a scrypt v2 blob (wallets deployed before the Argon2id switch)', async () => {
+    // A real versioned scrypt blob (kdf:'scrypt'); wallets sealed between the scrypt hardening and
+    // the move to Argon2id look exactly like this and must keep opening.
+    const scryptV2Blob =
+      'v2.eyJrZGYiOiJzY3J5cHQiLCJOIjoxNjM4NCwiciI6OCwicCI6MSwiZGtMZW4iOjMyfQ==.RdYnkfB8LnYg74SIohSK3Dc/PZM8JcDwD9taYVX9ALekeIkdW+2iJidL8VgsbWL3cqrMI+yrpy1yqAfhRqAEPLzZQAAqLPDWlcHMqDFKenRMoQLDZNH016KuRlNKJomXNxlq17DMR7GrBtvJL4jc4KymqkdF0qo=';
+    const { decrypted, wasLegacy, format } = await decryptData(scryptV2Blob, 'golden-scrypt2-pw');
+
+    expect(decrypted).toBe('golden scrypt v2 secret');
+    expect(wasLegacy).toBe(false);
+    expect(format).toBe('scrypt');
+  });
+
+  it('decrypts an Argon2id blob and reports it as argon2id', async () => {
+    // A fixed Argon2id vector (small params) — proves the argon2id read path and pins the format.
+    const argon2Blob =
+      'v2.eyJrZGYiOiJhcmdvbjJpZCIsIm0iOjgxOTIsInQiOjIsInAiOjEsImRrTGVuIjozMiwidiI6MTl9.noirpGLBQRyVWFgQeGt4iHtJ1JCPc1Jc7R4EcqyY3dnTz1d5EuVOYJ32TW9lUCM7Z0OuVumS2W16FJ8GTqOhoi08PwTN1vqauL5AZRv6MMGwQSujZK14zm7Zc5DgxllrvPKJDMtuth1sBFuMvwyL7JTJRwfAUw==';
+    const { decrypted, wasLegacy, format } = await decryptData(argon2Blob, 'golden-argon2-pw');
+
+    expect(decrypted).toBe('golden argon2id secret');
+    expect(wasLegacy).toBe(false);
+    expect(format).toBe('argon2id');
   });
 
   it('never emits the plaintext', async () => {

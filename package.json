@@ -14,8 +14,8 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "build:e2e": "cross-env NEXT_PUBLIC_SCRYPT_N=16384 next build",
-    "test:e2e": "cross-env NEXT_PUBLIC_SCRYPT_N=16384 playwright test",
+    "build:e2e": "cross-env NEXT_PUBLIC_ARGON2_M=8192 NEXT_PUBLIC_ARGON2_T=2 next build",
+    "test:e2e": "cross-env NEXT_PUBLIC_ARGON2_M=8192 NEXT_PUBLIC_ARGON2_T=2 playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "find-unused-code": "pnpm exec eslint src --no-error-on-unmatched-pattern --ext .ts,.tsx --rule \"no-unused-vars: error\" --quiet && pnpm exec knip"
@@ -55,6 +55,7 @@
     "ecpair": "^3.0.0",
     "embla-carousel-react": "^8.6.0",
     "eslint-config-next": "^15.3.5",
+    "hash-wasm": "^4.12.0",
     "jsqr": "^1.4.0",
     "lucide-react": "^0.525.0",
     "minidenticons": "^4.2.1",
