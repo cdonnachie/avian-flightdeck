@@ -2105,10 +2105,17 @@ export class StorageService {
       // Try to get password from wallet record
       if (wallet?.encryptedBiometricPassword) {
         // Decrypt the password using the secure key
-        const { decrypted, wasLegacy } = await decryptData(
+        const { decrypted, format } = await decryptData(
           wallet.encryptedBiometricPassword,
           secureKey,
         );
+        // Unlike the wallet key, this blob has no unlock path that re-seals it, so a credential
+        // enrolled under an older KDF (scrypt/legacy) would re-run that slow derivation on every
+        // biometric login — painfully slow in a mobile browser. Transparently upgrade it to the
+        // current Argon2id format on first read; best-effort, and never blocks the unlock.
+        if (format !== 'argon2id') {
+          await this.migrateBiometricPassword(secureKey, decrypted, walletAddress);
+        }
         return decrypted;
       }
 
@@ -2123,11 +2130,30 @@ export class StorageService {
       }
 
       // Decrypt the password using the secure key
-      const { decrypted } = await decryptData(encryptedPassword, secureKey);
+      const { decrypted, format } = await decryptData(encryptedPassword, secureKey);
+      if (format !== 'argon2id') {
+        await this.migrateBiometricPassword(secureKey, decrypted, walletAddress);
+      }
       return decrypted;
     } catch (error) {
       storageLogger.error('Failed to retrieve encrypted wallet password:', error);
       return null;
+    }
+  }
+
+  // Re-seal a biometric password blob with the current Argon2id format after it was read from an
+  // older KDF. Best-effort: a failure here must never turn a successful biometric unlock into a
+  // failed one, so it only logs. Reuses setEncryptedWalletPassword, which writes both the wallet
+  // record and the legacy preferences map.
+  private static async migrateBiometricPassword(
+    secureKey: string,
+    password: string,
+    walletAddress: string,
+  ): Promise<void> {
+    try {
+      await this.setEncryptedWalletPassword(secureKey, password, walletAddress);
+    } catch (migrationError) {
+      storageLogger.warn('Could not upgrade biometric password to Argon2id', migrationError);
     }
   }
 
