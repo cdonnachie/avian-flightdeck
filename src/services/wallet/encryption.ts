@@ -219,6 +219,29 @@ export function legacyDecrypt(encryptedData: string, password: string): string {
   return decryptedText;
 }
 
+/**
+ * Inspect which on-disk encryption format a stored blob uses WITHOUT decrypting it — purely from
+ * its shape. Safe to call with no password; intended for a read-only indicator ("Encryption:
+ * Argon2id"). It classifies the same way `decryptData` does, so the label matches the format the
+ * next unlock would report and upgrade from:
+ *
+ *  - `v2.` prefix  → read the header's `kdf` ('argon2id', or 'scrypt' for headers written before
+ *                    the Argon2id switch)
+ *  - bare hex      → the original scrypt format (v1)
+ *  - anything else → legacy CryptoJS
+ */
+export function inspectEncryptionFormat(encryptedData: string): EncryptionFormat {
+  if (encryptedData.startsWith(V2_PREFIX)) {
+    try {
+      const header = JSON.parse(Buffer.from(encryptedData.split('.')[1], 'base64').toString('utf-8'));
+      return header.kdf === 'argon2id' ? 'argon2id' : 'scrypt';
+    } catch {
+      return 'scrypt';
+    }
+  }
+  return /^[0-9a-f]+$/i.test(encryptedData) ? 'scrypt' : 'legacy';
+}
+
 // Report which KDF a v2 blob used (or 'scrypt' for a bare v1 hex blob), so callers can upgrade.
 function formatOfSecure(encryptedData: string): EncryptionFormat {
   if (!encryptedData.startsWith(V2_PREFIX)) return 'scrypt';

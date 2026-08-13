@@ -27,7 +27,7 @@ import { secureEncrypt, secureDecrypt, decryptData, legacyDecrypt } from './encr
 // Re-exported so existing importers of these helpers from WalletService keep working. New code
 // that only needs encryption should import from './encryption' directly, to avoid pulling the
 // elliptic-curve dependencies this module binds at load.
-export { secureEncrypt, decryptData, legacyDecrypt } from './encryption';
+export { secureEncrypt, decryptData, legacyDecrypt, inspectEncryptionFormat } from './encryption';
 
 // Initialize ECPair and BIP32 with secp256k1
 const ECPair = ECPairFactory(ecc);
