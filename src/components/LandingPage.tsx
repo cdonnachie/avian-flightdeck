@@ -98,16 +98,22 @@ export default function LandingPage() {
                 <div className="fdl-horizon__line" />
                 {/* pitch-ladder reference marks — drift with the horizon */}
                 <div className="fdl-ladder" aria-hidden>
-                  <span style={{ top: '40%', width: 38 }} />
-                  <span style={{ top: '46%', width: 54 }} />
-                  <span style={{ top: '70%', width: 54 }} />
-                  <span style={{ top: '76%', width: 38 }} />
+                  <span style={{ top: -56, width: 34 }} />
+                  <span style={{ top: -28, width: 22 }} />
+                  <span style={{ top: 28, width: 22 }} />
+                  <span style={{ top: 56, width: 34 }} />
                 </div>
               </div>
               <svg className="fdl-aircraft" width="150" height="30" viewBox="0 0 150 30" aria-hidden>
                 <path d="M18 15 L58 15 M92 15 L132 15" stroke="#34F5C6" strokeWidth="3.5" strokeLinecap="round" />
                 <path d="M58 15 L64 22 M92 15 L86 22" stroke="#34F5C6" strokeWidth="3.5" strokeLinecap="round" />
                 <circle cx="75" cy="15" r="3.4" fill="#04121a" stroke="#34F5C6" strokeWidth="2.2" />
+              </svg>
+              {/* roll / bank scale — a fixed reference at the top of the display */}
+              <svg className="fdl-roll" width="132" height="34" viewBox="0 0 132 34" aria-hidden>
+                <path d="M12 30 A56 56 0 0 1 120 30" fill="none" stroke="rgba(230,240,242,0.4)" strokeWidth="1.4" />
+                <path d="M66 6 L61 15 L71 15 Z" fill="#34F5C6" />
+                <path d="M28 20 L26 25 M104 20 L106 25 M66 12 L66 17" stroke="rgba(230,240,242,0.5)" strokeWidth="1.2" />
               </svg>
               <div className="fdl-ann fdl-ann--l"><span className="fdl-lamp" /> Network · Online</div>
               <div className="fdl-ann fdl-ann--r">Keys · Local <span className="fdl-lamp" /></div>
@@ -253,15 +259,17 @@ const CSS = `
 .fdl-cta{display:flex;flex-wrap:wrap;gap:12px;}
 .fdl-pfd{border-radius:20px;border:1px solid var(--line);background:linear-gradient(180deg,var(--panel-3),var(--panel-2));padding:16px;box-shadow:0 40px 80px -50px rgba(0,0,0,0.9);}
 .fdl-pfd__screen{position:relative;aspect-ratio:4/3.1;border-radius:14px;overflow:hidden;border:1px solid rgba(230,240,242,0.08);}
-.fdl-horizon{position:absolute;inset:0;transform-origin:50% 58%;animation:fdl-attitude 18s ease-in-out infinite;will-change:transform;}
+.fdl-horizon{position:absolute;inset:0;transform-origin:50% 58%;animation:fdl-level 1.8s cubic-bezier(0.16,0.84,0.3,1) both;will-change:transform;}
 .fdl-horizon__sky{position:absolute;inset:0 0 42% 0;background:linear-gradient(180deg,var(--sky),var(--sky-2));}
 .fdl-horizon__ground{position:absolute;inset:58% 0 0 0;background:linear-gradient(180deg,var(--ground),var(--ground-2));}
 .fdl-horizon__line{position:absolute;left:0;right:0;top:58%;height:2px;background:var(--mint);opacity:0.6;box-shadow:0 0 14px rgba(52,245,198,0.6);}
-.fdl-ladder{position:absolute;inset:0;pointer-events:none;}
-.fdl-ladder span{position:absolute;left:50%;transform:translateX(-50%);height:2px;border-radius:2px;background:var(--mint);opacity:0.26;}
-/* the horizon (sky/ground/line/ladder) gently pitches and rolls; the aircraft symbol stays fixed,
-   reading against it like a real attitude indicator. Oversized so the drift never reveals an edge. */
-@keyframes fdl-attitude{0%{transform:scale(1.14) translateY(-1.1%) rotate(-1deg);}25%{transform:scale(1.14) translateY(0.4%) rotate(0.5deg);}50%{transform:scale(1.14) translateY(1.2%) rotate(-0.3deg);}75%{transform:scale(1.14) translateY(-0.2%) rotate(0.9deg);}100%{transform:scale(1.14) translateY(-1.1%) rotate(-1deg);}}
+.fdl-ladder{position:absolute;top:58%;left:50%;pointer-events:none;}
+.fdl-ladder span{position:absolute;left:0;transform:translateX(-50%);height:2px;border-radius:2px;background:var(--mint);opacity:0.26;}
+.fdl-roll{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:2;}
+/* the horizon levels once on load — from a slight bank/pitch to wings-level — then holds. It is
+   oversized during the roll so the tilt never reveals a screen edge; the fixed roll scale and
+   aircraft symbol sit on top and read against it like an attitude indicator. */
+@keyframes fdl-level{from{transform:scale(1.16) translateY(-3.4%) rotate(-5deg);}to{transform:scale(1) translateY(0) rotate(0deg);}}
 .fdl-aircraft{position:absolute;left:50%;top:58%;transform:translate(-50%,-50%);z-index:2;}
 .fdl-ann{position:absolute;top:14px;display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:0.6rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink);padding:5px 9px;border-radius:6px;background:rgba(4,18,26,0.5);border:1px solid rgba(230,240,242,0.1);}
 .fdl-ann--l{left:14px;}
