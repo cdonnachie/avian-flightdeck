@@ -29,6 +29,7 @@ const SendForm = dynamic(() => import('@/components/SendForm'), {
 import ReceiveContent from '@/components/ReceiveContent';
 import WalletSettingsDashboard from '@/components/WalletSettingsDashboard';
 import { TransactionHistory } from '@/components/TransactionHistory';
+import { AssetList } from '@/components/AssetList';
 import ConnectionStatus from '@/components/ConnectionStatus';
 import ThemeSwitcher from '@/components/ThemeSwitcher';
 import LandingPage from '@/components/LandingPage';
@@ -300,6 +301,9 @@ export default function Home() {
                     </Card>
                 </Tabs>
 
+                {/* Assets (renders only when the wallet holds assets) */}
+                <AssetList />
+
                 {/* Connection Status */}
                 <Card>
                     <CardContent className="p-0">
@@ -358,6 +362,8 @@ export default function Home() {
                                 </CardContent>
                             </Card>
                         </Tabs>
+
+                        <AssetList />
 
                         <TransactionHistory className="max-w-none" />
                     </div>
