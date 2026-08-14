@@ -194,12 +194,21 @@ export function AppSidebar({ children, ...props }: AppSidebarProps & React.Compo
                             className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
                         >
                             <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#34F5C6] to-[#17A7B6] text-[#06232A]">
+                                {/* Aircraft reference symbol — the flight-deck instrument mark, matching the app icon */}
                                 <svg
                                     className="size-6"
                                     viewBox="0 0 64 64"
-                                    fill="currentColor"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="4.5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
                                 >
-                                    <image href="/Avian_logo.svg" width="64" height="64" />
+                                    <line x1="9" y1="32" x2="23" y2="32" />
+                                    <line x1="41" y1="32" x2="55" y2="32" />
+                                    <line x1="23" y1="32" x2="27" y2="39" />
+                                    <line x1="41" y1="32" x2="37" y2="39" />
+                                    <circle cx="32" cy="32" r="5" />
                                 </svg>
                             </div>
                             <div className="grid flex-1 text-left text-sm leading-tight">
