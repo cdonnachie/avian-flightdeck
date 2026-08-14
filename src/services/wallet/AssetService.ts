@@ -5,6 +5,15 @@
 
 import type { ElectrumService, AssetMeta } from '@/services/core/ElectrumService';
 
+/** Avian's IPFS gateway, for rendering an asset's image from its IPFS hash. */
+export const IPFS_GATEWAY = 'https://ipfs.avn.network/ipfs/';
+
+/** URL for an asset's IPFS content (image), or null if it has none. */
+export function ipfsImageUrl(hash: string | null | undefined): string | null {
+  // Only IPFS v0 CIDs (Qm…) are real content here; a txid reference isn't an image.
+  return hash && hash.startsWith('Qm') ? `${IPFS_GATEWAY}${hash}` : null;
+}
+
 export interface HeldAsset {
   name: string;
   /** Confirmed + unconfirmed, formatted with the asset's divisions. */
