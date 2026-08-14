@@ -65,6 +65,26 @@ describe('describeAssetTx', () => {
     });
   });
 
+  it('describes a received issuance as an inbound asset, not "Issued"', () => {
+    // Someone else issued FLIGHTDECK and sent it to us; from our side it is simply received.
+    const outputs = [
+      out('issue', 'FLIGHTDECK', 100_000_000n, US),
+      out('owner', 'FLIGHTDECK!', null, THEM), // issuer keeps the owner token
+    ];
+    expect(describeAssetTx(outputs, US, 'receive')).toEqual({
+      action: 'receive',
+      entries: [{ name: 'FLIGHTDECK', amount: 100_000_000n }],
+    });
+  });
+
+  it('counts a received owner token as one unit', () => {
+    const outputs = [out('owner', 'FLIGHTDECK!', null, US)];
+    expect(describeAssetTx(outputs, US, 'receive')).toEqual({
+      action: 'receive',
+      entries: [{ name: 'FLIGHTDECK!', amount: 100_000_000n }],
+    });
+  });
+
   it('recognises a reissue', () => {
     const outputs = [
       out('reissue', 'CRAIG_KINGDOM', 200_000_000n, US),
