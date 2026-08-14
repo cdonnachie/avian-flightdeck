@@ -133,4 +133,23 @@ describe('real mainnet Core golden vectors', () => {
     expect(built.includes(nameAndAmount)).toBe(true);
     expect(issueScript.includes(nameAndAmount)).toBe(true);
   });
+
+  it('builds a transfer byte-identical to a real Core SMAUG transfer output', () => {
+    // The transfer output of a real Avian Core SMAUG transfer (1.0 SMAUG, type 't'). This is the
+    // definitive check: our builder must reproduce Core's transfer script exactly, or an asset move
+    // could be malformed and unrecoverable.
+    const RECIPIENT_ADDR = 'RWdrtiny9B5zGcyVzjyZtj4sLhZpn2XQfL';
+    const realTransfer =
+      '76a914ea435c63940947432bfa2c53263c6d9ad82a163788acc01272766e7405534d41554700e1f5050000000075';
+
+    expect(parseAssetScript(Buffer.from(realTransfer, 'hex'))).toEqual({
+      type: 'transfer',
+      address: RECIPIENT_ADDR,
+      name: 'SMAUG',
+      amount: 100_000_000n, // 1.0 SMAUG
+    });
+    expect(buildAssetTransferScript(RECIPIENT_ADDR, 'SMAUG', 100_000_000n).toString('hex')).toBe(
+      realTransfer,
+    );
+  });
 });
