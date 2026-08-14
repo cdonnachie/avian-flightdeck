@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatAssetAmount } from './AssetService';
+import { formatAssetAmount, parseAssetAmount } from './AssetService';
 
 describe('formatAssetAmount', () => {
   // Asset amounts are always scaled by 10^8 (COIN); a quantity of 1 is on-chain 100000000.
@@ -26,5 +26,37 @@ describe('formatAssetAmount', () => {
   it('clamps out-of-range divisions to 0..8', () => {
     expect(formatAssetAmount(100_000_000, 8)).toBe('1.00000000');
     expect(formatAssetAmount(100_000_000, -1)).toBe('1');
+  });
+});
+
+describe('parseAssetAmount', () => {
+  it('scales a whole number by 10^8', () => {
+    expect(parseAssetAmount('1', 0)).toBe(100_000_000n);
+    expect(parseAssetAmount('15', 0)).toBe(1_500_000_000n);
+  });
+
+  it('scales a decimal within the asset’s divisions', () => {
+    expect(parseAssetAmount('1.5', 8)).toBe(150_000_000n);
+    expect(parseAssetAmount('1.5', 2)).toBe(150_000_000n);
+    expect(parseAssetAmount('0.00000001', 8)).toBe(1n);
+  });
+
+  it('round-trips with formatAssetAmount', () => {
+    for (const [input, div] of [['1', 0], ['1.50', 2], ['0.00000001', 8]] as [string, number][]) {
+      expect(formatAssetAmount(Number(parseAssetAmount(input, div)), div)).toBe(input);
+    }
+  });
+
+  it('rejects more decimals than the asset allows', () => {
+    expect(() => parseAssetAmount('1.5', 0)).toThrow(/not divisible/);
+    expect(() => parseAssetAmount('1.123', 2)).toThrow(/at most 2 decimal/);
+  });
+
+  it('rejects malformed input and zero', () => {
+    expect(() => parseAssetAmount('', 8)).toThrow(/valid amount/);
+    expect(() => parseAssetAmount('abc', 8)).toThrow(/valid amount/);
+    expect(() => parseAssetAmount('-1', 8)).toThrow(/valid amount/);
+    expect(() => parseAssetAmount('0', 8)).toThrow(/greater than zero/);
+    expect(() => parseAssetAmount('0.00', 2)).toThrow(/greater than zero/);
   });
 });

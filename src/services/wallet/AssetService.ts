@@ -32,6 +32,28 @@ export function formatAssetAmount(sats: number, divisions: number): string {
 }
 
 /**
+ * Parse a user-entered asset amount into the on-chain integer (scaled by 10^8). Rejects a malformed
+ * number, or more decimal places than the asset's `divisions` allow (a 0-division asset must be a
+ * whole number). The inverse of formatAssetAmount.
+ */
+export function parseAssetAmount(input: string, divisions: number): bigint {
+  const units = Math.min(Math.max(divisions | 0, 0), 8);
+  const trimmed = input.trim();
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) throw new Error('Enter a valid amount');
+  const [whole, frac = ''] = trimmed.split('.');
+  if (frac.length > units) {
+    throw new Error(
+      units === 0
+        ? 'This asset is not divisible — enter a whole number'
+        : `This asset allows at most ${units} decimal place${units === 1 ? '' : 's'}`,
+    );
+  }
+  const amount = BigInt(whole) * 100_000_000n + BigInt(frac.padEnd(8, '0'));
+  if (amount <= 0n) throw new Error('Amount must be greater than zero');
+  return amount;
+}
+
+/**
  * Every asset held at `address`, sorted by name, each with its metadata (divisions, reissuable,
  * IPFS) and a formatted quantity. The base coin (AVN) is excluded — it is the ordinary balance.
  */
