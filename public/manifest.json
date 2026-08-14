@@ -5,7 +5,7 @@
   "description": "Avian cryptocurrency wallet",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#2a737f",
+  "background_color": "#0D1B21",
   "theme_color": "#34e2d5",
   "orientation": "portrait-primary",
   "categories": ["finance", "productivity"],
@@ -85,7 +85,14 @@
     {
       "src": "icons/icon-512x512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }
