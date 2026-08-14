@@ -284,7 +284,7 @@ export default function OnboardingCreateWallet({
                             <ShieldCheck className="h-4 w-4" />
                             <span>
                                 Encrypted locally with AES-256-GCM using a key derived from your
-                                password with scrypt — your password never leaves this device.{' '}
+                                password with Argon2id — your password never leaves this device.{' '}
                                 <b>There&apos;s no reset</b>: if you lose it, restore from your
                                 recovery phrase.
                             </span>

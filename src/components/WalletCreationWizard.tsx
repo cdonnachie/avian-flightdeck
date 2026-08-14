@@ -313,7 +313,7 @@ export default function WalletCreationWizard({
                         <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
                         <span>
                             Encrypted locally with AES-256-GCM using a key derived from your password
-                            with scrypt — your password never leaves this device.{' '}
+                            with Argon2id — your password never leaves this device.{' '}
                             <b className="text-primary">There&apos;s no reset</b>: if you lose it,
                             restore from your recovery phrase.
                         </span>
