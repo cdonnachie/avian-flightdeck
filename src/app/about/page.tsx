@@ -614,7 +614,7 @@ export default function AboutPage() {
                                                 variant="outline"
                                                 className="w-full justify-start h-12"
                                                 onClick={() =>
-                                                    window.open('https://github.com/cdonnachie/avian-flightdeck', '_blank')
+                                                    window.open('https://github.com/AvianNetwork/avian-flightdeck', '_blank')
                                                 }
                                             >
                                                 <ExternalLink className="h-4 w-4 mr-3" />
@@ -632,7 +632,7 @@ export default function AboutPage() {
                                                 variant="outline"
                                                 className="w-full justify-start h-12"
                                                 onClick={() =>
-                                                    window.open('https://github.com/cdonnachie/avian-flightdeck/issues', '_blank')
+                                                    window.open('https://github.com/AvianNetwork/avian-flightdeck/issues', '_blank')
                                                 }
                                             >
                                                 <ExternalLink className="h-4 w-4 mr-3" />

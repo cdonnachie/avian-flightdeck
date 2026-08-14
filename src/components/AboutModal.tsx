@@ -73,7 +73,7 @@ export default function AboutModal({ isOpen, onClose }: AboutModalProps) {
                 size="sm"
                 className="w-full justify-start"
                 onClick={() =>
-                  window.open('https://github.com/cdonnachie/avian-flightdeck', '_blank')
+                  window.open('https://github.com/AvianNetwork/avian-flightdeck', '_blank')
                 }
               >
                 <ExternalLink className="h-4 w-4 mr-2" />
