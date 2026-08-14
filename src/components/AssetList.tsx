@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Coins, RefreshCw, Search } from 'lucide-react';
+import { Coins, RefreshCw, Search, Send } from 'lucide-react';
 
 import { useWallet } from '@/contexts/WalletContext';
 import { getHeldAssets, type HeldAsset } from '@/services/wallet/AssetService';
@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import SendAssetDialog from './SendAssetDialog';
 
 /** The kind of Avian asset name, for a small type badge. */
 function assetKind(name: string): 'owner' | 'unique' | 'sub' | 'restricted' | 'qualifier' | null {
@@ -30,6 +31,7 @@ export function AssetList({ className }: { className?: string }) {
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState('');
+  const [sending, setSending] = useState<HeldAsset | null>(null);
 
   const load = useCallback(async () => {
     if (!electrum || !address) return;
@@ -123,7 +125,20 @@ export function AssetList({ className }: { className?: string }) {
                       )}
                     </span>
                   </span>
-                  <span className="flex-shrink-0 font-mono text-sm">{asset.amount}</span>
+                  <span className="flex flex-shrink-0 items-center gap-2">
+                    <span className="font-mono text-sm">{asset.amount}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-primary"
+                      onClick={() => setSending(asset)}
+                      disabled={asset.confirmedSats <= 0}
+                      aria-label={`Send ${asset.name}`}
+                      title={`Send ${asset.name}`}
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </span>
                 </li>
               );
             })}
@@ -135,6 +150,13 @@ export function AssetList({ className }: { className?: string }) {
           </ul>
         )}
       </CardContent>
+
+      <SendAssetDialog
+        open={sending !== null}
+        onOpenChange={(next) => !next && setSending(null)}
+        asset={sending}
+        onSuccess={() => void load()}
+      />
     </Card>
   );
 }
