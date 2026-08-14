@@ -32,7 +32,6 @@ const robotoMono = localFont({
 // Twitter) key their preview cache on the full URL, so bump this whenever the screenshot changes to
 // force them to refetch instead of serving a stale thumbnail.
 const OG_IMAGE = '/screenshots/desktop-home.png?v=2';
-const OG_LOGO = '/icons/icon-512x512.png?v=2';
 
 export const metadata: Metadata = {
   // Resolves relative Open Graph / Twitter image URLs against the real host. Without it a static
@@ -67,13 +66,6 @@ export const metadata: Metadata = {
         width: 1920,
         height: 1080,
         alt: 'Avian FlightDeck Desktop Interface',
-        type: 'image/png',
-      },
-      {
-        url: OG_LOGO,
-        width: 512,
-        height: 512,
-        alt: 'Avian FlightDeck Logo',
         type: 'image/png',
       },
     ],
