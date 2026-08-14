@@ -36,6 +36,7 @@ import {
     buildAssetTransferScript,
     buildIssuanceScript,
     buildOwnerScript,
+    buildReissueScript,
     isValidRootAssetName,
     ISSUE_BURN,
 } from './assetScript';
@@ -1513,6 +1514,142 @@ export class WalletService {
             walletLogger.error('Child asset issuance failed:', error);
             const message = error instanceof Error ? error.message : 'Unknown error';
             throw new Error(`Asset issuance failed: ${message}`);
+        }
+    }
+
+    /**
+     * Reissue an existing reissuable asset you own: mint more supply (`amount`, 0 for metadata-only)
+     * and/or change its units/reissuable/IPFS. **Burns 100 AVN.** Requires the `NAME!` owner token,
+     * which is spent and returned. Outputs: burn, AVN change, owner transfer (2nd-last), reissue
+     * output (last) — Core's order. Validated byte-for-byte against a real Core reissue.
+     *
+     * `units` is the new divisions (0–8, can only increase) or -1 to leave unchanged; a supplied
+     * `ipfs` replaces the asset's hash, omitting it keeps the current one.
+     */
+    async reissueAsset(
+        name: string,
+        params: { amount: bigint; units: number; reissuable: boolean; ipfs?: string },
+        password?: string,
+        options?: { feeRate?: number; changeAddress?: string },
+    ): Promise<string> {
+        try {
+            if (params.amount < 0n) throw new Error('Reissue amount cannot be negative');
+
+            const activeWallet = await StorageService.getActiveWallet();
+            if (!activeWallet) throw new Error('No active wallet found');
+            if ((activeWallet.addressType || 'p2pkh') !== 'p2pkh') {
+                throw new Error('Assets can only be reissued from a legacy (R…) address');
+            }
+
+            let privateKeyWIF = activeWallet.privateKey;
+            if (activeWallet.isEncrypted) {
+                if (!password) throw new Error('Password required for encrypted wallet');
+                try {
+                    const { decrypted } = await decryptData(privateKeyWIF, password);
+                    if (!decrypted) throw new Error('Invalid password');
+                    privateKeyWIF = decrypted;
+                } catch {
+                    throw new Error('Invalid password');
+                }
+            }
+
+            const keyPair = ECPair.fromWIF(privateKeyWIF, avianNetwork);
+            const pubkey = Buffer.from(keyPair.publicKey);
+            const fromAddress = activeWallet.address;
+            const changeAddress = options?.changeAddress?.trim() || fromAddress;
+
+            // The NAME! owner token proves authority; it is spent and returned.
+            const ownerName = `${name}!`;
+            const ownerUTXOs = await this.electrum.getAssetUTXOs(fromAddress, ownerName);
+            if (ownerUTXOs.length === 0) {
+                throw new Error(`You must own the ${ownerName} owner token to reissue ${name}`);
+            }
+            const ownerUTXO = ownerUTXOs[0];
+            const ownerAmount = BigInt(Math.trunc(ownerUTXO.value));
+
+            const burnScript = bitcoin.address.toOutputScript(ISSUE_BURN.reissue.address, avianNetwork);
+            const parentReturnScript = buildAssetTransferScript(changeAddress, ownerName, ownerAmount);
+            const reissueScript = buildReissueScript(fromAddress, {
+                name,
+                amount: params.amount,
+                units: params.units,
+                reissuable: params.reissuable,
+                ipfs: params.ipfs,
+            });
+
+            const burn = Number(ISSUE_BURN.reissue.amount);
+            const satPerVByte = await this.resolveFeeRate(options?.feeRate);
+            const avnUTXOs = await this.electrum.getUTXOs(fromAddress);
+            const sortedAvn = [...avnUTXOs].sort((a, b) => b.value - a.value);
+            const totalAvn = sortedAvn.reduce((sum, utxo) => sum + utxo.value, 0);
+
+            // Outputs: burn(34) + change(34) + owner transfer + reissue. One owner input + AVN inputs.
+            const fixedOutputsVBytes =
+                34 + 34 + (8 + 1 + parentReturnScript.length) + (8 + 1 + reissueScript.length);
+            const sizeFor = (avnInputCount: number) =>
+                10 + (1 + avnInputCount) * 148 + fixedOutputsVBytes;
+
+            let selectedAvn: typeof avnUTXOs = [];
+            let avnIn = 0;
+            let fee = 0;
+            for (let iteration = 0; iteration < 6; iteration++) {
+                fee = Math.ceil(sizeFor(Math.max(selectedAvn.length, 1)) * satPerVByte);
+                const target = burn + fee;
+                if (totalAvn < target) {
+                    throw new Error(`Insufficient AVN: reissuing ${name} burns 100 AVN plus a network fee.`);
+                }
+                selectedAvn = [];
+                avnIn = 0;
+                for (const utxo of sortedAvn) {
+                    if (avnIn >= target) break;
+                    selectedAvn.push(utxo);
+                    avnIn += utxo.value;
+                }
+                const recomputed = Math.ceil(sizeFor(selectedAvn.length) * satPerVByte);
+                if (avnIn >= burn + recomputed && recomputed <= fee) {
+                    fee = recomputed;
+                    break;
+                }
+                fee = recomputed;
+            }
+            if (avnIn < burn + fee) throw new Error('Insufficient AVN for the burn and fee');
+            const change = avnIn - burn - fee;
+            const finalChange = change >= DUST_THRESHOLD_SATS ? change : 0;
+
+            const tx = new bitcoin.Transaction();
+            tx.version = 2;
+            tx.locktime = 0;
+            const allInputs = [ownerUTXO, ...selectedAvn];
+            for (const utxo of allInputs) {
+                tx.addInput(Buffer.from(utxo.txid, 'hex').reverse(), utxo.vout);
+            }
+            tx.addOutput(burnScript, burn);
+            if (finalChange > 0) {
+                tx.addOutput(bitcoin.address.toOutputScript(changeAddress, avianNetwork), finalChange);
+            }
+            tx.addOutput(parentReturnScript, 0);
+            tx.addOutput(reissueScript, 0);
+
+            for (let i = 0; i < allInputs.length; i++) {
+                const utxo = allInputs[i];
+                const prevTxHex = await this.electrum.getTransaction(utxo.txid, false);
+                const prevOut = bitcoin.Transaction.fromHex(prevTxHex).outs[utxo.vout];
+                const digest = tx.hashForSignature(i, prevOut.script, SIGHASH_ALL_FORKID);
+                const derSignature = this.encodeDERWithCustomHashType(
+                    Buffer.from(keyPair.sign(digest)),
+                    SIGHASH_ALL_FORKID,
+                );
+                tx.ins[i].script = bitcoin.script.compile([derSignature, pubkey]);
+            }
+
+            const txHex = tx.toHex();
+            const txId = tx.getId();
+            await this.broadcastRawTransaction(txHex);
+            return txId;
+        } catch (error) {
+            walletLogger.error('Asset reissue failed:', error);
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            throw new Error(`Asset reissue failed: ${message}`);
         }
     }
 

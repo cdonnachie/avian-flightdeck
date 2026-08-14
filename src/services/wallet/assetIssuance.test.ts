@@ -298,3 +298,59 @@ describe('issueSubAsset', () => {
     });
   });
 });
+
+describe('reissueAsset', () => {
+  it('spends the owner token, burns 100 AVN, and lays out owner (2nd-last) then reissue (last)', async () => {
+    const { address } = await createActiveWallet();
+    const { electrum, broadcast } = createChildElectrum(address, 'MYASSET', [200 * COIN]);
+    const wallet = new WalletService(electrum as never);
+
+    await wallet.reissueAsset(
+      'MYASSET',
+      { amount: 500n * BigInt(COIN), units: -1, reissuable: true },
+      TEST_PASSWORD,
+      { feeRate: 1 },
+    );
+
+    const tx = bitcoin.Transaction.fromHex(broadcast.mock.calls[0][0] as string);
+    const outs = tx.outs;
+    // 100-AVN burn to the reissue burn address.
+    expect(
+      outs.some(
+        (o) => o.value === 100 * COIN &&
+          (() => {
+            try {
+              return bitcoin.address.fromOutputScript(o.script, avianNetwork) === ISSUE_BURN.reissue.address;
+            } catch {
+              return false;
+            }
+          })(),
+      ),
+    ).toBe(true);
+    // Owner returned (2nd-last), reissue output (last) — no new owner token.
+    expect(parseAssetScript(outs[outs.length - 2].script as Buffer)).toMatchObject({
+      type: 'transfer',
+      name: 'MYASSET!',
+    });
+    expect(parseAssetScript(outs[outs.length - 1].script as Buffer)).toMatchObject({
+      type: 'reissue',
+      name: 'MYASSET',
+      amount: 500n * BigInt(COIN),
+    });
+    // Two inputs: the owner token + one AVN.
+    expect(tx.ins.length).toBe(2);
+  });
+
+  it('refuses when the owner token is not held', async () => {
+    const { address } = await createActiveWallet();
+    const { electrum, broadcast } = createChildElectrum(address, 'MYASSET', [200 * COIN], false);
+    const wallet = new WalletService(electrum as never);
+
+    await expect(
+      wallet.reissueAsset('MYASSET', { amount: 1n * BigInt(COIN), units: -1, reissuable: true }, TEST_PASSWORD, {
+        feeRate: 1,
+      }),
+    ).rejects.toThrow(/MYASSET! owner token/);
+    expect(broadcast).not.toHaveBeenCalled();
+  });
+});

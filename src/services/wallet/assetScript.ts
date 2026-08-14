@@ -105,7 +105,11 @@ export const ISSUE_BURN = {
   root: { amount: 500n * 100_000_000n, address: 'RXissueAssetXXXXXXXXXXXXXXXXXhhZGt' },
   sub: { amount: 100n * 100_000_000n, address: 'RXissueSubAssetXXXXXXXXXXXXXWcwhwL' },
   unique: { amount: 5n * 100_000_000n, address: 'RXissueUniqueAssetXXXXXXXXXXWEAe58' },
+  reissue: { amount: 100n * 100_000_000n, address: 'RXReissueAssetXXXXXXXXXXXXXXVEFAWu' },
 } as const;
+
+/** Sentinel for a reissue that leaves the asset's divisions unchanged (Core: nUnits == -1). */
+export const REISSUE_UNITS_UNCHANGED = -1;
 
 /**
  * Whether `name` is a valid root asset name (a friendly pre-flight; consensus is authoritative).
@@ -196,6 +200,46 @@ export function buildIssuanceScript(address: string, params: IssuanceParams): Bu
     Buffer.from([ipfsBlob ? 1 : 0]), // hasIPFS
     ...(ipfsBlob ? [ipfsBlob] : []),
     Buffer.from([0]), // hasANS = 0
+  ]);
+  return wrapAssetScript(legacyP2PKHScript(address), payload);
+}
+
+export interface ReissueParams {
+  name: string;
+  /** Additional supply to mint (10^8-scaled); 0 for a metadata-only reissue. */
+  amount: bigint;
+  /** New divisions 0–8, or REISSUE_UNITS_UNCHANGED (-1) to leave them as they are. */
+  units: number;
+  /** Whether the asset stays reissuable afterwards (false locks it permanently). */
+  reissuable: boolean;
+  /** Optional new IPFS/txid; omit to keep the existing one. */
+  ipfs?: string;
+}
+
+/**
+ * Build a reissue output (`rvn·r · CReissueAsset`) minting `amount` more of an existing asset to
+ * `address` and/or updating its units/reissuable/IPFS. `CReissueAsset` has no hasIPFS/hasANS flags:
+ * the IPFS blob is present only when given, and an empty ANS id is a trailing 0x00. Byte-exact to
+ * Avian Core.
+ */
+export function buildReissueScript(address: string, params: ReissueParams): Buffer {
+  const { name, amount, units, reissuable, ipfs } = params;
+  if (amount < 0n) throw new Error('Reissue amount cannot be negative');
+  if (units !== REISSUE_UNITS_UNCHANGED && (units < 0 || units > 8)) {
+    throw new Error('Units must be 0–8, or -1 to keep them unchanged');
+  }
+  const nameBuf = Buffer.from(name, 'ascii');
+  const ipfsBlob = ipfs ? encodeAssetData(ipfs) : null;
+  const payload = Buffer.concat([
+    ASSET_MARKER,
+    Buffer.from([ASSET_TYPE.reissue]),
+    encodeCompactSize(nameBuf.length),
+    nameBuf,
+    int64LE(amount),
+    Buffer.from([units & 0xff]), // -1 → 0xff (no change)
+    Buffer.from([reissuable ? 1 : 0]),
+    ...(ipfsBlob ? [ipfsBlob] : []), // SerializeIPFSHash writes nothing when absent
+    Buffer.from([0]), // empty strANSID
   ]);
   return wrapAssetScript(legacyP2PKHScript(address), payload);
 }
