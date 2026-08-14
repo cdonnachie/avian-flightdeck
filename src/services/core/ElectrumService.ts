@@ -5,6 +5,21 @@ interface UTXO {
   height?: number;
 }
 
+/** An asset UTXO — a plain UTXO plus the asset name it carries (null for a base-coin UTXO). */
+export interface AssetUTXO extends UTXO {
+  asset: string | null;
+}
+
+/** Asset metadata from blockchain.asset.get_meta. `divisions` is the unit count (0–8). */
+export interface AssetMeta {
+  name: string;
+  divisions: number;
+  reissuable: boolean;
+  hasIpfs: boolean;
+  ipfs: string | null;
+  satsInCirculation: number;
+}
+
 /** Where a reported balance came from — see getBalanceDetailed. */
 export type BalanceSource = 'live' | 'cache' | 'stored' | 'unknown';
 
@@ -487,6 +502,66 @@ export class ElectrumService {
         height: utxo.height,
       }));
     } catch (error) {
+      return [];
+    }
+  }
+
+  /**
+   * Asset balances held at an address, keyed by asset name. Calls get_balance with asset=true, which
+   * returns every balance at once; the base coin comes back keyed as "rvn" (ElectrumX's null-asset
+   * alias) and is dropped here — AVN is the plain balance shown elsewhere. Amounts are integers
+   * scaled by the asset's divisions (see getAssetMeta); formatting is the caller's job.
+   */
+  async getAssetBalances(address: string): Promise<Record<string, { confirmed: number; unconfirmed: number }>> {
+    try {
+      const scriptHash = this.addressToScriptHash(address);
+      const response = await this.makeRequest('blockchain.scripthash.get_balance', [scriptHash, true]);
+      const balances: Record<string, { confirmed: number; unconfirmed: number }> = {};
+      for (const [name, bal] of Object.entries(response || {})) {
+        if (name === 'rvn') continue; // the base coin (AVN), shown as the ordinary balance
+        const b = bal as { confirmed?: number; unconfirmed?: number };
+        balances[name] = { confirmed: b.confirmed || 0, unconfirmed: b.unconfirmed || 0 };
+      }
+      return balances;
+    } catch (error) {
+      electrumLogger.debug(`Failed to get asset balances for ${address.substring(0, 5)}...:`, error);
+      return {};
+    }
+  }
+
+  /** Metadata for an asset: divisions (0–8 units), reissuable, IPFS, and total supply. */
+  async getAssetMeta(name: string): Promise<AssetMeta | null> {
+    try {
+      const response = await this.makeRequest('blockchain.asset.get_meta', [name]);
+      if (!response) return null;
+      return {
+        name,
+        divisions: typeof response.divisions === 'number' ? response.divisions : 0,
+        reissuable: !!response.reissuable,
+        hasIpfs: !!response.has_ipfs,
+        ipfs: response.has_ipfs ? response.ipfs || null : null,
+        satsInCirculation: response.sats_in_circulation || 0,
+      };
+    } catch (error) {
+      electrumLogger.debug(`Failed to get asset meta for ${name}:`, error);
+      return null;
+    }
+  }
+
+  /** UTXOs at an address for a specific asset (or, with `false`, the AVN-only UTXOs). */
+  async getAssetUTXOs(address: string, asset: string): Promise<AssetUTXO[]> {
+    try {
+      const scriptHash = this.addressToScriptHash(address);
+      const response = await this.makeRequest('blockchain.scripthash.listunspent', [scriptHash, asset]);
+      return (response || []).map((utxo: any) => ({
+        txid: utxo.tx_hash,
+        vout: utxo.tx_pos,
+        value: utxo.value,
+        height: utxo.height,
+        asset: utxo.asset ?? null,
+      }));
+    } catch (error) {
+      electrumLogger.debug(`Failed to get asset UTXOs for ${asset}:`, error);
       return [];
     }
   }
