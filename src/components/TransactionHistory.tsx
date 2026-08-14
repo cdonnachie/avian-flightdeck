@@ -15,6 +15,7 @@ import {
   ChevronRight,
   RefreshCw,
   Inbox,
+  Coins,
 } from 'lucide-react';
 
 import {
@@ -31,6 +32,8 @@ import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/EmptyState';
 import { toast } from 'sonner';
+import { useAssetTxOutputs } from '@/hooks/useAssetTxOutputs';
+import { describeAssetTx, formatAssetQty, type AssetTxLabel } from '@/services/wallet/assetHistory';
 
 // Loading placeholder that mirrors the transaction-row layout, so the list settles into place
 // rather than flashing a bare spinner.
@@ -48,6 +51,40 @@ function TxRowSkeleton() {
         </div>
         <Skeleton className="h-4 w-20 flex-shrink-0" />
       </div>
+    </div>
+  );
+}
+
+// A compact chip summarising the asset side of a transaction (e.g. "+5 SMAUG", "Issued
+// FLIGHTDECK#desktop"). Gains (receive/issue/reissue) read in the primary colour, sends in sodium.
+function AssetChips({ label }: { label: AssetTxLabel }) {
+  const positive = label.action !== 'send';
+  const color = positive ? 'bg-primary/10 text-primary' : 'bg-sodium/10 text-sodium';
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {label.entries.map((e) => {
+        let text: string;
+        if (label.action === 'issue') {
+          text = `Issued ${e.name}`;
+        } else if (label.action === 'reissue') {
+          text =
+            e.amount && e.amount > 0n
+              ? `Reissued ${e.name} (+${formatAssetQty(e.amount)})`
+              : `Reissued ${e.name}`;
+        } else {
+          text = `${label.action === 'receive' ? '+' : '−'}${formatAssetQty(e.amount ?? 0n)} ${e.name}`;
+        }
+        return (
+          <span
+            key={`${label.action}-${e.name}`}
+            className={`inline-flex max-w-full items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium ${color}`}
+            title={text}
+          >
+            <Coins className="h-3 w-3 flex-shrink-0" />
+            <span className="truncate font-mono">{text}</span>
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -295,6 +332,9 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
   const endIndex = startIndex + itemsPerPage;
   const paginatedTransactions = filteredTransactions.slice(startIndex, endIndex);
 
+  // Re-derive the asset side of each visible transaction (the history store keeps only the AVN side).
+  const assetOutputs = useAssetTxOutputs(paginatedTransactions.map((tx) => tx.txid));
+
   const nextPage = () => {
     if (currentPage < totalPages) {
       setCurrentPage(currentPage + 1);
@@ -478,7 +518,11 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
             />
           ) : (
             <div className="divide-y divide-border">
-              {paginatedTransactions.map((tx) => (
+              {paginatedTransactions.map((tx) => {
+                const outs = assetOutputs.get(tx.txid);
+                const assetLabel =
+                  outs && outs.length ? describeAssetTx(outs, address || '', tx.type) : null;
+                return (
                 <div
                   key={`${tx.id || tx.txid}-${tx.type}${tx.isVirtual ? '-virtual' : ''}`}
                   className="p-4 hover:bg-muted/50"
@@ -527,6 +571,8 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
                           </span>
                         </div>
 
+                        {assetLabel && <AssetChips label={assetLabel} />}
+
                         <div className="flex items-center gap-3">
                           <span className="text-sm text-muted-foreground">
                             {formatDate(tx.timestamp)}
@@ -553,7 +599,8 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
