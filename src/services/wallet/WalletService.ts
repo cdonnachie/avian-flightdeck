@@ -32,6 +32,7 @@ import {
     type PsbtInputSummary,
     type PsbtOutputSummary,
 } from './psbt';
+import { buildAssetTransferScript } from './assetScript';
 
 // How many transaction.get requests to keep in flight while syncing history. Electrum matches
 // responses by id, so a small pool cuts the latency of a large sync ~N-fold. Kept deliberately low:
@@ -1023,6 +1024,153 @@ export class WalletService {
             sendAmount: plan.finalSendAmount,
             changeAmount: plan.finalChange,
         };
+    }
+
+    /**
+     * Send `amount` (on-chain integer units, scaled by 10^8) of an Avian asset to a legacy address.
+     *
+     * Asset accounting is a separate ledger from AVN: asset transfer outputs carry 0 AVN value, so
+     * the network fee is paid entirely by AVN inputs. We spend asset UTXOs for the asset (with asset
+     * change back to ourselves) and AVN UTXOs for the fee (with AVN change). ElectrumX segregates the
+     * two — getAssetUTXOs returns only the named asset's outputs and getUTXOs only AVN — so the two
+     * input sets are disjoint and a plain-AVN send can never touch an asset.
+     *
+     * Spending an asset UTXO is an ordinary P2PKH spend: OP_DROP discards the asset rider at
+     * execution, so the sighash is taken over the full asset script and the scriptSig is [sig,
+     * pubkey], signed with the Avian FORKID (0x41) exactly like every other input.
+     *
+     * NOTE: build/parse is byte-validated against Core (see assetScript.ts), but this end-to-end
+     * builder must be regtest-validated against Avian Core before it is wired into any UI.
+     */
+    async sendAssetTransfer(
+        assetName: string,
+        amount: bigint,
+        toAddress: string,
+        password?: string,
+        options?: { feeRate?: number; changeAddress?: string },
+    ): Promise<string> {
+        try {
+            if (amount <= 0n) throw new Error('Asset amount must be positive');
+
+            const activeWallet = await StorageService.getActiveWallet();
+            if (!activeWallet) throw new Error('No active wallet found');
+            if ((activeWallet.addressType || 'p2pkh') !== 'p2pkh') {
+                throw new Error('Assets can only be sent from a legacy (R…) address');
+            }
+
+            let privateKeyWIF = activeWallet.privateKey;
+            if (activeWallet.isEncrypted) {
+                if (!password) throw new Error('Password required for encrypted wallet');
+                try {
+                    const { decrypted } = await decryptData(privateKeyWIF, password);
+                    if (!decrypted) throw new Error('Invalid password');
+                    privateKeyWIF = decrypted;
+                } catch {
+                    throw new Error('Invalid password');
+                }
+            }
+
+            const keyPair = ECPair.fromWIF(privateKeyWIF, avianNetwork);
+            const pubkey = Buffer.from(keyPair.publicKey);
+            const fromAddress = activeWallet.address;
+            const changeAddress = options?.changeAddress?.trim() || fromAddress;
+
+            // --- Asset side: select asset UTXOs to cover the amount, with asset change to self. ---
+            const assetUTXOs = await this.electrum.getAssetUTXOs(fromAddress, assetName);
+            const sortedAssets = [...assetUTXOs].sort((a, b) => b.value - a.value);
+            const selectedAssets: typeof assetUTXOs = [];
+            let assetIn = 0n;
+            for (const utxo of sortedAssets) {
+                if (assetIn >= amount) break;
+                selectedAssets.push(utxo);
+                assetIn += BigInt(Math.trunc(utxo.value));
+            }
+            if (assetIn < amount) {
+                throw new Error(`Insufficient ${assetName}: have ${assetIn}, need ${amount}`);
+            }
+            const assetChange = assetIn - amount;
+
+            const transferScript = buildAssetTransferScript(toAddress, assetName, amount);
+            const assetChangeScript =
+                assetChange > 0n ? buildAssetTransferScript(fromAddress, assetName, assetChange) : null;
+
+            // --- AVN side: size the fee and select AVN UTXOs to cover it (iterating on input count). ---
+            const satPerVByte = await this.resolveFeeRate(options?.feeRate);
+            const avnUTXOs = await this.electrum.getUTXOs(fromAddress);
+            const sortedAvn = [...avnUTXOs].sort((a, b) => b.value - a.value);
+            const totalAvn = sortedAvn.reduce((sum, utxo) => sum + utxo.value, 0);
+
+            // Asset output scripts are larger than a plain 34-byte output; size them exactly (script
+            // length is always < 253, so its length prefix is one byte). Always budget an AVN change
+            // output (+34); if change turns out to be dust it is folded into the fee, costing nothing.
+            const assetOutputsVBytes =
+                (8 + 1 + transferScript.length) +
+                (assetChangeScript ? 8 + 1 + assetChangeScript.length : 0);
+            const sizeFor = (avnInputCount: number) =>
+                10 + (selectedAssets.length + avnInputCount) * 148 + assetOutputsVBytes + 34;
+
+            let selectedAvn: typeof avnUTXOs = [];
+            let avnIn = 0;
+            let fee = 0;
+            for (let iteration = 0; iteration < 6; iteration++) {
+                fee = Math.ceil(sizeFor(Math.max(selectedAvn.length, 1)) * satPerVByte);
+                if (totalAvn < fee) {
+                    throw new Error(`Insufficient AVN for the network fee (need ${fee} sat)`);
+                }
+                selectedAvn = [];
+                avnIn = 0;
+                for (const utxo of sortedAvn) {
+                    if (avnIn >= fee) break;
+                    selectedAvn.push(utxo);
+                    avnIn += utxo.value;
+                }
+                const recomputed = Math.ceil(sizeFor(selectedAvn.length) * satPerVByte);
+                if (avnIn >= recomputed && recomputed <= fee) {
+                    fee = recomputed;
+                    break;
+                }
+                fee = recomputed;
+            }
+            if (avnIn < fee) throw new Error('Insufficient AVN for the network fee');
+            const avnChange = avnIn - fee;
+            const finalAvnChange = avnChange >= DUST_THRESHOLD_SATS ? avnChange : 0;
+
+            // --- Build the transaction: asset inputs + AVN inputs; asset outputs (0 value) + AVN change. ---
+            const tx = new bitcoin.Transaction();
+            tx.version = 2;
+            tx.locktime = 0;
+            const allInputs = [...selectedAssets, ...selectedAvn];
+            for (const utxo of allInputs) {
+                tx.addInput(Buffer.from(utxo.txid, 'hex').reverse(), utxo.vout);
+            }
+            tx.addOutput(transferScript, 0);
+            if (assetChangeScript) tx.addOutput(assetChangeScript, 0);
+            if (finalAvnChange > 0) {
+                tx.addOutput(bitcoin.address.toOutputScript(changeAddress, avianNetwork), finalAvnChange);
+            }
+
+            // --- Sign every input as a legacy P2PKH spend with the FORKID sighash. ---
+            for (let i = 0; i < allInputs.length; i++) {
+                const utxo = allInputs[i];
+                const prevTxHex = await this.electrum.getTransaction(utxo.txid, false);
+                const prevOut = bitcoin.Transaction.fromHex(prevTxHex).outs[utxo.vout];
+                const digest = tx.hashForSignature(i, prevOut.script, SIGHASH_ALL_FORKID);
+                const derSignature = this.encodeDERWithCustomHashType(
+                    Buffer.from(keyPair.sign(digest)),
+                    SIGHASH_ALL_FORKID,
+                );
+                tx.ins[i].script = bitcoin.script.compile([derSignature, pubkey]);
+            }
+
+            const txHex = tx.toHex();
+            const txId = tx.getId();
+            await this.broadcastRawTransaction(txHex);
+            return txId;
+        } catch (error) {
+            walletLogger.error('Asset transfer failed:', error);
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            throw new Error(`Asset transfer failed: ${message}`);
+        }
     }
 
     async sendTransaction(
