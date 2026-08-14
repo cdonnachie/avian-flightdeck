@@ -589,6 +589,29 @@ export class ElectrumService {
     ]);
   }
 
+  /**
+   * The network's fee rate in satoshis per vByte, from `blockchain.relayfee` (falling back to
+   * `estimatefee`). Both report coins per kB, so convert. Returns 0 if neither is available, letting
+   * the caller apply its own floor.
+   */
+  async getFeeRateSatPerVByte(): Promise<number> {
+    const toSatPerVByte = (coinsPerKb: unknown): number => {
+      const rate = (Number(coinsPerKb) * 100_000_000) / 1000;
+      return Number.isFinite(rate) && rate > 0 ? rate : 0;
+    };
+    try {
+      const relay = toSatPerVByte(await this.makeRequest('blockchain.relayfee', []));
+      if (relay > 0) return relay;
+    } catch {
+      /* fall through to estimatefee */
+    }
+    try {
+      return toSatPerVByte(await this.makeRequest('blockchain.estimatefee', [2]));
+    } catch {
+      return 0;
+    }
+  }
+
   async getTransaction(txHash: string, verbose: boolean = false): Promise<any> {
     try {
       const response = await this.makeRequest('blockchain.transaction.get', [txHash, verbose]);

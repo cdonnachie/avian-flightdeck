@@ -19,6 +19,7 @@ import { WalletService } from '@/services/wallet/WalletService';
 import { StorageService } from '@/services/core/StorageService';
 import { securityService } from '@/services/core/SecurityService';
 import { CoinSelectionStrategy, EnhancedUTXO } from '@/services/wallet/UTXOSelectionService';
+import { estimateTxFee, DEFAULT_FEE_RATE_SAT_PER_VBYTE } from '@/services/wallet/fees';
 import AddressInput from './AddressInput';
 import { QRScanResult } from '@/types/addressBook';
 import { UTXOSelectionSettings } from './UTXOSelectionSettings';
@@ -77,7 +78,7 @@ export default function SendForm() {
     minConfirmations?: number;
   }>({
     strategy: CoinSelectionStrategy.BEST_FIT,
-    feeRate: 10000,
+    feeRate: undefined, // undefined = use the wallet default (size-based) fee
     maxInputs: 100,
     minConfirmations: 6,
   });
@@ -154,7 +155,14 @@ export default function SendForm() {
     }
 
     const amountSatoshis = Math.floor(parseFloat(amount) * 100000000);
-    const fee = 10000; // 0.0001 AVN fee
+    // Estimated fee for the preflight guard only — the service computes the exact size-based fee.
+    // Assume a couple of inputs for automatic selection, or the actual count for manual.
+    const feeRateSatPerVb = utxoOptions.feeRate || DEFAULT_FEE_RATE_SAT_PER_VBYTE;
+    const estInputs =
+      utxoOptions.strategy === CoinSelectionStrategy.MANUAL
+        ? Math.max(1, manuallySelectedUTXOs.length)
+        : 2;
+    const fee = estimateTxFee(estInputs, 2, feeRateSatPerVb);
 
     if (amountSatoshis <= 0) {
       setError('Amount must be greater than 0');
@@ -179,15 +187,19 @@ export default function SendForm() {
     // Now check if we have enough funds to cover the fee
     if (balanceToCheck < fee) {
       setError(
-        `Insufficient funds to cover network fee (0.0001 AVN required). The address has ${balanceToCheck / 100000000} AVN.`,
+        `Insufficient funds to cover the network fee (~${(fee / 100000000).toFixed(8)} AVN). The address has ${balanceToCheck / 100000000} AVN.`,
       );
       return;
     }
 
-    // Check if we have enough for both the amount and fee
-    if (amountSatoshis + fee > balanceToCheck) {
+    // Enough for the amount plus fee. With "subtract fee" the fee comes out of the amount, so only
+    // the amount itself needs to fit.
+    const requiredSats = subtractFeeFromAmount ? amountSatoshis : amountSatoshis + fee;
+    if (requiredSats > balanceToCheck) {
       const maxSendable = Math.max(0, (balanceToCheck - fee) / 100000000);
-      setError(`Insufficient funds. Maximum sendable: ${maxSendable.toFixed(8)} AVN (after fee)`);
+      setError(
+        `Insufficient funds. Maximum sendable: ${maxSendable.toFixed(8)} AVN (or use "subtract fee" to send the full balance).`,
+      );
       return;
     }
 
@@ -466,14 +478,15 @@ export default function SendForm() {
     balanceToUse = balance;
   }
 
-  const maxAmount = Math.max(0, (balanceToUse - 10000) / 100000000); // Subtract fee
+  // Full balance — MAX enables "subtract fee", so the exact size-based fee comes out on send.
+  const maxAmount = balanceToUse / 100000000;
 
   // Debug balance information
 
   const resetUTXOSettings = () => {
     setUtxoOptions({
       strategy: CoinSelectionStrategy.BEST_FIT,
-      feeRate: 10000,
+      feeRate: undefined, // undefined = use the wallet default (size-based) fee
       maxInputs: 100,
       minConfirmations: 6,
     });
@@ -590,7 +603,7 @@ export default function SendForm() {
         setManuallySelectedUTXOs(selectedUTXOs);
         setUtxoOptions({
           strategy: CoinSelectionStrategy.MANUAL,
-          feeRate: 1000, // Low fee rate for consolidation
+          feeRate: undefined, // use the wallet default (size-based) fee
           maxInputs: Math.min(selectedUTXOs.length, 500), // Use all selected UTXOs up to Avian's limit
           minConfirmations: 1, // Lower confirmation requirement for consolidation
         });
@@ -942,7 +955,7 @@ export default function SendForm() {
           <Button
             variant={
               utxoOptions.strategy !== CoinSelectionStrategy.BEST_FIT ||
-                utxoOptions.feeRate !== 10000 ||
+                utxoOptions.feeRate != null ||
                 utxoOptions.maxInputs !== 100 ||
                 utxoOptions.minConfirmations !== 6
                 ? 'secondary'
@@ -955,7 +968,7 @@ export default function SendForm() {
             <Settings className="h-4 w-4 mr-2" />
             <span>Advanced</span>
             {(utxoOptions.strategy !== CoinSelectionStrategy.BEST_FIT ||
-              utxoOptions.feeRate !== 10000 ||
+              utxoOptions.feeRate != null ||
               utxoOptions.maxInputs !== 100 ||
               utxoOptions.minConfirmations !== 6) && (
                 <span className="absolute -top-1 -right-1 h-2 w-2 bg-caution rounded-full"></span>
@@ -967,7 +980,7 @@ export default function SendForm() {
       <CardContent className="pt-4">
         {/* UTXO Selection Status */}
         {(utxoOptions.strategy !== CoinSelectionStrategy.BEST_FIT ||
-          utxoOptions.feeRate !== 10000 ||
+          utxoOptions.feeRate != null ||
           utxoOptions.maxInputs !== 100 ||
           utxoOptions.minConfirmations !== 6) && (
             <div className="mb-4 p-3 bg-secondary/30 border rounded-lg">
@@ -1001,7 +1014,7 @@ export default function SendForm() {
                     Strategy: {utxoOptions.strategy?.replace(/_/g, ' ')}
                   </Badge>
                 )}
-                {utxoOptions.feeRate !== 10000 && (
+                {utxoOptions.feeRate != null && (
                   <Badge variant="outline" className="mr-2 mb-1">
                     Fee Rate: {utxoOptions.feeRate} sat/vB
                   </Badge>
@@ -1114,7 +1127,10 @@ export default function SendForm() {
                 type="button"
                 size="sm"
                 variant="ghost"
-                onClick={() => setAmount(maxAmount.toString())}
+                onClick={() => {
+                  setAmount(maxAmount.toString());
+                  setSubtractFeeFromAmount(true); // send the whole balance; fee comes out of it
+                }}
                 className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 text-xs px-2 text-primary"
                 disabled={isSending || maxAmount <= 0}
               >
@@ -1122,7 +1138,7 @@ export default function SendForm() {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
-              Fee: 0.0001 AVN | Max sendable: {maxAmount.toFixed(8)} AVN
+              Max sendable: {maxAmount.toFixed(8)} AVN · fee deducted on send
               {utxoOptions.strategy === CoinSelectionStrategy.MANUAL &&
                 manuallySelectedUTXOs.length > 0 && (
                   <span className="block mt-1">
@@ -1423,7 +1439,12 @@ export default function SendForm() {
 
         {(() => {
           const amountSats = Math.floor(parseFloat(amount || '0') * 100000000);
-          const feeSats = 10000;
+          const feeRateSatPerVb = utxoOptions.feeRate || DEFAULT_FEE_RATE_SAT_PER_VBYTE;
+          const estInputs =
+            utxoOptions.strategy === CoinSelectionStrategy.MANUAL
+              ? Math.max(1, manuallySelectedUTXOs.length)
+              : 2;
+          const feeSats = estimateTxFee(estInputs, 2, feeRateSatPerVb);
           const totalSats = subtractFeeFromAmount ? amountSats : amountSats + feeSats;
           const recipientSats = subtractFeeFromAmount
             ? Math.max(0, amountSats - feeSats)
@@ -1506,7 +1527,7 @@ export default function SendForm() {
                       setManuallySelectedUTXOs([]);
                       setUtxoOptions({
                         strategy: CoinSelectionStrategy.BEST_FIT,
-                        feeRate: 10000,
+                        feeRate: undefined, // undefined = use the wallet default (size-based) fee
                         maxInputs: 100,
                         minConfirmations: 6,
                       });
