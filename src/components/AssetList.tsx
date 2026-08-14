@@ -4,13 +4,39 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Coins, Plus, RefreshCw, Search, Send } from 'lucide-react';
 
 import { useWallet } from '@/contexts/WalletContext';
-import { getHeldAssets, type HeldAsset } from '@/services/wallet/AssetService';
+import { getHeldAssets, ipfsImageUrl, type HeldAsset } from '@/services/wallet/AssetService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import SendAssetDialog from './SendAssetDialog';
 import CreateAssetDialog from './CreateAssetDialog';
+
+/** A small asset avatar: the IPFS image when the asset has one, otherwise a coin glyph. */
+function AssetThumbnail({ asset }: { asset: HeldAsset }) {
+  const [failed, setFailed] = useState(false);
+  const url = asset.meta?.hasIpfs ? ipfsImageUrl(asset.meta.ipfs) : null;
+
+  if (!url || failed) {
+    return (
+      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-muted/60 text-muted-foreground">
+        <Coins className="h-4 w-4" />
+      </div>
+    );
+  }
+  return (
+    // Plain <img> (not next/image) — external IPFS content, lazily loaded, hidden gracefully if the
+    // hash isn't an image or the gateway fails.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url}
+      alt=""
+      loading="lazy"
+      onError={() => setFailed(true)}
+      className="h-9 w-9 flex-shrink-0 rounded-md object-cover"
+    />
+  );
+}
 
 /** The kind of Avian asset name, for a small type badge. */
 function assetKind(name: string): 'owner' | 'unique' | 'sub' | 'restricted' | 'qualifier' | null {
@@ -133,24 +159,27 @@ export function AssetList({ className }: { className?: string }) {
                   key={asset.name}
                   className="flex items-center justify-between gap-3 px-4 py-3"
                 >
-                  <span className="flex min-w-0 flex-col">
-                    <span className="truncate font-medium">{asset.name}</span>
-                    <span className="mt-0.5 flex flex-wrap gap-1">
-                      {kind && (
-                        <Badge variant="secondary" className="h-4 px-1.5 text-[10px] capitalize">
-                          {kind}
-                        </Badge>
-                      )}
-                      {asset.meta?.reissuable && (
-                        <Badge variant="outline" className="h-4 px-1.5 text-[10px]">
-                          Reissuable
-                        </Badge>
-                      )}
-                      {asset.unconfirmedSats !== 0 && (
-                        <Badge className="h-4 bg-caution/15 px-1.5 text-[10px] text-caution hover:bg-caution/15">
-                          Pending
-                        </Badge>
-                      )}
+                  <span className="flex min-w-0 items-center gap-3">
+                    <AssetThumbnail asset={asset} />
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate font-medium">{asset.name}</span>
+                      <span className="mt-0.5 flex flex-wrap gap-1">
+                        {kind && (
+                          <Badge variant="secondary" className="h-4 px-1.5 text-[10px] capitalize">
+                            {kind}
+                          </Badge>
+                        )}
+                        {asset.meta?.reissuable && (
+                          <Badge variant="outline" className="h-4 px-1.5 text-[10px]">
+                            Reissuable
+                          </Badge>
+                        )}
+                        {asset.unconfirmedSats !== 0 && (
+                          <Badge className="h-4 bg-caution/15 px-1.5 text-[10px] text-caution hover:bg-caution/15">
+                            Pending
+                          </Badge>
+                        )}
+                      </span>
                     </span>
                   </span>
                   <span className="flex flex-shrink-0 items-center gap-2">
