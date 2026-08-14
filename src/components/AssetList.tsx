@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Coins, Plus, RefreshCw, Search, Send } from 'lucide-react';
+import { Coins, Plus, PlusCircle, RefreshCw, Search, Send } from 'lucide-react';
 
 import { useWallet } from '@/contexts/WalletContext';
 import { getHeldAssets, ipfsImageUrl, type HeldAsset } from '@/services/wallet/AssetService';
@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import SendAssetDialog from './SendAssetDialog';
 import CreateAssetDialog from './CreateAssetDialog';
+import ReissueAssetDialog from './ReissueAssetDialog';
 
 /** A small asset avatar: the IPFS image when the asset has one (click to enlarge), else a coin glyph. */
 function AssetThumbnail({ asset, onPreview }: { asset: HeldAsset; onPreview: (url: string) => void }) {
@@ -67,6 +68,7 @@ export function AssetList({ className }: { className?: string }) {
   const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState('');
   const [sending, setSending] = useState<HeldAsset | null>(null);
+  const [reissuing, setReissuing] = useState<HeldAsset | null>(null);
   const [creating, setCreating] = useState(false);
   const [preview, setPreview] = useState<{ url: string; name: string } | null>(null);
 
@@ -192,8 +194,20 @@ export function AssetList({ className }: { className?: string }) {
                         )}
                       </span>
                     </span>
-                  <span className="flex flex-shrink-0 items-center gap-2">
-                    <span className="font-mono text-sm">{asset.amount}</span>
+                  <span className="flex flex-shrink-0 items-center gap-1">
+                    <span className="mr-1 font-mono text-sm">{asset.amount}</span>
+                    {asset.meta?.reissuable && ownedRoots.includes(asset.name) && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-primary"
+                        onClick={() => setReissuing(asset)}
+                        aria-label={`Reissue ${asset.name}`}
+                        title={`Reissue ${asset.name}`}
+                      >
+                        <PlusCircle className="h-4 w-4" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -222,6 +236,13 @@ export function AssetList({ className }: { className?: string }) {
         open={sending !== null}
         onOpenChange={(next) => !next && setSending(null)}
         asset={sending}
+        onSuccess={reloadSoon}
+      />
+
+      <ReissueAssetDialog
+        open={reissuing !== null}
+        onOpenChange={(next) => !next && setReissuing(null)}
+        asset={reissuing}
         onSuccess={reloadSoon}
       />
 

@@ -6,6 +6,7 @@ import {
   buildAssetTransferScript,
   buildIssuanceScript,
   buildOwnerScript,
+  buildReissueScript,
   parseAssetScript,
   ASSET_MARKER,
 } from './assetScript';
@@ -95,6 +96,72 @@ describe('parseAssetScript', () => {
   it('returns null for a plain (non-asset) P2PKH', () => {
     const plain = bitcoin.address.toOutputScript(ADDR, avianNetwork);
     expect(parseAssetScript(plain)).toBeNull();
+  });
+});
+
+describe('buildReissueScript', () => {
+  // Independently construct the expected reissue payload from Core's CReissueAsset format:
+  // "rvn" · 'r' · compactSize(name) · name · int64LE(amount) · int8(units) · int8(reissuable) ·
+  // [ipfs] · 0x00 (empty ANSID). No hasIPFS/hasANS flags (unlike CNewAsset).
+  function expectedReissue(name: string, amount: bigint, units: number, reissuable: boolean): Buffer {
+    const p2pkh = bitcoin.address.toOutputScript(ADDR, avianNetwork);
+    const nameBuf = Buffer.from(name, 'ascii');
+    const amountBuf = Buffer.alloc(8);
+    amountBuf.writeBigInt64LE(amount);
+    const payload = Buffer.concat([
+      Buffer.from([0x72, 0x76, 0x6e, 0x72]), // rvn + 'r'
+      Buffer.from([nameBuf.length]),
+      nameBuf,
+      amountBuf,
+      Buffer.from([units & 0xff]),
+      Buffer.from([reissuable ? 1 : 0]),
+      Buffer.from([0x00]), // empty ANSID
+    ]);
+    const push = Buffer.concat([Buffer.from([payload.length]), payload]);
+    return Buffer.concat([p2pkh, Buffer.from([OP_AVN_ASSET]), push, Buffer.from([0x75])]);
+  }
+
+  it('matches an independent construction (mint more supply, units unchanged)', () => {
+    const built = buildReissueScript(ADDR, {
+      name: 'FLIGHTDECK',
+      amount: 1000n * 100_000_000n,
+      units: -1, // unchanged → 0xff
+      reissuable: true,
+    });
+    expect(built.toString('hex')).toBe(
+      expectedReissue('FLIGHTDECK', 1000n * 100_000_000n, -1, true).toString('hex'),
+    );
+    // -1 units serialize as 0xff.
+    expect(built.includes(Buffer.from([0xff, 0x01, 0x00]))).toBe(true);
+  });
+
+  it('parses back as a reissue with its name and amount', () => {
+    const built = buildReissueScript(ADDR, { name: 'SMAUG', amount: 5n * 100_000_000n, units: 0, reissuable: false });
+    expect(parseAssetScript(built)).toMatchObject({
+      type: 'reissue',
+      name: 'SMAUG',
+      amount: 5n * 100_000_000n,
+    });
+  });
+
+  it('allows a metadata-only reissue (amount 0)', () => {
+    expect(() => buildReissueScript(ADDR, { name: 'SMAUG', amount: 0n, units: -1, reissuable: false })).not.toThrow();
+  });
+
+  it('reproduces a real Core reissue (CRAIG_KINGDOM +1, units unchanged) byte-for-byte', () => {
+    // The reissue output of a real Avian Core CRAIG_KINGDOM reissue: +1 supply, units unchanged
+    // (0xff), stays reissuable. Definitive validation of the 100-AVN-burn reissue path.
+    const DEST = 'RBzWECT1sEKDVfQBH8aJDrv7pnDrXKA9E9';
+    expect(
+      buildReissueScript(DEST, {
+        name: 'CRAIG_KINGDOM',
+        amount: 100_000_000n,
+        units: -1, // unchanged → 0xff
+        reissuable: true,
+      }).toString('hex'),
+    ).toBe(
+      '76a9141dc074e3cc3747909b016fb0adb604ee19ef87f188acc01d72766e720d43524149475f4b494e47444f4d00e1f50500000000ff010075',
+    );
   });
 });
 
