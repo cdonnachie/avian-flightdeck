@@ -16,10 +16,10 @@ export function AppLayout({ children, headerProps, sidebarProps }: AppLayoutProp
     return (
         <SidebarProvider>
             <AppSidebar {...sidebarProps} />
-            <SidebarInset>
+            <SidebarInset className="min-w-0">
                 <AppHeader {...headerProps} />
                 <GradientBackground>
-                    <main className="flex flex-1 flex-col gap-4 p-6 pt-4">
+                    <main className="flex min-w-0 flex-1 flex-col gap-4 p-6 pt-4">
                         <div className="grid auto-rows-max items-start gap-6 md:gap-8 lg:col-span-2">
                             {children}
                         </div>
