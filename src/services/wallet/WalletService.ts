@@ -11,7 +11,7 @@ import * as ecc from 'tiny-secp256k1';
 import * as bip39 from 'bip39';
 import { BIP32Factory } from 'bip32';
 import { ElectrumService, type DetailedBalance } from '../core/ElectrumService';
-import { StorageService } from '../core/StorageService';
+import { StorageService, type TransactionData } from '../core/StorageService';
 import { walletLogger } from '@/lib/Logger';
 import { getExplorerUrl, openTransactionInExplorer } from '@/lib/explorer';
 import {
@@ -2356,6 +2356,133 @@ export class WalletService {
         });
     }
 
+    // Map one pre-classified get_history_rich row to a stored TransactionData. The server already
+    // resolved direction/amount/counterparty, so this is a pure shape conversion (satoshis -> AVN,
+    // unix seconds -> Date). `address` is the wallet's own address. Following TransactionData's
+    // convention, `address` holds the counterparty for both directions and `fromAddress` is the
+    // sender (the counterparty for a receive, us for a send).
+    private richRowToTransaction(
+        row: import('../core/ElectrumService').RichHistoryTx,
+        walletAddress: string,
+    ): Omit<TransactionData, 'id'> {
+        return {
+            txid: row.txid,
+            amount: row.amount / 100000000,
+            address: row.counterparty,
+            fromAddress: row.type === 'receive' ? row.counterparty : walletAddress,
+            walletAddress,
+            type: row.type,
+            timestamp: row.time ? new Date(row.time * 1000) : new Date(),
+            confirmations: row.confirmations ?? 0,
+            blockHeight: row.height > 0 ? row.height : undefined,
+        };
+    }
+
+    /**
+     * Sync history via the server's get_history_rich extension: page through the pre-classified
+     * rows (newest-first) and persist them. Far cheaper than the standard path — one request per
+     * page of up to 100 instead of one per transaction plus one per input. For an incremental
+     * refresh (onlyNewTransactions) it stops as soon as a whole page is already stored, since
+     * newest-first means every older page is stored too.
+     */
+    private async processTransactionHistoryRich(
+        address: string,
+        onProgress?: (processed: number, total: number, currentTx?: string) => void,
+        onlyNewTransactions: boolean = false,
+    ): Promise<void> {
+        const PAGE_SIZE = 100;
+
+        const existingTxs = (await StorageService.getTransactionHistory(address)).filter(
+            (tx) => tx.walletAddress === address,
+        );
+        const existingByKey = new Map(existingTxs.map((tx) => [`${tx.txid}-${tx.type}`, tx]));
+        const existingIds = new Set(existingTxs.map((tx) => tx.txid));
+
+        const first = await this.fetchRichPageWithRetry(address, 0, PAGE_SIZE);
+        const total = first.total ?? 0;
+        if (total === 0) {
+            onProgress?.(0, 0);
+            return;
+        }
+        const pageCount = Math.ceil(total / PAGE_SIZE);
+        let processed = 0;
+        onProgress?.(0, total);
+
+        // Persist a page; returns how many of its rows were new (for the incremental early-stop).
+        const handlePage = async (page: { txs: import('../core/ElectrumService').RichHistoryTx[] }) => {
+            let fresh = 0;
+            for (const row of page.txs) {
+                if (onlyNewTransactions && existingIds.has(row.txid)) {
+                    processed++;
+                    onProgress?.(processed, total, row.txid);
+                    continue;
+                }
+                fresh++;
+                const tx = this.richRowToTransaction(row, address);
+                const existing = existingByKey.get(`${row.txid}-${tx.type}`);
+                try {
+                    if (existing) {
+                        const needsUpdate =
+                            existing.amount !== tx.amount ||
+                            existing.address !== tx.address ||
+                            existing.fromAddress !== tx.fromAddress ||
+                            existing.confirmations !== tx.confirmations ||
+                            !existing.walletAddress;
+                        if (needsUpdate) {
+                            await StorageService.saveTransaction({ ...tx, id: existing.id } as any);
+                        }
+                    } else {
+                        await StorageService.saveTransaction(tx);
+                    }
+                } catch (error) {
+                    walletLogger.warn(`Failed to save rich transaction ${row.txid}:`, error);
+                }
+                processed++;
+                onProgress?.(processed, total, row.txid);
+            }
+            return fresh;
+        };
+
+        await handlePage(first);
+
+        for (let page = 1; page < pageCount; page++) {
+            const data = await this.fetchRichPageWithRetry(address, page, PAGE_SIZE);
+            const fresh = await handlePage(data);
+            // Incremental refresh: once a full page holds nothing new, every older page is already
+            // stored (newest-first), so stop.
+            if (onlyNewTransactions && fresh === 0) {
+                break;
+            }
+        }
+
+        onProgress?.(processed, total);
+    }
+
+    // Fetch a rich history page, retrying on a dropped connection the same way single-tx fetches do.
+    private async fetchRichPageWithRetry(
+        address: string,
+        page: number,
+        pageSize: number,
+    ): Promise<import('../core/ElectrumService').RichHistoryPage> {
+        for (let attempt = 1; attempt <= TX_FETCH_ATTEMPTS; attempt++) {
+            try {
+                return await this.electrum.getRichHistoryPage(address, page, pageSize);
+            } catch (error) {
+                if (attempt === TX_FETCH_ATTEMPTS) {
+                    throw error;
+                }
+                try {
+                    await this.electrum.waitForConnection();
+                } catch {
+                    // fall through to retry / final throw
+                }
+                await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+            }
+        }
+        // Unreachable: the loop either returns or throws on the last attempt.
+        throw new Error('rich history fetch failed');
+    }
+
     /**
      * Process transaction history for a wallet address
      * @param address - The wallet address
@@ -2368,6 +2495,21 @@ export class WalletService {
         onlyNewTransactions: boolean = false,
     ): Promise<void> {
         try {
+            // Fast path: if the server offers our get_history_rich extension it returns rows already
+            // classified (direction, amount, counterparty), so we skip the per-transaction and
+            // per-input reconstruction entirely. Any failure falls through to the standard path.
+            if (await this.electrum.supportsRichHistory()) {
+                try {
+                    await this.processTransactionHistoryRich(address, onProgress, onlyNewTransactions);
+                    return;
+                } catch (richError) {
+                    walletLogger.warn(
+                        'Rich history path failed; falling back to standard reconstruction',
+                        richError,
+                    );
+                }
+            }
+
             // Get transaction history from ElectrumX
             const txHistory = await this.electrum.getTransactionHistory(address);
 

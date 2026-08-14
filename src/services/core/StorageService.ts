@@ -44,7 +44,7 @@ interface WalletSwitchState {
   toId?: number;
 }
 
-interface TransactionData {
+export interface TransactionData {
   id?: number;
   txid: string;
   amount: number;
