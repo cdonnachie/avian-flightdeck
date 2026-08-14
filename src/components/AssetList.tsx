@@ -254,7 +254,7 @@ export function AssetList({ className }: { className?: string }) {
       />
 
       <Dialog open={preview !== null} onOpenChange={(next) => !next && setPreview(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-2xl md:max-w-3xl lg:max-w-4xl">
           <DialogHeader>
             <DialogTitle className="break-all font-mono text-sm">{preview?.name}</DialogTitle>
           </DialogHeader>
@@ -263,7 +263,7 @@ export function AssetList({ className }: { className?: string }) {
             <img
               src={preview.url}
               alt={preview.name}
-              className="mx-auto max-h-[70vh] w-full rounded-md object-contain"
+              className="mx-auto max-h-[80vh] w-auto max-w-full rounded-md object-contain"
             />
           )}
         </DialogContent>
