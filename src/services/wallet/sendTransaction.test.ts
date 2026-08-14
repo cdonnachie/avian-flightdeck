@@ -10,6 +10,7 @@ import {
   resolveSendAmounts,
   secureEncrypt,
 } from './WalletService';
+import { estimateTxFee } from './fees';
 import { CoinSelectionStrategy } from './UTXOSelectionService';
 import { StorageService } from '@/services/core/StorageService';
 import { TEST_PASSWORD, resetStorage } from '@/test/helpers';
@@ -63,6 +64,9 @@ function createFakeElectrum(address: string, values: number[], blockHeight = 100
       // Touched by other WalletService paths but irrelevant here.
       getBalance: vi.fn(async () => values.reduce((sum, value) => sum + value, 0)),
       getTransactionHistory: vi.fn(async () => []),
+      // 0 => WalletService falls back to its default rate; tests that assert fees pass an explicit
+      // low feeRate so the amounts stay small and the arithmetic is easy to check.
+      getFeeRateSatPerVByte: vi.fn(async () => 0),
       isConnectedToServer: vi.fn(() => true),
       connect: vi.fn(async () => {}),
       subscribeToAddress: vi.fn(async () => {}),
@@ -152,7 +156,8 @@ describe('resolveSendAmounts', () => {
 });
 
 describe('sendTransaction', () => {
-  const FEE = 10_000;
+  const RATE = 1; // sat/vByte — small so the test amounts and fee arithmetic stay simple
+  const feeFor = (inputs: number, outputs: number) => estimateTxFee(inputs, outputs, RATE);
 
   it('builds, signs and broadcasts a transaction that pays the recipient', async () => {
     const { address } = await createActiveWallet();
@@ -174,34 +179,66 @@ describe('sendTransaction', () => {
     const { electrum, broadcast } = createFakeElectrum(address, [500_000]);
     const wallet = new WalletService(electrum as never);
 
-    await wallet.sendTransaction(RECIPIENT, 100_000, TEST_PASSWORD);
+    await wallet.sendTransaction(RECIPIENT, 100_000, TEST_PASSWORD, { feeRate: RATE });
 
     const outputs = outputsOf(broadcastTx(broadcast));
-    expect(outputs).toContainEqual({ address, value: 500_000 - 100_000 - FEE });
+    expect(outputs).toContainEqual({ address, value: 500_000 - 100_000 - feeFor(1, 2) });
   });
 
-  it('accounts for exactly the fee: inputs minus outputs is the fee rate', async () => {
+  it('accounts for exactly the fee: inputs minus outputs is the size-based fee', async () => {
     const { address } = await createActiveWallet();
     const { electrum, broadcast } = createFakeElectrum(address, [500_000]);
     const wallet = new WalletService(electrum as never);
 
-    await wallet.sendTransaction(RECIPIENT, 100_000, TEST_PASSWORD);
+    await wallet.sendTransaction(RECIPIENT, 100_000, TEST_PASSWORD, { feeRate: RATE });
 
     const tx = broadcastTx(broadcast);
     const totalOut = tx.outs.reduce((sum, out) => sum + out.value, 0);
-    expect(500_000 - totalOut).toBe(FEE);
+    expect(500_000 - totalOut).toBe(feeFor(1, 2)); // 1 input, recipient + change
   });
 
-  it('honours a custom fee rate', async () => {
+  it('scales the fee with transaction size (more inputs cost more)', async () => {
+    // One input vs three: the fee must grow with the byte count, not stay flat.
+    const oneIn = createFakeElectrum(
+      (await createActiveWallet()).address,
+      [500_000],
+    );
+    await new WalletService(oneIn.electrum as never).sendTransaction(
+      RECIPIENT,
+      100_000,
+      TEST_PASSWORD,
+      { feeRate: RATE },
+    );
+    const feeOneInput =
+      500_000 - broadcastTx(oneIn.broadcast).outs.reduce((s, o) => s + o.value, 0);
+
+    resetStorage();
+    const { address } = await createActiveWallet();
+    const threeIn = createFakeElectrum(address, [60_000, 60_000, 60_000]);
+    await new WalletService(threeIn.electrum as never).sendTransaction(
+      RECIPIENT,
+      150_000, // needs all three 60k inputs
+      TEST_PASSWORD,
+      { feeRate: RATE, strategy: CoinSelectionStrategy.LARGEST_FIRST },
+    );
+    const txThree = broadcastTx(threeIn.broadcast);
+    const feeThreeInputs = 180_000 - txThree.outs.reduce((s, o) => s + o.value, 0);
+
+    expect(txThree.ins.length).toBe(3);
+    expect(feeThreeInputs).toBe(feeFor(3, 2));
+    expect(feeThreeInputs).toBeGreaterThan(feeOneInput);
+  });
+
+  it('honours a custom fee rate (sat/vByte)', async () => {
     const { address } = await createActiveWallet();
     const { electrum, broadcast } = createFakeElectrum(address, [500_000]);
     const wallet = new WalletService(electrum as never);
 
-    await wallet.sendTransaction(RECIPIENT, 100_000, TEST_PASSWORD, { feeRate: 25_000 });
+    await wallet.sendTransaction(RECIPIENT, 100_000, TEST_PASSWORD, { feeRate: 3 });
 
     const tx = broadcastTx(broadcast);
     const totalOut = tx.outs.reduce((sum, out) => sum + out.value, 0);
-    expect(500_000 - totalOut).toBe(25_000);
+    expect(500_000 - totalOut).toBe(estimateTxFee(1, 2, 3));
   });
 
   it('pays miners the same fee with subtractFeeFromAmount on as off', async () => {
@@ -216,6 +253,7 @@ describe('sendTransaction', () => {
     const off = await walletFor();
     await off.wallet.sendTransaction(RECIPIENT, 100_000, TEST_PASSWORD, {
       subtractFeeFromAmount: false,
+      feeRate: RATE,
     });
     const txOff = broadcastTx(off.broadcast);
 
@@ -223,33 +261,56 @@ describe('sendTransaction', () => {
     const on = await walletFor();
     await on.wallet.sendTransaction(RECIPIENT, 100_000, TEST_PASSWORD, {
       subtractFeeFromAmount: true,
+      feeRate: RATE,
     });
     const txOn = broadcastTx(on.broadcast);
 
     const feeOff = 500_000 - txOff.outs.reduce((sum, out) => sum + out.value, 0);
     const feeOn = 500_000 - txOn.outs.reduce((sum, out) => sum + out.value, 0);
 
-    expect(feeOff).toBe(FEE);
-    expect(feeOn).toBe(FEE);
+    expect(feeOff).toBe(feeFor(1, 2));
+    expect(feeOn).toBe(feeFor(1, 2));
 
     // And with the flag on, the recipient — not the sender — absorbed the fee.
     const recipientOut = (tx: bitcoin.Transaction) =>
       outputsOf(tx).find((out) => out.address === RECIPIENT)!.value;
     expect(recipientOut(txOff)).toBe(100_000);
-    expect(recipientOut(txOn)).toBe(90_000);
+    expect(recipientOut(txOn)).toBe(100_000 - feeFor(1, 2));
   });
 
-  it('omits the change output when there is nothing left over', async () => {
+  it('lets subtract-fee send the entire balance (send-max)', async () => {
     const { address } = await createActiveWallet();
-    // Exactly amount + fee, so change is zero.
-    const { electrum, broadcast } = createFakeElectrum(address, [110_000]);
+    const { electrum, broadcast } = createFakeElectrum(address, [500_000]);
     const wallet = new WalletService(electrum as never);
 
-    await wallet.sendTransaction(RECIPIENT, 100_000, TEST_PASSWORD);
+    // Amount == full balance: only possible because the fee comes out of the amount.
+    await wallet.sendTransaction(RECIPIENT, 500_000, TEST_PASSWORD, {
+      subtractFeeFromAmount: true,
+      feeRate: RATE,
+    });
 
     const tx = broadcastTx(broadcast);
-    expect(tx.outs).toHaveLength(1);
+    const outputs = outputsOf(tx);
+    // Everything goes to the recipient minus the fee; no change output. (The fee is still sized for
+    // a 2-output tx, which is the conservative estimate the planner uses.)
+    expect(outputs).toHaveLength(1);
+    expect(outputs[0]).toEqual({ address: RECIPIENT, value: 500_000 - feeFor(1, 2) });
+  });
+
+  it('folds sub-dust change into the fee instead of emitting a dust output', async () => {
+    const { address } = await createActiveWallet();
+    // Leave a few hundred sats of change — below the dust threshold — so it must be folded.
+    const funding = 100_000 + feeFor(1, 2) + 300;
+    const { electrum, broadcast } = createFakeElectrum(address, [funding]);
+    const wallet = new WalletService(electrum as never);
+
+    await wallet.sendTransaction(RECIPIENT, 100_000, TEST_PASSWORD, { feeRate: RATE });
+
+    const tx = broadcastTx(broadcast);
+    expect(tx.outs).toHaveLength(1); // no dust change output
     expect(outputsOf(tx)[0]).toEqual({ address: RECIPIENT, value: 100_000 });
+    // The 300 sats of would-be dust went to the miner, not to a rejected output.
+    expect(funding - 100_000).toBe(feeFor(1, 2) + 300);
   });
 
   it('sends change to a custom change address when one is given', async () => {
@@ -258,10 +319,10 @@ describe('sendTransaction', () => {
     const { electrum, broadcast } = createFakeElectrum(address, [500_000]);
     const wallet = new WalletService(electrum as never);
 
-    await wallet.sendTransaction(RECIPIENT, 100_000, TEST_PASSWORD, { changeAddress });
+    await wallet.sendTransaction(RECIPIENT, 100_000, TEST_PASSWORD, { changeAddress, feeRate: RATE });
 
     const outputs = outputsOf(broadcastTx(broadcast));
-    expect(outputs).toContainEqual({ address: changeAddress, value: 390_000 });
+    expect(outputs).toContainEqual({ address: changeAddress, value: 500_000 - 100_000 - feeFor(1, 2) });
     expect(outputs.map((out) => out.address)).not.toContain(address);
   });
 
@@ -270,7 +331,10 @@ describe('sendTransaction', () => {
     const { electrum, broadcast } = createFakeElectrum(address, [500_000]);
     const wallet = new WalletService(electrum as never);
 
-    await wallet.sendTransaction(RECIPIENT, 100_000, TEST_PASSWORD, { changeAddress: '   ' });
+    await wallet.sendTransaction(RECIPIENT, 100_000, TEST_PASSWORD, {
+      changeAddress: '   ',
+      feeRate: RATE,
+    });
 
     const outputs = outputsOf(broadcastTx(broadcast));
     expect(outputs.map((out) => out.address)).toContain(address);
@@ -283,6 +347,7 @@ describe('sendTransaction', () => {
 
     await wallet.sendTransaction(RECIPIENT, 150_000, TEST_PASSWORD, {
       strategy: CoinSelectionStrategy.LARGEST_FIRST,
+      feeRate: RATE,
     });
 
     const tx = broadcastTx(broadcast);
@@ -296,6 +361,7 @@ describe('sendTransaction', () => {
 
     await wallet.sendTransaction(RECIPIENT, 150_000, TEST_PASSWORD, {
       strategy: CoinSelectionStrategy.LARGEST_FIRST,
+      feeRate: RATE,
     });
 
     const tx = broadcastTx(broadcast);
@@ -339,6 +405,21 @@ describe('sendTransaction', () => {
       amount: 0.001,
       confirmations: 0,
     });
+  });
+
+  it('records what the recipient actually received when subtract-fee is on', async () => {
+    const { address } = await createActiveWallet();
+    const { electrum } = createFakeElectrum(address, [500_000]);
+    const wallet = new WalletService(electrum as never);
+
+    await wallet.sendTransaction(RECIPIENT, 100_000, TEST_PASSWORD, {
+      subtractFeeFromAmount: true,
+      feeRate: RATE,
+    });
+
+    const history = await StorageService.getTransactionHistory(address);
+    // Recipient got amount − fee, and that (not the gross amount) is what history records.
+    expect(history[0].amount).toBeCloseTo((100_000 - feeFor(1, 2)) / 100_000_000, 10);
   });
 
   it('builds a spendable-looking transaction for a native SegWit wallet', async () => {

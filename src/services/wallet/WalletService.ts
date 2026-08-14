@@ -24,6 +24,7 @@ import * as bitcoinMessage from 'bitcoinjs-message';
 import { randomBytes, createHash, createCipheriv, createDecipheriv, createHmac } from 'crypto';
 import { secureEncrypt, secureDecrypt, decryptData, legacyDecrypt } from './encryption';
 import { runWithConcurrency } from './concurrency';
+import { estimateTxFee, DEFAULT_FEE_RATE_SAT_PER_VBYTE, DUST_THRESHOLD_SATS } from './fees';
 
 // How many transaction.get requests to keep in flight while syncing history. Electrum matches
 // responses by id, so a small pool cuts the latency of a large sync ~N-fold. Kept deliberately low:
@@ -180,6 +181,14 @@ export function resolveSendAmounts(
     const change = totalInput - sendAmount - feeRate;
     return { sendAmount, change };
 }
+
+// Fee model lives in ./fees (dependency-free, shared with the UI so the two cannot drift apart).
+export {
+    estimateTxVBytes,
+    estimateTxFee,
+    DEFAULT_FEE_RATE_SAT_PER_VBYTE,
+    DUST_THRESHOLD_SATS,
+} from './fees';
 
 
 
@@ -495,6 +504,24 @@ export class WalletService {
         }
     }
 
+    /**
+     * The fee rate (sat/vByte) to use for a spend: a caller override if given, otherwise the node's
+     * reported rate but never below Avian Core's default (fee estimation is unavailable on this
+     * low-volume chain, so Core's default is the reliable floor).
+     */
+    private async resolveFeeRate(optionRate?: number): Promise<number> {
+        if (optionRate && optionRate > 0) {
+            return optionRate;
+        }
+        let networkRate = 0;
+        try {
+            networkRate = await this.electrum.getFeeRateSatPerVByte();
+        } catch {
+            networkRate = 0;
+        }
+        return Math.max(DEFAULT_FEE_RATE_SAT_PER_VBYTE, networkRate);
+    }
+
     async sendTransaction(
         toAddress: string,
         amount: number,
@@ -556,15 +583,9 @@ export class WalletService {
             // Calculate total available amount
             const totalAvailable = enhancedUTXOs.reduce((sum, utxo) => sum + utxo.value, 0);
 
-            // Define transaction fee and options
-            const feeRate = options?.feeRate || 10000; // 0.0001 AVN = 10000 satoshis
-            const totalRequired = amount + feeRate;
-
-            if (totalAvailable < totalRequired) {
-                throw new Error(
-                    `Insufficient funds. Required: ${totalRequired} satoshis, Available: ${totalAvailable} satoshis`,
-                );
-            }
+            // Size-based fee: sat/vByte rate (caller override, else the node's rate, floored).
+            const subtractFee = options?.subtractFeeFromAmount ?? false;
+            const satPerVByte = await this.resolveFeeRate(options?.feeRate);
 
             // Select optimal UTXOs using the selection service
             const strategyRecommendation = UTXOSelectionService.getRecommendedStrategy(
@@ -587,35 +608,62 @@ export class WalletService {
                 }
             }
 
-            const selectionOptions: UTXOSelectionOptions = {
-                strategy: options?.strategy || strategyRecommendation.strategy,
-                targetAmount: amount,
-                feeRate: feeRate,
-                maxInputs: options?.maxInputs || 20,
-                minConfirmations: options?.minConfirmations || 0,
-                allowUnconfirmed: true,
-                includeDust: options?.strategy === CoinSelectionStrategy.CONSOLIDATE_DUST,
-                isAutoConsolidation: options?.strategy === CoinSelectionStrategy.CONSOLIDATE_DUST,
-                selfAddress: selfAddress,
-            };
+            // The fee depends on how many inputs get selected, and selection depends on the fee, so
+            // iterate: estimate a fee, select, re-estimate from the actual input count, and reselect
+            // if it grew. Converges in a pass or two because the fee is tiny next to the amounts.
+            let selectedUTXOs: any[] = [];
+            let totalSelected = 0;
+            let fee = estimateTxFee(1, 2, satPerVByte);
+            for (let iteration = 0; iteration < 4; iteration++) {
+                // For subtract-fee the recipient absorbs the fee, so the inputs only need to cover
+                // `amount`; otherwise they must cover `amount + fee`. This is what makes send-max
+                // with subtract-fee possible.
+                const selectionTarget = subtractFee ? Math.max(0, amount - fee) : amount;
+                const totalRequired = selectionTarget + fee;
+                if (totalAvailable < totalRequired) {
+                    throw new Error(
+                        `Insufficient funds. Required: ${totalRequired} satoshis, Available: ${totalAvailable} satoshis`,
+                    );
+                }
 
-            const selectionResult = UTXOSelectionService.selectUTXOs(enhancedUTXOs, selectionOptions);
+                const selectionOptions: UTXOSelectionOptions = {
+                    strategy: options?.strategy || strategyRecommendation.strategy,
+                    targetAmount: selectionTarget,
+                    feeRate: fee,
+                    maxInputs: options?.maxInputs || 20,
+                    minConfirmations: options?.minConfirmations || 0,
+                    allowUnconfirmed: true,
+                    includeDust: options?.strategy === CoinSelectionStrategy.CONSOLIDATE_DUST,
+                    isAutoConsolidation: options?.strategy === CoinSelectionStrategy.CONSOLIDATE_DUST,
+                    selfAddress: selfAddress,
+                };
 
-            if (!selectionResult) {
-                throw new Error('Unable to select suitable UTXOs for transaction');
+                const selectionResult = UTXOSelectionService.selectUTXOs(enhancedUTXOs, selectionOptions);
+                if (!selectionResult) {
+                    throw new Error('Unable to select suitable UTXOs for transaction');
+                }
+                selectedUTXOs = selectionResult.selectedUTXOs;
+                totalSelected = selectedUTXOs.reduce((sum, utxo) => sum + utxo.value, 0);
+
+                const recomputed = estimateTxFee(selectedUTXOs.length, 2, satPerVByte);
+                if (recomputed <= fee) {
+                    fee = recomputed;
+                    break;
+                }
+                fee = recomputed; // grew with the input count — reselect to cover the larger fee
             }
 
-            const { selectedUTXOs } = selectionResult;
-
-            // Split into recipient and change. The miner fee stays feeRate either way;
-            // subtractFeeFromAmount only moves it from the sender onto the recipient.
-            const totalSelected = selectedUTXOs.reduce((sum, utxo) => sum + utxo.value, 0);
-            const { sendAmount: finalSendAmount, change: finalChange } = resolveSendAmounts(
-                amount,
-                feeRate,
-                totalSelected,
-                options?.subtractFeeFromAmount ?? false,
-            );
+            // Split into recipient and change, folding sub-dust change into the fee rather than
+            // emitting an output the network would reject as dust.
+            const split = resolveSendAmounts(amount, fee, totalSelected, subtractFee);
+            const finalSendAmount = split.sendAmount;
+            if (finalSendAmount <= 0) {
+                throw new Error('Send amount is zero or negative after subtracting the fee');
+            }
+            if (split.change < 0) {
+                throw new Error('Insufficient funds to cover the network fee');
+            }
+            const finalChange = split.change >= DUST_THRESHOLD_SATS ? split.change : 0;
 
             // Determine change address - use custom address if provided, otherwise sender's address
             const changeAddress =
@@ -783,7 +831,7 @@ export class WalletService {
                 // Save transaction to local history
                 await StorageService.saveTransaction({
                     txid: txId,
-                    amount: amount / 100000000, // Convert satoshis to AVN
+                    amount: finalSendAmount / 100000000, // what the recipient received (net of fee if subtracted)
                     address: toAddress,
                     fromAddress: fromAddress,
                     walletAddress: fromAddress,
@@ -814,7 +862,7 @@ export class WalletService {
             // Save transaction to local history
             await StorageService.saveTransaction({
                 txid: txId,
-                amount: amount / 100000000, // Convert satoshis to AVN
+                amount: finalSendAmount / 100000000, // what the recipient received (net of fee if subtracted)
                 address: toAddress,
                 fromAddress: fromAddress,
                 walletAddress: fromAddress, // Add wallet address for proper multi-wallet support
@@ -858,8 +906,11 @@ export class WalletService {
 
             // Validate that we have sufficient funds
             const totalAvailable = manualUTXOs.reduce((sum, utxo) => sum + utxo.value, 0);
-            const feeRate = options?.feeRate || 10000; // Default fee
-            const totalRequired = amount + feeRate;
+            const subtractFee = options?.subtractFeeFromAmount ?? false;
+            const satPerVByte = await this.resolveFeeRate(options?.feeRate);
+            // Inputs are fixed here, so the fee is known directly (recipient + change ≈ 2 outputs).
+            const fee = estimateTxFee(manualUTXOs.length, 2, satPerVByte);
+            const totalRequired = subtractFee ? amount : amount + fee;
 
             if (totalAvailable < totalRequired) {
                 throw new Error(
@@ -959,19 +1010,26 @@ export class WalletService {
                 tx.addInput(Buffer.from(utxo.txid, 'hex').reverse(), utxo.vout);
             }
 
-            // Split into recipient and change via the shared rule (fee stays feeRate either way).
+            // Split into recipient and change via the shared rule.
             const totalInput = manualUTXOs.reduce((sum, utxo) => sum + utxo.value, 0);
             const { sendAmount: actualAmount, change } = resolveSendAmounts(
                 amount,
-                feeRate,
+                fee,
                 totalInput,
-                options?.subtractFeeFromAmount ?? false,
+                subtractFee,
             );
+            if (actualAmount <= 0) {
+                throw new Error('Send amount is zero or negative after subtracting the fee');
+            }
+            if (change < 0) {
+                throw new Error('Insufficient funds to cover the network fee');
+            }
 
             // Add outputs
             tx.addOutput(bitcoin.address.toOutputScript(toAddress, avianNetwork), actualAmount);
 
-            if (change > 0) {
+            // Fold sub-dust change into the fee rather than emit a rejected dust output.
+            if (change >= DUST_THRESHOLD_SATS) {
                 const changeAddress = options?.changeAddress || activeWallet.address;
                 tx.addOutput(bitcoin.address.toOutputScript(changeAddress, avianNetwork), change);
             }
@@ -4077,40 +4135,58 @@ export class WalletService {
             // Calculate total available amount
             const totalAvailable = enhancedUTXOs.reduce((sum, utxo) => sum + utxo.value, 0);
 
-            // Define transaction fee and options
-            const feeRate = options?.feeRate || 10000; // Default to 10000 satoshis per KB
+            // Size-based fee: sat/vByte rate (caller override, else the node's rate, floored).
+            const subtractFee = options?.subtractFeeFromAmount ?? false;
+            const satPerVByte = await this.resolveFeeRate(options?.feeRate);
             const maxInputs = options?.maxInputs || 650; // Default: stay under ~100KB for standard txs
             const minConfirmations =
                 options?.minConfirmations !== undefined ? options?.minConfirmations : 6;
             const strategy = options?.strategy || CoinSelectionStrategy.BEST_FIT;
 
-            // Get selected UTXOs based on the chosen strategy
-            const selectionOptions: UTXOSelectionOptions = {
-                strategy: strategy,
-                targetAmount: amount,
-                feeRate: feeRate,
-                maxInputs: maxInputs,
-                minConfirmations: minConfirmations,
-                allowUnconfirmed: true,
-                includeDust: false,
-            };
-
-            const selectionResult = UTXOSelectionService.selectUTXOs(enhancedUTXOs, selectionOptions);
-
-            if (!selectionResult) {
-                throw new Error('Unable to select suitable UTXOs for transaction');
+            // Iterate so the fee tracks the selected input count (see sendTransaction for rationale).
+            let selectedUTXOs: any[] = [];
+            let totalSelected = 0;
+            let fee = estimateTxFee(1, 2, satPerVByte);
+            for (let iteration = 0; iteration < 4; iteration++) {
+                const selectionTarget = subtractFee ? Math.max(0, amount - fee) : amount;
+                if (totalAvailable < selectionTarget + fee) {
+                    throw new Error(
+                        `Insufficient funds. Required: ${selectionTarget + fee} satoshis, Available: ${totalAvailable} satoshis`,
+                    );
+                }
+                const selectionOptions: UTXOSelectionOptions = {
+                    strategy: strategy,
+                    targetAmount: selectionTarget,
+                    feeRate: fee,
+                    maxInputs: maxInputs,
+                    minConfirmations: minConfirmations,
+                    allowUnconfirmed: true,
+                    includeDust: false,
+                };
+                const selectionResult = UTXOSelectionService.selectUTXOs(enhancedUTXOs, selectionOptions);
+                if (!selectionResult) {
+                    throw new Error('Unable to select suitable UTXOs for transaction');
+                }
+                selectedUTXOs = selectionResult.selectedUTXOs;
+                totalSelected = selectedUTXOs.reduce((sum, utxo) => sum + utxo.value, 0);
+                const recomputed = estimateTxFee(selectedUTXOs.length, 2, satPerVByte);
+                if (recomputed <= fee) {
+                    fee = recomputed;
+                    break;
+                }
+                fee = recomputed;
             }
 
-            const { selectedUTXOs } = selectionResult;
-
-            // Split into recipient and change via the shared rule (fee stays feeRate either way).
-            const totalSelected = selectedUTXOs.reduce((sum, utxo) => sum + utxo.value, 0);
-            const { sendAmount: finalSendAmount, change: finalChangeAmount } = resolveSendAmounts(
-                amount,
-                feeRate,
-                totalSelected,
-                options?.subtractFeeFromAmount ?? false,
-            );
+            // Split into recipient and change, folding sub-dust change into the fee.
+            const split = resolveSendAmounts(amount, fee, totalSelected, subtractFee);
+            const finalSendAmount = split.sendAmount;
+            if (finalSendAmount <= 0) {
+                throw new Error('Send amount is zero or negative after subtracting the fee');
+            }
+            if (split.change < 0) {
+                throw new Error('Insufficient funds to cover the network fee');
+            }
+            const finalChangeAmount = split.change >= DUST_THRESHOLD_SATS ? split.change : 0;
 
             // Determine change address - use custom address if provided, otherwise sender's address
             const changeAddress =
@@ -4129,9 +4205,8 @@ export class WalletService {
             // Add output for recipient
             tx.addOutput(bitcoin.address.toOutputScript(toAddress, avianNetwork), finalSendAmount);
 
-            // Add change output if needed
-            if (finalChangeAmount > 600) {
-                // Only create change outputs above dust limit
+            // Add change output if needed (sub-dust change was already folded into the fee above).
+            if (finalChangeAmount > 0) {
                 tx.addOutput(
                     bitcoin.address.toOutputScript(changeAddress, avianNetwork),
                     finalChangeAmount,
@@ -4197,7 +4272,7 @@ export class WalletService {
             // Track this as a sent transaction in our history
             const txData = {
                 txid: txId,
-                amount: amount / 100000000, // Convert to AVN
+                amount: finalSendAmount / 100000000, // what the recipient received (net of fee if subtracted)
                 address: toAddress,
                 fromAddress: fromAddress,
                 walletAddress: fromAddress, // Use the derived address
