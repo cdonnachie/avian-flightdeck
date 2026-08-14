@@ -15,6 +15,9 @@ import {
     ChevronDown,
     ExternalLink,
     ArrowLeft,
+    Coins,
+    FileSignature,
+    LogIn,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import packageJson from '../../../package.json';
@@ -71,6 +74,34 @@ export default function AboutPage() {
             description:
                 'Professional-grade UTXO management with coin control, multiple selection strategies, and transaction optimization',
             highlights: ['UTXO selection', 'Coin control', 'Selection strategies', 'Dust consolidation'],
+        },
+        {
+            icon: <Coins className="h-5 w-5" />,
+            title: 'Avian Assets',
+            description:
+                'Hold, send, and issue Avian assets — main, sub, and unique — with IPFS images, reissue support, and labeled asset history',
+            highlights: [
+                'Asset balances',
+                'Send assets',
+                'Create main / sub / unique',
+                'Reissue & mint more',
+                'IPFS images',
+                'Asset history labels',
+            ],
+        },
+        {
+            icon: <FileSignature className="h-5 w-5" />,
+            title: 'PSBT & Co-signing',
+            description:
+                'Build an unsigned transaction to sign in Avian Core or with a co-signer, then broadcast it — for air-gapped and multi-party workflows',
+            highlights: ['Export unsigned PSBT', 'Sign PSBT', 'Broadcast raw tx', 'Avian Core compatible'],
+        },
+        {
+            icon: <LogIn className="h-5 w-5" />,
+            title: 'Avian Connect',
+            description:
+                'Sign into dApps and games with a signed challenge — sites receive an address and a signature, never a key, and every request needs your explicit approval',
+            highlights: ['dApp sign-in', 'Challenge signing', 'Explicit approval', 'Connected sites'],
         },
         {
             icon: <Lock className="h-5 w-5" />,
@@ -205,6 +236,65 @@ export default function AboutPage() {
                     question: 'What are watch addresses?',
                     answer:
                         "Watch addresses let you monitor any Avian address without having the private keys. This is useful for tracking donations, monitoring business addresses, or keeping an eye on transactions you're expecting.",
+                },
+            ],
+        },
+        {
+            id: 'assets',
+            title: 'Avian Assets',
+            icon: <Coins className="h-4 w-4" />,
+            items: [
+                {
+                    question: 'What are Avian assets and where do I see mine?',
+                    answer:
+                        'Avian supports on-chain assets (tokens) in the Ravencoin style. Any assets your wallet holds appear in the Assets card on the main wallet view, each with its quantity, a type badge (owner, unique, sub, restricted, or qualifier), and — when the asset has an IPFS image — a thumbnail you can click to enlarge.',
+                },
+                {
+                    question: 'How do I send an asset?',
+                    answer:
+                        "Use the send button on the asset's row in the Assets card, enter the recipient's legacy (R…) address and the amount, then confirm. Assets are legacy-address-only. Sending an owner token (a name ending in '!') transfers control of that asset, so the dialog warns you before you continue.",
+                },
+                {
+                    question: 'How do I create a new asset?',
+                    answer:
+                        'Click Create in the Assets card. You can issue a main (root) asset, a sub-asset under a root you already own, or a unique asset (NFT-style). Set the quantity, the divisions (0–8 decimal places), whether it stays reissuable, and optionally an IPFS hash or transaction id for metadata. Issuing permanently burns AVN (500 for a root, 100 for a sub, 5 for a unique); sub and unique assets also spend the parent owner token.',
+                },
+                {
+                    question: 'What does reissuing an asset do?',
+                    answer:
+                        "Reissuing a reissuable asset lets you mint more supply and/or update its settings — raise the divisions, set a new IPFS hash, or lock it permanently by turning reissuable off. It burns 100 AVN and needs the asset's owner token, so the reissue button only appears on assets you can reissue.",
+                },
+                {
+                    question: 'Which IPFS hashes are supported for asset images?',
+                    answer:
+                        "Avian uses IPFS v0 CIDs — the ones that start with 'Qm…'. Paste a v0 hash when creating or reissuing an asset and, if it points to an image, FlightDeck shows it as the asset's thumbnail and full-size preview. You can also reference a 64-character transaction id instead of an IPFS hash.",
+                },
+                {
+                    question: 'How is asset activity shown in transaction history?',
+                    answer:
+                        'Each history row that moves an asset is labeled — for example "+5 SMAUG" or "−5 SMAUG" for transfers, "Issued FLIGHTDECK#desktop" for an issuance, or "Reissued CRAIG_KINGDOM (+1)" for a reissue. Labels are derived from the transaction itself, so assets you received are labeled just like ones you sent.',
+                },
+            ],
+        },
+        {
+            id: 'connect-psbt',
+            title: 'Avian Connect & PSBT',
+            icon: <LogIn className="h-4 w-4" />,
+            items: [
+                {
+                    question: 'What is Avian Connect?',
+                    answer:
+                        'Avian Connect lets dApps and games ask your wallet to sign a challenge so you can sign in without a password. The site receives your address and a signature — never your private key — and every request goes through an explicit approval screen. You can review and revoke connected sites in Settings.',
+                },
+                {
+                    question: 'What is an unsigned PSBT and why would I export one?',
+                    answer:
+                        'A PSBT (Partially Signed Bitcoin Transaction) is a transaction that has been built but not yet signed. Exporting one lets you sign it elsewhere — in Avian Core or with a co-signer on another device — which is useful for air-gapped or multi-party setups. You will find "Export unsigned PSBT" on the Send screen.',
+                },
+                {
+                    question: 'How do I sign and broadcast a PSBT?',
+                    answer:
+                        'FlightDeck can sign a PSBT you paste in and finalize it ready for broadcast, or you can sign it in Avian Core. Because Avian uses FORKID signatures, FlightDeck finalizes each input as it signs so the result is a complete transaction Core can broadcast. Once finalized, broadcast the raw transaction to the network.',
                 },
             ],
         },
