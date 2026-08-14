@@ -146,7 +146,7 @@ export function BalanceInstrument({
                         <path d="M58 15 L64 22 M92 15 L86 22" stroke="#34F5C6" strokeWidth="3.5" strokeLinecap="round" />
                         <circle cx="75" cy="15" r="3.4" fill="#04121a" stroke="#34F5C6" strokeWidth="2.2" />
                     </svg>
-                    <div className="fd-readout fd-glow-teal relative flex flex-wrap items-baseline gap-x-2 text-3xl font-semibold leading-none text-[#34E2D5] md:text-4xl">
+                    <div className="fd-readout fd-glow-teal relative flex flex-wrap items-baseline gap-x-2 text-2xl font-semibold leading-none text-[#34E2D5] sm:text-3xl md:text-4xl">
                         {isLoading && !processingProgress.isProcessing ? (
                             <span className="text-[#9DB4BC]">Loading…</span>
                         ) : balanceStatus === 'unknown' ? (
@@ -158,7 +158,9 @@ export function BalanceInstrument({
                             </span>
                         ) : (
                             <>
-                                <span className="break-all">{`${formatBalance(displayBalance)} AVN`}</span>
+                                {/* break-words (not break-all) so a long balance wraps at the space
+                                    and the "AVN" unit never splits mid-word (e.g. "AV" / "N"). */}
+                                <span className="min-w-0 break-words">{`${formatBalance(displayBalance)} AVN`}</span>
                                 {balanceStatus === 'stale' && (
                                     <span
                                         data-testid="balance-stale"
