@@ -28,6 +28,11 @@ const robotoMono = localFont({
   display: 'swap',
 });
 
+// Social preview image. The `?v=` suffix is a cache-buster: link-unfurl crawlers (Discord, Slack,
+// Twitter) key their preview cache on the full URL, so bump this whenever the screenshot changes to
+// force them to refetch instead of serving a stale thumbnail.
+const OG_IMAGE = '/screenshots/desktop-home.png?v=2';
+
 export const metadata: Metadata = {
   // Resolves relative Open Graph / Twitter image URLs against the real host. Without it a static
   // export bakes in http://localhost:3000, so link-unfurl crawlers can't fetch the preview images.
@@ -57,7 +62,7 @@ export const metadata: Metadata = {
     description: 'Secure and user-friendly Avian cryptocurrency wallet for managing your digital assets',
     images: [
       {
-        url: '/screenshots/desktop-home.png',
+        url: OG_IMAGE,
         width: 1920,
         height: 1080,
         alt: 'Avian FlightDeck Desktop Interface',
@@ -80,7 +85,7 @@ export const metadata: Metadata = {
     description: 'Secure and user-friendly Avian cryptocurrency wallet for managing your digital assets',
     creator: '@aavianfoundation',
     site: '@aavianfoundation',
-    images: ['/screenshots/desktop-home.png'],
+    images: [OG_IMAGE],
   },
 
   // Additional metadata for better SEO
