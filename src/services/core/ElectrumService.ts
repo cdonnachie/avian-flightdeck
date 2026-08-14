@@ -529,11 +529,14 @@ export class ElectrumService {
     }
   }
 
-  /** Metadata for an asset: divisions (0–8 units), reissuable, IPFS, and total supply. */
+  /** Metadata for an asset, or null if it doesn't exist. */
   async getAssetMeta(name: string): Promise<AssetMeta | null> {
     try {
       const response = await this.makeRequest('blockchain.asset.get_meta', [name]);
-      if (!response) return null;
+      // ElectrumX returns an empty object ({}) for an asset that doesn't exist — a real asset always
+      // carries a numeric `divisions`. Treat anything without it as "not found" so callers (e.g. the
+      // create-asset availability check) don't read a non-existent name as taken.
+      if (!response || typeof response.divisions !== 'number') return null;
       return {
         name,
         divisions: typeof response.divisions === 'number' ? response.divisions : 0,
