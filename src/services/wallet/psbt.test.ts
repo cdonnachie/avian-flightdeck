@@ -110,6 +110,12 @@ describe('signPsbt / finalizePsbt', () => {
     expect(signed.signedInputs).toBe(1);
     expect(signed.complete).toBe(true);
 
+    // Avian Core cannot decode a FORKID partial_sig, so signPsbt must finalize: the input carries
+    // finalScriptSig and NO lingering partialSig, otherwise Core rejects the PSBT on import.
+    const parsed = bitcoin.Psbt.fromBase64(signed.psbt, { network: avianNetwork });
+    expect(parsed.data.inputs[0].finalScriptSig).toBeDefined();
+    expect(parsed.data.inputs[0].partialSig).toBeUndefined();
+
     const { hex: rawHex, txid: finalTxid } = wallet.finalizePsbt(signed.psbt);
     const tx = bitcoin.Transaction.fromHex(rawHex);
     expect(tx.getId()).toBe(finalTxid);
@@ -132,6 +138,11 @@ describe('signPsbt / finalizePsbt', () => {
     const signed = await wallet.signPsbt(psbtB64, TEST_PASSWORD);
     expect(signed.signedInputs).toBe(1);
     expect(signed.complete).toBe(true);
+
+    // Finalized inline (see the P2PKH case): witness input carries finalScriptWitness, no partialSig.
+    const parsed = bitcoin.Psbt.fromBase64(signed.psbt, { network: avianNetwork });
+    expect(parsed.data.inputs[0].finalScriptWitness).toBeDefined();
+    expect(parsed.data.inputs[0].partialSig).toBeUndefined();
 
     const { hex: rawHex } = wallet.finalizePsbt(signed.psbt);
     const tx = bitcoin.Transaction.fromHex(rawHex);

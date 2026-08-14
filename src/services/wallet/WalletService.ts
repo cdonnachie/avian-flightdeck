@@ -574,10 +574,6 @@ export class WalletService {
         }
     }
 
-    private inputSignedBy(data: any, pubkey: Buffer): boolean {
-        return !!data.partialSig?.some((ps: any) => Buffer.from(ps.pubkey).equals(pubkey));
-    }
-
     private inputHasAnySig(data: any): boolean {
         return !!(
             data.finalScriptSig ||
@@ -669,16 +665,31 @@ export class WalletService {
         return b;
     }
 
+    /** Set an input's final scriptSig (legacy) or scriptWitness (SegWit) from a [sig, pubkey] pair. */
+    private setFinalScript(psbt: bitcoin.Psbt, index: number, sig: Buffer, pub: Buffer, isSegwit: boolean) {
+        if (isSegwit) {
+            psbt.updateInput(index, { finalScriptWitness: this.serializeWitnessStack([sig, pub]) });
+        } else {
+            psbt.updateInput(index, { finalScriptSig: bitcoin.script.compile([sig, pub]) });
+        }
+    }
+
     /**
      * Sign every input the active wallet owns — skipping asset inputs and any already signed — with
-     * the Avian FORKID sighash, and return the updated base64 PSBT. Does not finalize, so the result
-     * can be handed to another signer or exported.
+     * the Avian FORKID sighash, and return the updated base64 PSBT with those inputs finalized.
      *
-     * bitcoinjs-lib's own PSBT signer rejects the 0x41 (ALL|FORKID) sighash ("Invalid hashType 65"),
-     * so we compute the digest ourselves — legacy `hashForSignature` for P2PKH, BIP143
-     * `hashForWitnessV0` for native SegWit — exactly as the regular send path does, then inject the
-     * DER signature as a partialSig. This is the same signing that FlightDeck already broadcasts and
-     * confirms on mainnet, just carried through the PSBT container.
+     * Two Avian-specific reasons this doesn't use bitcoinjs-lib's PSBT signer/finaliser:
+     *  1. Its signer rejects the 0x41 (ALL|FORKID) sighash ("Invalid hashType 65"), so we compute
+     *     the digest ourselves — legacy `hashForSignature` for P2PKH, BIP143 `hashForWitnessV0` for
+     *     native SegWit — exactly as the regular send path already broadcasts on mainnet.
+     *  2. **Avian Core cannot decode a FORKID `partial_sig`**: its PSBT parser runs every partial
+     *     signature through `CheckSignatureEncoding` without `SCRIPT_ENABLE_SIGHASH_FORKID`
+     *     (interpreter.cpp), so the 0x40 bit is rejected as an illegal encoding. Core sidesteps this
+     *     by finalising immediately (the signature then rides in `final_scriptsig`, which decode does
+     *     not validate). Our inputs are single-key, so one signature completes them — so we finalise
+     *     each input as we sign it. The result carries `final_scriptsig`/`final_scriptwitness`, which
+     *     Core and other wallets read and broadcast; a lingering FORKID `partial_sig` would not
+     *     round-trip to Core.
      */
     async signPsbt(
         psbtBase64: string,
@@ -693,13 +704,14 @@ export class WalletService {
 
         let signedInputs = 0;
         for (let i = 0; i < psbt.inputCount; i++) {
+            const data = psbt.data.inputs[i];
+            if (data.finalScriptSig || data.finalScriptWitness) continue; // already finalized
             const prev = this.psbtPrevOut(psbt, i);
             if (!prev) continue;
             if (isAssetScript(prev.script)) continue; // never sign an asset input — it would burn it
             const isP2pkh = prev.script.equals(p2pkhScript);
             const isP2wpkh = prev.script.equals(p2wpkhScript);
             if (!isP2pkh && !isP2wpkh) continue; // not our key
-            if (this.inputSignedBy(psbt.data.inputs[i], pubkey)) continue;
             try {
                 let digest: Buffer;
                 if (isP2wpkh) {
@@ -720,7 +732,9 @@ export class WalletService {
                     Buffer.from(keyPair.sign(digest)),
                     SIGHASH_ALL_FORKID,
                 );
-                psbt.updateInput(i, { partialSig: [{ pubkey, signature: sig }] });
+                // Finalize immediately (single-key input) rather than leaving a FORKID partial_sig,
+                // which Avian Core refuses to decode. See the method comment above.
+                this.setFinalScript(psbt, i, sig, pubkey, isP2wpkh);
                 signedInputs++;
             } catch (error) {
                 walletLogger.warn(`Could not sign PSBT input ${i}:`, error);
@@ -735,9 +749,9 @@ export class WalletService {
     }
 
     /**
-     * Finalize a fully-signed PSBT and extract the raw transaction (hex + txid). bitcoinjs-lib's
-     * finalizer also rejects the 0x41 sighash on decode, so we build each input's finalScriptSig
-     * (legacy) or finalScriptWitness (SegWit) from its partialSig ourselves before extracting.
+     * Finalize a fully-signed PSBT and extract the raw transaction (hex + txid). `signPsbt` already
+     * finalizes the inputs it signs, so this is normally just an extract; for a PSBT that still
+     * carries a `partial_sig` (from another signer) it builds the final script from that first.
      */
     finalizePsbt(psbtBase64: string): { hex: string; txid: string } {
         const psbt = bitcoin.Psbt.fromBase64(psbtBase64, { network: avianNetwork });
@@ -746,14 +760,14 @@ export class WalletService {
             if (data.finalScriptSig || data.finalScriptWitness) continue; // already finalized
             const partialSig = data.partialSig?.[0];
             if (!partialSig) throw new Error(`PSBT input ${i} is not signed`);
-            const sig = Buffer.from(partialSig.signature);
-            const pub = Buffer.from(partialSig.pubkey);
             const prev = this.psbtPrevOut(psbt, i);
-            if (prev && this.isP2wpkhScript(prev.script)) {
-                psbt.updateInput(i, { finalScriptWitness: this.serializeWitnessStack([sig, pub]) });
-            } else {
-                psbt.updateInput(i, { finalScriptSig: bitcoin.script.compile([sig, pub]) });
-            }
+            this.setFinalScript(
+                psbt,
+                i,
+                Buffer.from(partialSig.signature),
+                Buffer.from(partialSig.pubkey),
+                !!(prev && this.isP2wpkhScript(prev.script)),
+            );
         }
         const tx = psbt.extractTransaction();
         return { hex: tx.toHex(), txid: tx.getId() };
