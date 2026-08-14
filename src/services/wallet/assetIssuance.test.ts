@@ -4,7 +4,7 @@ import { ECPairFactory } from 'ecpair';
 import * as ecc from 'tiny-secp256k1';
 
 import { WalletService, avianNetwork, deriveAddress, secureEncrypt } from './WalletService';
-import { parseAssetScript, ISSUE_BURN } from './assetScript';
+import { buildOwnerScript, parseAssetScript, ISSUE_BURN } from './assetScript';
 import { StorageService } from '@/services/core/StorageService';
 import { TEST_PASSWORD, resetStorage } from '@/test/helpers';
 
@@ -166,5 +166,135 @@ describe('issueAsset (root)', () => {
       }),
     ).rejects.toThrow(/burns 500 AVN/);
     expect(broadcast).not.toHaveBeenCalled();
+  });
+});
+
+/** A prevtx whose output[0] is the `PARENT!` owner token (an asset script) paying the owner. */
+function ownerFundingTx(owner: string, parentName: string, seed: number) {
+  const tx = new bitcoin.Transaction();
+  tx.version = 2;
+  tx.addInput(Buffer.alloc(32, seed), 0);
+  tx.addOutput(buildOwnerScript(owner, parentName), 0);
+  return { hex: tx.toHex(), txid: tx.getId() };
+}
+
+/** Electrum stub with a parent owner-token UTXO plus AVN UTXOs. */
+function createChildElectrum(owner: string, parentName: string, avnValues: number[], hasOwner = true) {
+  const txs = new Map<string, string>();
+  const ownerName = `${parentName}!`;
+  const ownerUtxos: { txid: string; vout: number; value: number; height: number; asset: string }[] = [];
+  if (hasOwner) {
+    const f = ownerFundingTx(owner, parentName, 200);
+    txs.set(f.txid, f.hex);
+    ownerUtxos.push({ txid: f.txid, vout: 0, value: COIN, height: 100, asset: ownerName });
+  }
+  const avnUtxos = avnValues.map((value, i) => {
+    const f = avnFundingTx(owner, value, i + 1);
+    txs.set(f.txid, f.hex);
+    return { txid: f.txid, vout: 0, value, height: 100 };
+  });
+  const broadcast = vi.fn(async (hex: string) => bitcoin.Transaction.fromHex(hex).getId());
+  return {
+    broadcast,
+    electrum: {
+      getAssetUTXOs: vi.fn(async (_a: string, name: string) => (name === ownerName ? ownerUtxos : [])),
+      getUTXOs: vi.fn(async () => avnUtxos),
+      getTransaction: vi.fn(async (txid: string) => txs.get(txid)),
+      broadcastTransaction: broadcast,
+      getFeeRateSatPerVByte: vi.fn(async () => 0),
+      isConnectedToServer: vi.fn(() => true),
+    },
+  };
+}
+
+describe('issueUniqueAsset', () => {
+  it('spends the parent owner token, burns 5 AVN, and lays out the unique correctly', async () => {
+    const { address } = await createActiveWallet();
+    const { electrum, broadcast } = createChildElectrum(address, 'MYASSET', [10 * COIN]);
+    const wallet = new WalletService(electrum as never);
+
+    await wallet.issueUniqueAsset('MYASSET#001', TEST_PASSWORD, { feeRate: 1 });
+
+    const tx = bitcoin.Transaction.fromHex(broadcast.mock.calls[0][0] as string);
+    const outs = tx.outs;
+    // 5-AVN burn to the unique burn address.
+    expect(
+      outs.some(
+        (o) => o.value === 5 * COIN &&
+          (() => {
+            try {
+              return bitcoin.address.fromOutputScript(o.script, avianNetwork) === ISSUE_BURN.unique.address;
+            } catch {
+              return false;
+            }
+          })(),
+      ),
+    ).toBe(true);
+    // Parent owner returned, then new owner (2nd-last), new asset (last).
+    expect(parseAssetScript(outs[outs.length - 3].script as Buffer)).toMatchObject({
+      type: 'transfer',
+      name: 'MYASSET!',
+    });
+    expect(parseAssetScript(outs[outs.length - 2].script as Buffer)).toMatchObject({
+      type: 'owner',
+      name: 'MYASSET#001!',
+    });
+    expect(parseAssetScript(outs[outs.length - 1].script as Buffer)).toMatchObject({
+      type: 'issue',
+      name: 'MYASSET#001',
+      amount: 1n * BigInt(COIN),
+    });
+    // First input is the parent owner token.
+    expect(tx.ins.length).toBe(2); // owner + one AVN
+  });
+
+  it('refuses when the parent owner token is not held', async () => {
+    const { address } = await createActiveWallet();
+    const { electrum, broadcast } = createChildElectrum(address, 'MYASSET', [10 * COIN], false);
+    const wallet = new WalletService(electrum as never);
+
+    await expect(wallet.issueUniqueAsset('MYASSET#001', TEST_PASSWORD, { feeRate: 1 })).rejects.toThrow(
+      /MYASSET! owner token/,
+    );
+    expect(broadcast).not.toHaveBeenCalled();
+  });
+});
+
+describe('issueSubAsset', () => {
+  it('spends the parent owner token, burns 100 AVN, and creates the sub + its owner', async () => {
+    const { address } = await createActiveWallet();
+    const { electrum, broadcast } = createChildElectrum(address, 'MYASSET', [200 * COIN]);
+    const wallet = new WalletService(electrum as never);
+
+    await wallet.issueSubAsset(
+      'MYASSET/SUB',
+      { amount: 1000n * BigInt(COIN), units: 2, reissuable: true },
+      TEST_PASSWORD,
+      { feeRate: 1 },
+    );
+
+    const tx = bitcoin.Transaction.fromHex(broadcast.mock.calls[0][0] as string);
+    const outs = tx.outs;
+    expect(
+      outs.some(
+        (o) => o.value === 100 * COIN &&
+          (() => {
+            try {
+              return bitcoin.address.fromOutputScript(o.script, avianNetwork) === ISSUE_BURN.sub.address;
+            } catch {
+              return false;
+            }
+          })(),
+      ),
+    ).toBe(true);
+    expect(parseAssetScript(outs[outs.length - 2].script as Buffer)).toMatchObject({
+      type: 'owner',
+      name: 'MYASSET/SUB!',
+    });
+    expect(parseAssetScript(outs[outs.length - 1].script as Buffer)).toMatchObject({
+      type: 'issue',
+      name: 'MYASSET/SUB',
+      amount: 1000n * BigInt(COIN),
+    });
   });
 });
