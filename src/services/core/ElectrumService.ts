@@ -45,6 +45,27 @@ interface ElectrumNotification {
   params: any[];
 }
 
+/** One pre-classified history row from the `get_history_rich` extension. Amounts are in satoshis. */
+export interface RichHistoryTx {
+  txid: string;
+  height: number;
+  time: number;
+  type: 'send' | 'receive';
+  amount: number;
+  counterparty: string;
+  fee: number;
+  confirmations: number;
+}
+
+/** One page of `get_history_rich` results, newest-first, with the total for pagination. */
+export interface RichHistoryPage {
+  total: number;
+  page: number;
+  page_size: number;
+  order: string;
+  txs: RichHistoryTx[];
+}
+
 import * as bitcoin from 'bitcoinjs-lib';
 import { electrumLogger } from '@/lib/Logger';
 
@@ -77,6 +98,9 @@ export class ElectrumService {
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 5;
   private reconnectTimeout: NodeJS.Timeout | null = null;
+  // Whether the current server advertises our get_history_rich extension. null = not yet probed;
+  // reset whenever the server changes so a switch re-detects.
+  private richHistorySupported: boolean | null = null;
 
   constructor() {
     // Array of Avian ElectrumX servers
@@ -317,6 +341,7 @@ export class ElectrumService {
 
       // Update current server
       this.currentServer = this.servers[index];
+      this.richHistorySupported = null; // re-detect on the new server
       electrumLogger.debug(
         `Selected server: ${this.currentServer.host} (${this.currentServer.region || 'Unknown region'})`,
       );
@@ -341,6 +366,7 @@ export class ElectrumService {
 
       // Update current server
       this.currentServer = server;
+      this.richHistorySupported = null; // re-detect on the new server
       electrumLogger.debug(
         `Selected server by host: ${this.currentServer.host} (${this.currentServer.region || 'Unknown region'})`,
       );
@@ -516,6 +542,47 @@ export class ElectrumService {
       electrumLogger.error('Failed to get transaction history:', error);
       return [];
     }
+  }
+
+  /**
+   * Whether the current server advertises our `get_history_rich` extension (via a `avn_rich_history`
+   * flag in server.features). Memoised per connection; reset when the server changes. On any error,
+   * treated as unsupported so callers fall back to the standard reconstruction path.
+   */
+  async supportsRichHistory(): Promise<boolean> {
+    if (this.richHistorySupported !== null) {
+      return this.richHistorySupported;
+    }
+    try {
+      const features = await this.getServerFeatures();
+      // Cache the definitive answer (true, or false for a server that genuinely lacks it).
+      this.richHistorySupported = !!features?.avn_rich_history;
+      return this.richHistorySupported;
+    } catch {
+      // Transient failure (e.g. probed mid-disconnect): don't cache, so we re-detect next time
+      // rather than disabling the fast path for the whole session.
+      return false;
+    }
+  }
+
+  /**
+   * Fetch one page of pre-classified history from our `get_history_rich` extension. The server
+   * returns rows already resolved to direction/amount/counterparty, newest-first, so the client
+   * does not have to fetch each transaction and its inputs. `pageSize` is clamped to 1..100 because
+   * the server rejects anything outside that range.
+   */
+  async getRichHistoryPage(
+    address: string,
+    page: number,
+    pageSize: number,
+  ): Promise<RichHistoryPage> {
+    const scriptHash = this.addressToScriptHash(address);
+    const size = Math.min(100, Math.max(1, Math.floor(pageSize)));
+    return await this.makeRequest('blockchain.scripthash.get_history_rich', [
+      scriptHash,
+      Math.max(0, Math.floor(page)),
+      size,
+    ]);
   }
 
   async getTransaction(txHash: string, verbose: boolean = false): Promise<any> {

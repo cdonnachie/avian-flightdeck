@@ -53,6 +53,9 @@ function createElectrum(transactions: Record<string, TxDetails>, history?: { tx_
     isConnectedToServer: vi.fn(() => true),
     connect: vi.fn(async () => {}),
     waitForConnection: vi.fn(async () => {}),
+    // Default: no rich-history extension, so the standard reconstruction path runs.
+    supportsRichHistory: vi.fn(async () => false),
+    getRichHistoryPage: vi.fn(),
   };
 }
 
@@ -647,5 +650,107 @@ describe('sync efficiency', () => {
     await new WalletService(electrum as never).processTransactionHistory(WALLET_A);
 
     expect(electrum.getCurrentBlockHeight).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('rich history path', () => {
+  // When the server advertises get_history_rich, the client consumes pre-classified rows and skips
+  // the per-transaction / per-input reconstruction entirely.
+  const richElectrum = (
+    pages: Array<{ total: number; txs: any[] }>,
+  ) => {
+    const e = createElectrum({});
+    e.supportsRichHistory = vi.fn(async () => true);
+    e.getRichHistoryPage = vi.fn(async (_address: string, page: number) => {
+      const p = pages[page] ?? { total: pages[0].total, txs: [] };
+      return { total: p.total, page, page_size: 100, order: 'newest', txs: p.txs };
+    });
+    return e;
+  };
+
+  const richRow = (over: Partial<Record<string, unknown>> = {}) => ({
+    txid: 'f'.repeat(64),
+    height: 100,
+    time: 1_700_000_000,
+    type: 'receive',
+    amount: 500000000,
+    counterparty: EXTERNAL,
+    fee: 1000,
+    confirmations: 5,
+    ...over,
+  });
+
+  it('maps a receive row without fetching any transaction bodies', async () => {
+    await ownWallets(WALLET_A);
+    const electrum = richElectrum([{ total: 1, txs: [richRow()] }]);
+
+    await new WalletService(electrum as never).processTransactionHistory(WALLET_A);
+
+    expect(electrum.getTransaction).not.toHaveBeenCalled(); // no reconstruction
+    const history = await historyFor(WALLET_A);
+    expect(history).toHaveLength(1);
+    expect(history[0]).toMatchObject({
+      type: 'receive',
+      amount: 5, // satoshis -> AVN
+      address: EXTERNAL, // counterparty
+      fromAddress: EXTERNAL, // sender, for a receive
+      walletAddress: WALLET_A,
+      confirmations: 5,
+    });
+  });
+
+  it('maps a send row with the wallet as the sender', async () => {
+    await ownWallets(WALLET_A);
+    const electrum = richElectrum([
+      { total: 1, txs: [richRow({ type: 'send', counterparty: EXTERNAL_2, amount: 250000000 })] },
+    ]);
+
+    await new WalletService(electrum as never).processTransactionHistory(WALLET_A);
+
+    const history = await historyFor(WALLET_A);
+    expect(history[0]).toMatchObject({
+      type: 'send',
+      amount: 2.5,
+      address: EXTERNAL_2, // recipient
+      fromAddress: WALLET_A, // us, for a send
+    });
+  });
+
+  it('pages through the whole history', async () => {
+    await ownWallets(WALLET_A);
+    const page0 = Array.from({ length: 100 }, (_, i) =>
+      richRow({ txid: i.toString(16).padStart(64, '0') }),
+    );
+    const page1 = Array.from({ length: 50 }, (_, i) =>
+      richRow({ txid: (100 + i).toString(16).padStart(64, '0') }),
+    );
+    const electrum = richElectrum([
+      { total: 150, txs: page0 },
+      { total: 150, txs: page1 },
+    ]);
+
+    await new WalletService(electrum as never).processTransactionHistory(WALLET_A);
+
+    expect(electrum.getRichHistoryPage).toHaveBeenCalledTimes(2); // page 0 and page 1
+    expect(await historyFor(WALLET_A)).toHaveLength(150);
+  });
+
+  it('falls back to the standard path when the rich page call fails', async () => {
+    await ownWallets(WALLET_A);
+    const electrum = createElectrum({
+      [TX_HASH]: { vin: [from(EXTERNAL)], vout: [out(WALLET_A, 7)] },
+    });
+    electrum.supportsRichHistory = vi.fn(async () => true);
+    electrum.getRichHistoryPage = vi.fn(async () => {
+      throw new Error('boom');
+    });
+
+    await new WalletService(electrum as never).processTransactionHistory(WALLET_A);
+
+    // Standard reconstruction still recorded the transaction.
+    const history = await historyFor(WALLET_A);
+    expect(history).toHaveLength(1);
+    expect(history[0].amount).toBe(7);
+    expect(electrum.getTransaction).toHaveBeenCalled();
   });
 });
