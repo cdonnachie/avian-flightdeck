@@ -11,7 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 /** The kind of Avian asset name, for a small type badge. */
-function assetKind(name: string): 'unique' | 'sub' | 'restricted' | 'qualifier' | null {
+function assetKind(name: string): 'owner' | 'unique' | 'sub' | 'restricted' | 'qualifier' | null {
+  if (name.endsWith('!')) return 'owner'; // administrative token — grants reissue/management rights
   if (name.includes('#')) return name.startsWith('#') ? 'qualifier' : 'unique';
   if (name.startsWith('$')) return 'restricted';
   if (name.includes('/')) return 'sub';
