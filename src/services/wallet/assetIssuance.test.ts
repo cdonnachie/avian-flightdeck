@@ -213,7 +213,7 @@ describe('issueUniqueAsset', () => {
     const { electrum, broadcast } = createChildElectrum(address, 'MYASSET', [10 * COIN]);
     const wallet = new WalletService(electrum as never);
 
-    await wallet.issueUniqueAsset('MYASSET#001', TEST_PASSWORD, { feeRate: 1 });
+    await wallet.issueUniqueAsset('MYASSET#001', undefined, TEST_PASSWORD, { feeRate: 1 });
 
     const tx = bitcoin.Transaction.fromHex(broadcast.mock.calls[0][0] as string);
     const outs = tx.outs;
@@ -253,7 +253,7 @@ describe('issueUniqueAsset', () => {
     const { electrum, broadcast } = createChildElectrum(address, 'MYASSET', [10 * COIN], false);
     const wallet = new WalletService(electrum as never);
 
-    await expect(wallet.issueUniqueAsset('MYASSET#001', TEST_PASSWORD, { feeRate: 1 })).rejects.toThrow(
+    await expect(wallet.issueUniqueAsset('MYASSET#001', undefined, TEST_PASSWORD, { feeRate: 1 })).rejects.toThrow(
       /MYASSET! owner token/,
     );
     expect(broadcast).not.toHaveBeenCalled();

@@ -119,6 +119,50 @@ export function isValidRootAssetName(name: string): boolean {
   return true;
 }
 
+const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
+/** Plain base58 (btc alphabet, no checksum) decode — for IPFS `Qm…` hashes. */
+function base58Decode(input: string): Buffer {
+  const bytes = [0];
+  for (const ch of input) {
+    const value = BASE58_ALPHABET.indexOf(ch);
+    if (value < 0) throw new Error('Invalid base58 character');
+    let carry = value;
+    for (let j = 0; j < bytes.length; j++) {
+      carry += bytes[j] * 58;
+      bytes[j] = carry & 0xff;
+      carry >>= 8;
+    }
+    while (carry) {
+      bytes.push(carry & 0xff);
+      carry >>= 8;
+    }
+  }
+  for (let k = 0; k < input.length && input[k] === '1'; k++) bytes.push(0);
+  return Buffer.from(bytes.reverse());
+}
+
+/**
+ * Encode an asset's IPFS/TXid reference into the 34-byte on-chain blob Core expects. Avian (like
+ * Ravencoin) only accepts **IPFS v0** CIDs — the 46-char base58 `Qm…` sha2-256 hash — which decodes
+ * directly to `0x12 0x20 <32-byte sha256>`; a v1 CID (`bafy…`) is rejected. A TXid is 64 hex chars,
+ * emitted as `0x54 0x20 <32-byte txid>`. Byte-exact to Avian Core DecodeAssetData + SerializeIPFSHash.
+ */
+export function encodeAssetData(hashOrTxid: string): Buffer {
+  const value = hashOrTxid.trim();
+  if (value.length === 46 && value.startsWith('Qm')) {
+    const decoded = base58Decode(value);
+    if (decoded.length !== 34) throw new Error('Invalid IPFS v0 hash');
+    return decoded; // already 0x12 0x20 ‖ 32-byte hash
+  }
+  if (value.length === 64 && /^[0-9a-fA-F]+$/.test(value)) {
+    return Buffer.concat([Buffer.from([TXID_NOTIFIER, 0x20]), Buffer.from(value, 'hex')]);
+  }
+  throw new Error('Provide an IPFS v0 hash (Qm…, 46 characters) or a 64-character txid');
+}
+
+const TXID_NOTIFIER = 0x54;
+
 export interface IssuanceParams {
   name: string;
   /** Total supply in integer units (10^8-scaled), e.g. 1 whole unit = 100000000. */
@@ -126,17 +170,21 @@ export interface IssuanceParams {
   /** Divisibility 0–8. */
   units: number;
   reissuable: boolean;
+  /** Optional IPFS hash (Qm…) or 64-hex txid to associate with the asset. */
+  ipfs?: string;
 }
 
 /**
  * Build a new-asset issuance output (`rvn·q · CNewAsset`) paying the created supply to `address`.
- * IPFS/ANS are not carried (both flags 0) — deferred. Byte-exact to Avian Core `CNewAsset`.
+ * Carries an optional IPFS/TXid hash; ANS is never carried (flag 0). Byte-exact to Avian Core
+ * `CNewAsset` (name, amount, units, reissuable, hasIPFS[, ipfs], hasANS).
  */
 export function buildIssuanceScript(address: string, params: IssuanceParams): Buffer {
-  const { name, amount, units, reissuable } = params;
+  const { name, amount, units, reissuable, ipfs } = params;
   if (amount <= 0n) throw new Error('Issuance amount must be positive');
   if (units < 0 || units > 8) throw new Error('Units must be between 0 and 8');
   const nameBuf = Buffer.from(name, 'ascii');
+  const ipfsBlob = ipfs ? encodeAssetData(ipfs) : null;
   const payload = Buffer.concat([
     ASSET_MARKER,
     Buffer.from([ASSET_TYPE.issue]),
@@ -145,7 +193,8 @@ export function buildIssuanceScript(address: string, params: IssuanceParams): Bu
     int64LE(amount),
     Buffer.from([units & 0xff]),
     Buffer.from([reissuable ? 1 : 0]),
-    Buffer.from([0]), // hasIPFS = 0 (IPFS deferred)
+    Buffer.from([ipfsBlob ? 1 : 0]), // hasIPFS
+    ...(ipfsBlob ? [ipfsBlob] : []),
     Buffer.from([0]), // hasANS = 0
   ]);
   return wrapAssetScript(legacyP2PKHScript(address), payload);

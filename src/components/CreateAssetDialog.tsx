@@ -71,6 +71,8 @@ export default function CreateAssetDialog({
   const [amountInput, setAmountInput] = useState('1');
   const [units, setUnits] = useState('0');
   const [reissuable, setReissuable] = useState(true);
+  const [addIpfs, setAddIpfs] = useState(false);
+  const [ipfs, setIpfs] = useState('');
   const [confirmBurn, setConfirmBurn] = useState(false);
   const [error, setError] = useState('');
   const [isBusy, setIsBusy] = useState(false);
@@ -85,6 +87,8 @@ export default function CreateAssetDialog({
       setAmountInput('1');
       setUnits('0');
       setReissuable(true);
+      setAddIpfs(false);
+      setIpfs('');
       setConfirmBurn(false);
       setError('');
       setTxid('');
@@ -153,14 +157,23 @@ export default function CreateAssetDialog({
         return;
       }
 
+      const ipfsValue = addIpfs && ipfs.trim() ? ipfs.trim() : undefined;
       const service = new WalletService(electrum);
       let id: string;
       if (type === 'root') {
-        id = await service.issueAsset(fullName, { amount, units: divisions, reissuable }, auth.password);
+        id = await service.issueAsset(
+          fullName,
+          { amount, units: divisions, reissuable, ipfs: ipfsValue },
+          auth.password,
+        );
       } else if (type === 'sub') {
-        id = await service.issueSubAsset(fullName, { amount, units: divisions, reissuable }, auth.password);
+        id = await service.issueSubAsset(
+          fullName,
+          { amount, units: divisions, reissuable, ipfs: ipfsValue },
+          auth.password,
+        );
       } else {
-        id = await service.issueUniqueAsset(fullName, auth.password);
+        id = await service.issueUniqueAsset(fullName, ipfsValue, auth.password);
       }
       setTxid(id);
       toast.success(`Created ${fullName}`);
@@ -318,6 +331,28 @@ export default function CreateAssetDialog({
           Unique assets are always quantity 1, indivisible, and cannot be reissued.
         </p>
       )}
+
+      <div className="space-y-2">
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox checked={addIpfs} onCheckedChange={(c) => setAddIpfs(c === true)} />
+          Add IPFS / TXid hash
+        </label>
+        {addIpfs && (
+          <>
+            <Input
+              value={ipfs}
+              onChange={(e) => setIpfs(e.target.value)}
+              placeholder="IPFS v0 hash (Qm…) or a 64-character txid"
+              className="font-mono text-xs"
+              spellCheck={false}
+            />
+            <p className="text-xs text-muted-foreground">
+              Avian accepts IPFS <strong>v0</strong> CIDs only (SHA-256, base58 — starts with{' '}
+              <span className="font-mono">Qm</span>).
+            </p>
+          </>
+        )}
+      </div>
 
       <Alert className="border-caution/40 bg-caution/10 [&>svg]:text-caution">
         <Flame className="h-4 w-4" />

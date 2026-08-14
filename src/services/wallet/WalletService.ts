@@ -1191,7 +1191,7 @@ export class WalletService {
      */
     async issueAsset(
         name: string,
-        params: { amount: bigint; units: number; reissuable: boolean },
+        params: { amount: bigint; units: number; reissuable: boolean; ipfs?: string },
         password?: string,
         options?: { feeRate?: number; changeAddress?: string },
     ): Promise<string> {
@@ -1235,6 +1235,7 @@ export class WalletService {
                 amount: params.amount,
                 units: params.units,
                 reissuable: params.reissuable,
+                ipfs: params.ipfs,
             });
 
             // Fund the burn + fee from AVN UTXOs (iterating on the selected input count).
@@ -1319,7 +1320,7 @@ export class WalletService {
      */
     async issueSubAsset(
         subName: string,
-        params: { amount: bigint; units: number; reissuable: boolean },
+        params: { amount: bigint; units: number; reissuable: boolean; ipfs?: string },
         password?: string,
         options?: { feeRate?: number; changeAddress?: string },
     ): Promise<string> {
@@ -1331,6 +1332,7 @@ export class WalletService {
             amount: params.amount,
             units: params.units,
             reissuable: params.reissuable,
+            ipfs: params.ipfs,
             burnAmount: ISSUE_BURN.sub.amount,
             burnAddress: ISSUE_BURN.sub.address,
             password,
@@ -1340,10 +1342,11 @@ export class WalletService {
 
     /**
      * Issue a unique asset (`PARENT#tag`, burns 5 AVN). Always quantity 1, 0 divisions,
-     * non-reissuable. Requires owning the `PARENT!` owner token.
+     * non-reissuable. Requires owning the `PARENT!` owner token. An optional IPFS/txid may be set.
      */
     async issueUniqueAsset(
         uniqueName: string,
+        ipfs?: string,
         password?: string,
         options?: { feeRate?: number; changeAddress?: string },
     ): Promise<string> {
@@ -1355,6 +1358,7 @@ export class WalletService {
             amount: 100_000_000n, // exactly 1 unit
             units: 0,
             reissuable: false,
+            ipfs,
             burnAmount: ISSUE_BURN.unique.amount,
             burnAddress: ISSUE_BURN.unique.address,
             password,
@@ -1374,6 +1378,7 @@ export class WalletService {
         amount: bigint;
         units: number;
         reissuable: boolean;
+        ipfs?: string;
         burnAmount: bigint;
         burnAddress: string;
         password?: string;
@@ -1419,7 +1424,13 @@ export class WalletService {
             const burnScript = bitcoin.address.toOutputScript(burnAddress, avianNetwork);
             const parentReturnScript = buildAssetTransferScript(changeAddress, ownerName, ownerAmount);
             const newOwnerScript = buildOwnerScript(fromAddress, childName);
-            const newAssetScript = buildIssuanceScript(fromAddress, { name: childName, amount, units, reissuable });
+            const newAssetScript = buildIssuanceScript(fromAddress, {
+                name: childName,
+                amount,
+                units,
+                reissuable,
+                ipfs: opts.ipfs,
+            });
 
             const burn = Number(burnAmount);
             const satPerVByte = await this.resolveFeeRate(opts.options?.feeRate);

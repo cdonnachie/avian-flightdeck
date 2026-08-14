@@ -217,4 +217,21 @@ describe('real mainnet Core golden vectors', () => {
       '76a9147f92d9617eeb5fc717eb8d3c431b237f0caad14a88acc02072766e710f464c494748544445434b2f5445535400e1f505000000000001000075',
     );
   });
+
+  it('reproduces a real Core issuance with an IPFS hash byte-for-byte', () => {
+    // FLIGHTDECK#001 (unique) issued with IPFS QmaQdhp16ksqeEQMfArTux8bjeBaJmAxi8JpnSCSgSEsQ3. The
+    // hash decodes (base58) to 0x12 0x20 ‖ 32-byte sha256, appended after hasIPFS=01.
+    const DEST = 'RAqL1E1MhbDbAWWdo9pugcvdP2GAt7SWSH';
+    expect(
+      buildIssuanceScript(DEST, {
+        name: 'FLIGHTDECK#001',
+        amount: 100_000_000n,
+        units: 0,
+        reissuable: false,
+        ipfs: 'QmaQdhp16ksqeEQMfArTux8bjeBaJmAxi8JpnSCSgSEsQ3',
+      }).toString('hex'),
+    ).toBe(
+      '76a914110c0d88b13de35be9708cf83bc76366c2545dd788acc04172766e710e464c494748544445434b2330303100e1f505000000000000011220b3516e0d37699ee67d4d79560b0abc3e99ec2485bb1f326a3eaa5f05e5f8aaf80075',
+    );
+  });
 });
