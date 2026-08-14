@@ -759,14 +759,20 @@ export class WalletService {
         return { hex: tx.toHex(), txid: tx.getId() };
     }
 
-    /** Sign the active wallet's inputs, finalize, and broadcast. Returns the txid. */
-    async signAndBroadcastPsbt(psbtBase64: string, password?: string): Promise<string> {
-        const signed = await this.signPsbt(psbtBase64, password);
-        const { hex, txid } = this.finalizePsbt(signed.psbt);
+    /** Broadcast a raw transaction hex (e.g. from finalizePsbt) and return its txid. */
+    async broadcastRawTransaction(hex: string): Promise<string> {
         const result = await this.electrum.broadcastTransaction(hex);
         if (!result || typeof result !== 'string') {
             throw new Error('Transaction broadcast failed. Please try again later.');
         }
+        return result;
+    }
+
+    /** Sign the active wallet's inputs, finalize, and broadcast. Returns the txid. */
+    async signAndBroadcastPsbt(psbtBase64: string, password?: string): Promise<string> {
+        const signed = await this.signPsbt(psbtBase64, password);
+        const { hex, txid } = this.finalizePsbt(signed.psbt);
+        await this.broadcastRawTransaction(hex);
         return txid;
     }
 
