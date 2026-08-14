@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import * as bitcoin from 'bitcoinjs-lib';
 
 import { avianNetwork } from './WalletService';
-import { buildAssetTransferScript, parseAssetScript, ASSET_MARKER } from './assetScript';
+import {
+  buildAssetTransferScript,
+  buildIssuanceScript,
+  buildOwnerScript,
+  parseAssetScript,
+  ASSET_MARKER,
+} from './assetScript';
 import { isAssetScript, OP_AVN_ASSET } from './psbt';
 
 /**
@@ -122,6 +128,21 @@ describe('real mainnet Core golden vectors', () => {
       name: 'FLIGHTDECK',
       amount: 100_000_000n, // qty 1, scaled by 10^8
     });
+  });
+
+  it('builds an owner-token output byte-identical to Core’s FLIGHTDECK owner output', () => {
+    expect(buildOwnerScript(OWNER, 'FLIGHTDECK').toString('hex')).toBe(ownerScript.toString('hex'));
+  });
+
+  it('builds a new-asset output byte-identical to Core’s FLIGHTDECK issuance', () => {
+    // FLIGHTDECK was issued with 1 unit, 0 divisions, reissuable, no IPFS/ANS.
+    const built = buildIssuanceScript(OWNER, {
+      name: 'FLIGHTDECK',
+      amount: 100_000_000n,
+      units: 0,
+      reissuable: true,
+    });
+    expect(built.toString('hex')).toBe(issueScript.toString('hex'));
   });
 
   it('builds a transfer whose name+amount bytes match Core’s real encoding', () => {
