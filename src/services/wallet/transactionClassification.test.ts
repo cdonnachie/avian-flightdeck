@@ -699,6 +699,20 @@ describe('rich history path', () => {
     });
   });
 
+  it('labels a null-counterparty receive (a coinbase payout) as Coinbase, never null', async () => {
+    await ownWallets(WALLET_A);
+    const electrum = richElectrum([
+      { total: 1, txs: [richRow({ type: 'receive', counterparty: null })] },
+    ]);
+
+    await new WalletService(electrum as never).processTransactionHistory(WALLET_A);
+
+    const [entry] = await historyFor(WALLET_A);
+    expect(entry.type).toBe('receive');
+    expect(entry.address).toBe('Coinbase'); // coerced from null, matches the standard path
+    expect(entry.fromAddress).toBe('Coinbase');
+  });
+
   it('maps a send row with the wallet as the sender', async () => {
     await ownWallets(WALLET_A);
     const electrum = richElectrum([

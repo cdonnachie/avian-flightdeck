@@ -2365,11 +2365,16 @@ export class WalletService {
         row: import('../core/ElectrumService').RichHistoryTx,
         walletAddress: string,
     ): Omit<TransactionData, 'id'> {
+        // The server returns counterparty: null when there is no single resolvable other party. For
+        // a receive that means a coinbase / mining payout (a coinbase input has no prevout to
+        // resolve), which we label "Coinbase" to match the standard reconstruction path. Never let
+        // null reach storage — TransactionData.address is a string the UI relies on.
+        const counterparty = row.counterparty ?? (row.type === 'receive' ? 'Coinbase' : '');
         return {
             txid: row.txid,
             amount: row.amount / 100000000,
-            address: row.counterparty,
-            fromAddress: row.type === 'receive' ? row.counterparty : walletAddress,
+            address: counterparty,
+            fromAddress: row.type === 'receive' ? counterparty : walletAddress,
             walletAddress,
             type: row.type,
             timestamp: row.time ? new Date(row.time * 1000) : new Date(),
