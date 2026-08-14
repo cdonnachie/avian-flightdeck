@@ -137,12 +137,15 @@ test.describe('popup transport', () => {
     await expect(demoLog(walletPage)).toContainText('"network":"mainnet"');
   });
 
-  test('signPsbt() is refused as unsupported in this phase', async ({ walletPage }) => {
+  test('signPsbt() from a site that has not connected is refused', async ({ walletPage }) => {
     await openDemo(walletPage);
 
-    await callWithNewPopup(walletPage, 'signPsbt() → unsupported');
+    // signPsbt is supported now, but like signMessage it is permission-gated: an unconnected
+    // origin gets ORIGIN_NOT_APPROVED with no approval dialog ever shown.
+    const popup = await callWithNewPopup(walletPage, 'signPsbt()');
 
-    await expect(demoLog(walletPage)).toContainText('UNSUPPORTED_METHOD');
+    await expect(demoLog(walletPage)).toContainText('ORIGIN_NOT_APPROVED');
+    await expect(approvalDialog(popup)).toHaveCount(0);
   });
 
   test('a site that has not connected cannot ask for a signature', async ({ walletPage }) => {

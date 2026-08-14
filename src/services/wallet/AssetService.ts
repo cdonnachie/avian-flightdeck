@@ -16,18 +16,19 @@ export interface HeldAsset {
 }
 
 /**
- * Format an integer asset amount (scaled by `10^divisions`) as a decimal string. A 0-division asset
- * is whole-number only; otherwise the fractional part is shown to the full `divisions` width, the
- * way Core displays asset quantities. Uses BigInt so large supplies never lose precision.
+ * Format an on-chain asset amount as a decimal string. Avian assets (Ravencoin model) store every
+ * quantity scaled by 10^8 (COIN), exactly like AVN — a quantity of "1" is on-chain `100000000`.
+ * `divisions` (0–8) only says how many of those decimal places are meaningful, so we always divide
+ * by 10^8 and then show `divisions` decimals (0 → a whole number). BigInt keeps large supplies exact.
  */
 export function formatAssetAmount(sats: number, divisions: number): string {
   const units = Math.min(Math.max(divisions | 0, 0), 8);
   const value = BigInt(Math.trunc(sats));
-  if (units === 0) return value.toString();
-  const divisor = 10n ** BigInt(units);
-  const whole = value / divisor;
-  const frac = (value % divisor).toString().padStart(units, '0');
-  return `${whole.toString()}.${frac}`;
+  const COIN = 100_000_000n; // asset amounts are scaled by 10^8, like AVN — not by 10^divisions
+  const whole = value / COIN;
+  if (units === 0) return whole.toString();
+  const frac8 = (value % COIN).toString().padStart(8, '0');
+  return `${whole.toString()}.${frac8.slice(0, units)}`;
 }
 
 /**
