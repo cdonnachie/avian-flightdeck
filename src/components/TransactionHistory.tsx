@@ -515,8 +515,11 @@ export function TransactionHistory({ className }: TransactionHistoryProps) {
                           {tx.type === 'send' ? 'To: ' : 'From: '}
                           <span className="font-mono break-all">
                             {(() => {
+                              // Some transactions have no resolvable counterparty (e.g. mining
+                              // payouts) — never assume a string here or the whole list crashes.
                               const displayAddress =
-                                tx.type === 'send' ? tx.address : tx.fromAddress || tx.address;
+                                (tx.type === 'send' ? tx.address : tx.fromAddress || tx.address) ||
+                                'Unknown';
                               return displayAddress.length > 40
                                 ? `${displayAddress.slice(0, 20)}...${displayAddress.slice(-20)}`
                                 : displayAddress;
