@@ -187,7 +187,7 @@ export default function LandingPage() {
         <div className="fdl-wrap">
           <div className="fdl-head"><span className="fdl-label">Under the panel</span><h2>The avionics, spelled out</h2></div>
           <div className="fdl-specs">
-            <div className="fdl-spec"><div className="k">Encryption at rest</div><div className="v">scrypt + AES-256-GCM</div></div>
+            <div className="fdl-spec"><div className="k">Encryption at rest</div><div className="v">Argon2id + AES-256-GCM</div></div>
             <div className="fdl-spec"><div className="k">Key derivation</div><div className="v">BIP39 · BIP32 HD</div></div>
             <div className="fdl-spec"><div className="k">Signatures</div><div className="v">SIGHASH · FORKID (0x41)</div></div>
             <div className="fdl-spec"><div className="k">Network</div><div className="v mint">ElectrumX · US / EU / CA</div></div>
@@ -222,7 +222,7 @@ const FEATURES = [
 ];
 
 const CHECKS = [
-  { title: 'Encrypted at rest', body: 'Your private keys and recovery phrase are sealed with scrypt and AES-256-GCM, and only ever decrypted in memory when you authorise an action.' },
+  { title: 'Encrypted at rest', body: 'Your private keys and recovery phrase are sealed with Argon2id and AES-256-GCM, and only ever decrypted in memory when you authorise an action.' },
   { title: 'Nothing phones home', body: 'There is no backend and no account. The app talks only to public ElectrumX servers to read balances and broadcast the transactions you sign.' },
   { title: 'Signatures need your say-so', body: 'Sending, exporting a key, and every dApp signature pass through an explicit approval screen and a fresh password or biometric check.' },
   { title: 'Only you can recover you', warn: true, body: 'No password reset, no support line that can move your coins. Keep your backup somewhere safe — losing it loses the wallet, and that is the price of holding your own keys.' },
