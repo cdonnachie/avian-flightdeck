@@ -30,7 +30,7 @@ export default function HelpSettingsPage() {
             title: 'Documentation',
             description: 'User guides and documentation',
             icon: ExternalLink,
-            action: () => window.open('https://github.com/cdonnachie/avian-flightdeck', '_blank'),
+            action: () => window.open('https://github.com/AvianNetwork/avian-flightdeck', '_blank'),
         },
     ];
 

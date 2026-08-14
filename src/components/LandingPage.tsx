@@ -201,7 +201,7 @@ export default function LandingPage() {
           <div className="fdl-foot__sign">FLIGHTDECK · <b>SYSTEMS NOMINAL</b> · you have control</div>
           <div className="fdl-foot__links">
             <button onClick={start}>Get started</button>
-            <a href="https://github.com/cdonnachie/avian-flightdeck" target="_blank" rel="noreferrer">Documentation</a>
+            <a href="https://github.com/AvianNetwork/avian-flightdeck" target="_blank" rel="noreferrer">Documentation</a>
             <a href="/terms">Terms</a>
           </div>
         </div>

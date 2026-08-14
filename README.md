@@ -49,7 +49,7 @@ A Progressive Web App (PWA) implementation of the Avian cryptocurrency wallet, b
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/cdonnachie/avian-flightdeck.git
+git clone https://github.com/AvianNetwork/avian-flightdeck.git
 cd avian-flightdeck
 ```
 
@@ -302,7 +302,7 @@ MIT License - see LICENSE file for details
 
 For issues and questions:
 
-- GitHub Issues: [Repository Issues](https://github.com/cdonnachie/avian-flightdeck/issues)
+- GitHub Issues: [Repository Issues](https://github.com/AvianNetwork/avian-flightdeck/issues)
 - Community: Avian Network Discord/Telegram
 
 ## Roadmap
