@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Coins, RefreshCw, Search, Send } from 'lucide-react';
+import { Coins, Plus, RefreshCw, Search, Send } from 'lucide-react';
 
 import { useWallet } from '@/contexts/WalletContext';
 import { getHeldAssets, type HeldAsset } from '@/services/wallet/AssetService';
@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import SendAssetDialog from './SendAssetDialog';
+import CreateAssetDialog from './CreateAssetDialog';
 
 /** The kind of Avian asset name, for a small type badge. */
 function assetKind(name: string): 'owner' | 'unique' | 'sub' | 'restricted' | 'qualifier' | null {
@@ -32,6 +33,7 @@ export function AssetList({ className }: { className?: string }) {
   const [loaded, setLoaded] = useState(false);
   const [query, setQuery] = useState('');
   const [sending, setSending] = useState<HeldAsset | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     if (!electrum || !address) return;
@@ -44,13 +46,27 @@ export function AssetList({ className }: { className?: string }) {
     }
   }, [electrum, address]);
 
+  // Reload now and again shortly after — a just-spent/created asset only drops off (or appears)
+  // once ElectrumX reflects the new tx, which lags the broadcast by a moment.
+  const reloadSoon = useCallback(() => {
+    void load();
+    setTimeout(() => void load(), 2500);
+  }, [load]);
+
   useEffect(() => {
     if (isConnected && address) void load();
   }, [isConnected, address, load]);
 
-  // Stay invisible until we know there is something to show — no empty card for AVN-only wallets.
+  // Assets are legacy-address-only; a legacy wallet can create even with nothing held yet.
+  const canCreate = !!address && address.startsWith('R');
+  // Owner tokens we hold (NAME!) → the roots we can create sub/unique assets under.
+  const ownedRoots = assets
+    .filter((a) => a.name.endsWith('!'))
+    .map((a) => a.name.slice(0, -1));
+
+  // Stay invisible until loaded; then only hide when there's nothing to show and nothing to create.
   if (!loaded && !loading) return null;
-  if (loaded && assets.length === 0) return null;
+  if (loaded && assets.length === 0 && !canCreate) return null;
 
   const filtered = query
     ? assets.filter((a) => a.name.toLowerCase().includes(query.toLowerCase()))
@@ -66,16 +82,28 @@ export function AssetList({ className }: { className?: string }) {
             <span className="text-sm font-normal text-muted-foreground">({assets.length})</span>
           )}
         </CardTitle>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={() => void load()}
-          disabled={loading}
-          aria-label="Refresh assets"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-        </Button>
+        <span className="flex items-center gap-1">
+          {canCreate && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={() => setCreating(true)}
+            >
+              <Plus className="h-4 w-4" /> Create
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => void load()}
+            disabled={loading}
+            aria-label="Refresh assets"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+        </span>
       </CardHeader>
       <CardContent className="p-0">
         {assets.length > 6 && (
@@ -144,7 +172,7 @@ export function AssetList({ className }: { className?: string }) {
             })}
             {filtered.length === 0 && (
               <li className="px-4 py-6 text-center text-sm text-muted-foreground">
-                No assets match “{query}”.
+                {query ? `No assets match “${query}”.` : 'No assets yet — create one to get started.'}
               </li>
             )}
           </ul>
@@ -155,7 +183,14 @@ export function AssetList({ className }: { className?: string }) {
         open={sending !== null}
         onOpenChange={(next) => !next && setSending(null)}
         asset={sending}
-        onSuccess={() => void load()}
+        onSuccess={reloadSoon}
+      />
+
+      <CreateAssetDialog
+        open={creating}
+        onOpenChange={setCreating}
+        ownedRoots={ownedRoots}
+        onSuccess={reloadSoon}
       />
     </Card>
   );
