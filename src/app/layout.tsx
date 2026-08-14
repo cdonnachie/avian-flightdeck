@@ -29,6 +29,9 @@ const robotoMono = localFont({
 });
 
 export const metadata: Metadata = {
+  // Resolves relative Open Graph / Twitter image URLs against the real host. Without it a static
+  // export bakes in http://localhost:3000, so link-unfurl crawlers can't fetch the preview images.
+  metadataBase: new URL('https://flightdeck.avn.network'),
   title: 'Avian FlightDeck',
   description: 'Secure and user-friendly Avian cryptocurrency wallet for managing your digital assets',
   keywords: ['avian', 'cryptocurrency', 'wallet', 'blockchain', 'crypto', 'digital assets'],
