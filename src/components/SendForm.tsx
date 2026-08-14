@@ -11,6 +11,9 @@ import {
   UserCheck,
   Check,
   X,
+  ArrowUpFromLine,
+  Copy,
+  Download,
 } from 'lucide-react';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSecurity } from '@/contexts/SecurityContext';
@@ -35,6 +38,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -88,6 +92,12 @@ export default function SendForm() {
   const [manuallySelectedUTXOs, setManuallySelectedUTXOs] = useState<EnhancedUTXO[]>([]);
   const [subtractFeeFromAmount, setSubtractFeeFromAmount] = useState(false);
   const [customChangeAddress, setCustomChangeAddress] = useState('');
+
+  // Unsigned-PSBT export (sign elsewhere — Avian Core, a co-signer — then broadcast).
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportedPsbt, setExportedPsbt] = useState('');
+  const [exportedInfo, setExportedInfo] = useState<{ fee: number; inputs: number } | null>(null);
+  const [copiedExport, setCopiedExport] = useState(false);
   const [availableChangeAddresses, setAvailableChangeAddresses] = useState<
     Array<{ address: string; path: string }>
   >([]);
@@ -120,6 +130,69 @@ export default function SendForm() {
 
   const openExplorer = (txid: string) => {
     WalletService.openTransactionInExplorer(txid);
+  };
+
+  // Export is only meaningful for the standard path — the shared planner selects from the main
+  // wallet address automatically, so a derived-address send or a manual UTXO pick isn't reflected.
+  const canExportUnsigned =
+    !fromDerivedAddress && utxoOptions.strategy !== CoinSelectionStrategy.MANUAL;
+
+  const handleExportUnsigned = async () => {
+    setError('');
+    setExportedPsbt('');
+    setExportedInfo(null);
+    if (!toAddress || !validateAddress(toAddress)) {
+      setError('Enter a valid recipient address before exporting a PSBT.');
+      return;
+    }
+    const amountSatoshis = Math.floor(parseFloat(amount) * 100000000);
+    if (!amountSatoshis || amountSatoshis <= 0) {
+      setError('Enter an amount before exporting a PSBT.');
+      return;
+    }
+    if (!isConnected || !electrum) {
+      setError('Not connected to the Avian network. Please check your connection.');
+      return;
+    }
+    setExportBusy(true);
+    try {
+      const service = new WalletService(electrum);
+      const result = await service.buildUnsignedPsbt(toAddress, amountSatoshis, {
+        strategy: utxoOptions.strategy,
+        feeRate: utxoOptions.feeRate,
+        changeAddress: customChangeAddress || undefined,
+        subtractFeeFromAmount,
+      });
+      setExportedPsbt(result.psbt);
+      setExportedInfo({ fee: result.fee, inputs: result.inputs });
+    } catch (err: any) {
+      setError(err?.message || 'Failed to build the unsigned PSBT.');
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
+  const copyExportedPsbt = async () => {
+    try {
+      await navigator.clipboard.writeText(exportedPsbt);
+      setCopiedExport(true);
+      setTimeout(() => setCopiedExport(false), 2000);
+      toast.success('Unsigned PSBT copied');
+    } catch {
+      toast.error('Copy failed');
+    }
+  };
+
+  const downloadExportedPsbt = () => {
+    const blob = new Blob([exportedPsbt], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'avian-unsigned.psbt';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1324,6 +1397,80 @@ export default function SendForm() {
           <Button type="submit" disabled={isSending || isLoading} className="w-full">
             {isSending ? 'Sending...' : 'Send Transaction'}
           </Button>
+
+          {canExportUnsigned && (
+            <div className="mt-3 space-y-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleExportUnsigned}
+                disabled={exportBusy || isSending || !isConnected}
+                className="w-full gap-2"
+              >
+                <ArrowUpFromLine className="h-4 w-4" />
+                {exportBusy ? 'Building…' : 'Export unsigned PSBT'}
+              </Button>
+              <p className="text-center text-xs text-muted-foreground">
+                Build this transaction without signing — sign it in Avian Core or with a co-signer,
+                then broadcast.
+              </p>
+            </div>
+          )}
+
+          {exportedPsbt && (
+            <Alert className="mt-4 border-primary/20 bg-primary/5">
+              <ArrowUpFromLine className="h-4 w-4 text-primary" />
+              <AlertTitle className="flex items-center justify-between text-foreground">
+                <span>Unsigned PSBT ready</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => {
+                    setExportedPsbt('');
+                    setExportedInfo(null);
+                  }}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </AlertTitle>
+              <AlertDescription className="space-y-3">
+                {exportedInfo && (
+                  <p className="text-sm text-muted-foreground">
+                    {exportedInfo.inputs} input{exportedInfo.inputs === 1 ? '' : 's'} · network fee ≈{' '}
+                    <span className="font-mono text-foreground">
+                      {(exportedInfo.fee / 100000000).toFixed(8)} AVN
+                    </span>
+                    . Signing elsewhere does not change these.
+                  </p>
+                )}
+                <Textarea
+                  readOnly
+                  value={exportedPsbt}
+                  rows={4}
+                  spellCheck={false}
+                  className="font-mono text-xs"
+                  onFocus={(e) => e.currentTarget.select()}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" size="sm" onClick={copyExportedPsbt} className="gap-2">
+                    {copiedExport ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    {copiedExport ? 'Copied' : 'Copy'}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={downloadExportedPsbt}
+                    className="gap-2"
+                  >
+                    <Download className="h-4 w-4" /> Download .psbt
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
         </form>
 
         {/* Save Address Prompt */}

@@ -13,6 +13,7 @@ import {
   normalizeOrigin,
   parseRequest,
   parseSignMessageParams,
+  parseSignPsbtParams,
   readResponseFromFragment,
   validateRedirectUri,
 } from './protocol';
@@ -108,6 +109,36 @@ describe('parseSignMessageParams', () => {
 
   it('accepts a message exactly at the limit', () => {
     expect(parseSignMessageParams({ message: 'x'.repeat(LIMITS.message) }).ok).toBe(true);
+  });
+});
+
+describe('parseSignPsbtParams', () => {
+  const PSBT = 'cHNidP8BAAoAAAAAAAAAAAAA'; // base64-charset placeholder
+
+  it('returns the psbt', () => {
+    expect(parseSignPsbtParams({ psbt: PSBT })).toEqual({ ok: true, psbt: PSBT });
+  });
+
+  it('rejects a missing, empty or non-string psbt', () => {
+    expect(parseSignPsbtParams(undefined).ok).toBe(false);
+    expect(parseSignPsbtParams({}).ok).toBe(false);
+    expect(parseSignPsbtParams({ psbt: '' }).ok).toBe(false);
+    expect(parseSignPsbtParams({ psbt: 123 }).ok).toBe(false);
+  });
+
+  it('rejects a psbt that is not base64', () => {
+    const result = parseSignPsbtParams({ psbt: 'not base64 !!' });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('INVALID_REQUEST');
+  });
+
+  it('rejects an oversized psbt', () => {
+    expect(parseSignPsbtParams({ psbt: 'A'.repeat(LIMITS.psbt + 1) }).ok).toBe(false);
+  });
+
+  it('accepts a psbt exactly at the limit', () => {
+    expect(parseSignPsbtParams({ psbt: 'A'.repeat(LIMITS.psbt) }).ok).toBe(true);
   });
 });
 

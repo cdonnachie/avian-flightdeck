@@ -2,10 +2,11 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bug, Code, Eye, Trash2, FlaskConical } from 'lucide-react';
+import { Bug, Code, Eye, Trash2, FlaskConical, FileSignature } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import MessageUtilities from '@/components/MessageUtilities';
+import PsbtSigner from '@/components/PsbtSigner';
 import { InlineLogViewer } from '@/components/InlineLogViewer';
 import { DataWipePanel } from '@/components/DataWipePanel';
 import { AppLayout } from '@/components/AppLayout';
@@ -15,7 +16,7 @@ import RouteGuard from '@/components/RouteGuard';
 
 export default function AdvancedSettingsPage() {
     const router = useRouter();
-    const [activeSection, setActiveSection] = useState<'logs' | 'messages' | 'watched' | 'datawipe' | null>(null);
+    const [activeSection, setActiveSection] = useState<'logs' | 'messages' | 'psbt' | 'watched' | 'datawipe' | null>(null);
 
     const handleBack = () => {
         if (activeSection) {
@@ -39,6 +40,13 @@ export default function AdvancedSettingsPage() {
             description: 'Sign and verify messages with your wallet',
             icon: Code,
             action: () => setActiveSection('messages'),
+        },
+        {
+            id: 'psbt' as const,
+            title: 'Sign Transaction (PSBT)',
+            description: 'Import, review and sign a PSBT, then broadcast or hand it back',
+            icon: FileSignature,
+            action: () => setActiveSection('psbt'),
         },
         {
             id: 'watched' as const,
@@ -73,6 +81,21 @@ export default function AdvancedSettingsPage() {
 
         if (activeSection === 'messages') {
             return <MessageUtilities />;
+        }
+
+        if (activeSection === 'psbt') {
+            return (
+                <div className="space-y-6">
+                    <div>
+                        <h2 className="text-lg font-semibold mb-2">Sign Transaction (PSBT)</h2>
+                        <p className="text-muted-foreground">
+                            Import a partially-signed transaction from Avian Core or a co-signer, review exactly
+                            what it moves, sign the inputs this wallet owns, then broadcast it or share the signed PSBT.
+                        </p>
+                    </div>
+                    <PsbtSigner />
+                </div>
+            );
         }
 
         if (activeSection === 'datawipe') {
@@ -158,8 +181,9 @@ export default function AdvancedSettingsPage() {
                 headerProps={{
                     title: activeSection === 'logs' ? 'Debug Logs' :
                         activeSection === 'messages' ? 'Message Utilities' :
-                            activeSection === 'datawipe' ? 'Reset Application' :
-                                'Advanced Settings',
+                            activeSection === 'psbt' ? 'Sign Transaction (PSBT)' :
+                                activeSection === 'datawipe' ? 'Reset Application' :
+                                    'Advanced Settings',
                     showBackButton: true,
                     customBackAction: handleBack,
                     actions: <HeaderActions />

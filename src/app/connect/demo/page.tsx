@@ -472,9 +472,11 @@ export default function ConnectDemoPage() {
                 <Button
                   disabled={busy}
                   variant="outline"
-                  onClick={() => runPopup('signPsbt', { psbt: 'deadbeef' })}
+                  // A valid but empty PSBT: the wallet shows the approval screen (nothing to sign
+                  // here). A real dApp passes an unsigned PSBT it built for the connected account.
+                  onClick={() => runPopup('signPsbt', { psbt: 'cHNidP8BAAoCAAAAAAAAAAAAAAAA' })}
                 >
-                  signPsbt() → unsupported
+                  signPsbt()
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">

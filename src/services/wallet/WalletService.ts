@@ -759,15 +759,256 @@ export class WalletService {
         return { hex: tx.toHex(), txid: tx.getId() };
     }
 
-    /** Sign the active wallet's inputs, finalize, and broadcast. Returns the txid. */
-    async signAndBroadcastPsbt(psbtBase64: string, password?: string): Promise<string> {
-        const signed = await this.signPsbt(psbtBase64, password);
-        const { hex, txid } = this.finalizePsbt(signed.psbt);
+    /** Broadcast a raw transaction hex (e.g. from finalizePsbt) and return its txid. */
+    async broadcastRawTransaction(hex: string): Promise<string> {
         const result = await this.electrum.broadcastTransaction(hex);
         if (!result || typeof result !== 'string') {
             throw new Error('Transaction broadcast failed. Please try again later.');
         }
+        return result;
+    }
+
+    /** Sign the active wallet's inputs, finalize, and broadcast. Returns the txid. */
+    async signAndBroadcastPsbt(psbtBase64: string, password?: string): Promise<string> {
+        const signed = await this.signPsbt(psbtBase64, password);
+        const { hex, txid } = this.finalizePsbt(signed.psbt);
+        await this.broadcastRawTransaction(hex);
         return txid;
+    }
+
+    /**
+     * Plan a spend from a single address and build the *unsigned* PSBT: fetch and select UTXOs with
+     * an iterative size-based fee, split into recipient + change (folding sub-dust change into the
+     * fee), and add the inputs (nonWitnessUtxo for legacy, witnessUtxo for SegWit) and outputs.
+     *
+     * Shared by `sendTransaction` (which then signs) and `buildUnsignedPsbt` (which exports it), so
+     * selection and fee logic have a single source of truth. Needs no private key; pass `pubkey`
+     * only for P2SH-P2WPKH, whose redeemScript requires it.
+     */
+    private async planSpend(params: {
+        fromAddress: string;
+        walletAddrType: AddressType;
+        toAddress: string;
+        amount: number;
+        options?: {
+            strategy?: CoinSelectionStrategy;
+            feeRate?: number;
+            maxInputs?: number;
+            minConfirmations?: number;
+            changeAddress?: string;
+            subtractFeeFromAmount?: boolean;
+        };
+        pubkey?: Buffer;
+    }): Promise<{
+        psbt: bitcoin.Psbt;
+        selectedUTXOs: any[];
+        fee: number;
+        finalSendAmount: number;
+        finalChange: number;
+        changeAddress: string;
+    }> {
+        const { fromAddress, walletAddrType, toAddress, amount, options, pubkey } = params;
+
+        // Get UTXOs for the address
+        const rawUTXOs = await this.electrum.getUTXOs(fromAddress);
+        if (rawUTXOs.length === 0) {
+            throw new Error('No unspent transaction outputs found');
+        }
+
+        // Enhance UTXOs with additional metadata
+        const currentBlockHeight = await this.electrum.getCurrentBlockHeight();
+        const enhancedUTXOs: EnhancedUTXO[] = rawUTXOs.map((utxo) => ({
+            ...utxo,
+            confirmations: utxo.height ? Math.max(0, currentBlockHeight - utxo.height + 1) : 0,
+            isConfirmed: utxo.height ? currentBlockHeight - utxo.height + 1 >= 1 : false,
+            ageInBlocks: utxo.height ? currentBlockHeight - utxo.height + 1 : 0,
+            address: fromAddress,
+        }));
+
+        // Calculate total available amount
+        const totalAvailable = enhancedUTXOs.reduce((sum, utxo) => sum + utxo.value, 0);
+
+        // Size-based fee: sat/vByte rate (caller override, else the node's rate, floored).
+        const subtractFee = options?.subtractFeeFromAmount ?? false;
+        const satPerVByte = await this.resolveFeeRate(options?.feeRate);
+
+        // Select optimal UTXOs using the selection service
+        const strategyRecommendation = UTXOSelectionService.getRecommendedStrategy(
+            amount,
+            enhancedUTXOs,
+            {
+                consolidateDust: options?.strategy === CoinSelectionStrategy.CONSOLIDATE_DUST,
+            },
+        );
+
+        // Get wallet's own address for dust consolidation
+        let selfAddress;
+        if (
+            strategyRecommendation.recommendSelfAddress ||
+            options?.strategy === CoinSelectionStrategy.CONSOLIDATE_DUST
+        ) {
+            const wallet = await StorageService.getActiveWallet();
+            if (wallet) {
+                selfAddress = wallet.address;
+            }
+        }
+
+        // The fee depends on how many inputs get selected, and selection depends on the fee, so
+        // iterate: estimate a fee, select, re-estimate from the actual input count, and reselect
+        // if it grew. Converges in a pass or two because the fee is tiny next to the amounts.
+        let selectedUTXOs: any[] = [];
+        let totalSelected = 0;
+        let fee = estimateTxFee(1, 2, satPerVByte);
+        for (let iteration = 0; iteration < 4; iteration++) {
+            // For subtract-fee the recipient absorbs the fee, so the inputs only need to cover
+            // `amount`; otherwise they must cover `amount + fee`. This is what makes send-max
+            // with subtract-fee possible.
+            const selectionTarget = subtractFee ? Math.max(0, amount - fee) : amount;
+            const totalRequired = selectionTarget + fee;
+            if (totalAvailable < totalRequired) {
+                throw new Error(
+                    `Insufficient funds. Required: ${totalRequired} satoshis, Available: ${totalAvailable} satoshis`,
+                );
+            }
+
+            const selectionOptions: UTXOSelectionOptions = {
+                strategy: options?.strategy || strategyRecommendation.strategy,
+                targetAmount: selectionTarget,
+                feeRate: fee,
+                maxInputs: options?.maxInputs || 20,
+                minConfirmations: options?.minConfirmations || 0,
+                allowUnconfirmed: true,
+                includeDust: options?.strategy === CoinSelectionStrategy.CONSOLIDATE_DUST,
+                isAutoConsolidation: options?.strategy === CoinSelectionStrategy.CONSOLIDATE_DUST,
+                selfAddress: selfAddress,
+            };
+
+            const selectionResult = UTXOSelectionService.selectUTXOs(enhancedUTXOs, selectionOptions);
+            if (!selectionResult) {
+                throw new Error('Unable to select suitable UTXOs for transaction');
+            }
+            selectedUTXOs = selectionResult.selectedUTXOs;
+            totalSelected = selectedUTXOs.reduce((sum, utxo) => sum + utxo.value, 0);
+
+            const recomputed = estimateTxFee(selectedUTXOs.length, 2, satPerVByte);
+            if (recomputed <= fee) {
+                fee = recomputed;
+                break;
+            }
+            fee = recomputed; // grew with the input count — reselect to cover the larger fee
+        }
+
+        // Split into recipient and change, folding sub-dust change into the fee rather than
+        // emitting an output the network would reject as dust.
+        const split = resolveSendAmounts(amount, fee, totalSelected, subtractFee);
+        const finalSendAmount = split.sendAmount;
+        if (finalSendAmount <= 0) {
+            throw new Error('Send amount is zero or negative after subtracting the fee');
+        }
+        if (split.change < 0) {
+            throw new Error('Insufficient funds to cover the network fee');
+        }
+        const finalChange = split.change >= DUST_THRESHOLD_SATS ? split.change : 0;
+
+        // Determine change address - use custom address if provided, otherwise sender's address
+        const changeAddress =
+            options?.changeAddress && options.changeAddress.trim() !== ''
+                ? options.changeAddress
+                : fromAddress;
+
+        // Build transaction using PSBT
+        const psbt = new bitcoin.Psbt({ network: avianNetwork });
+
+        // SegWit inputs (P2WPKH, P2SH-P2WPKH) use witnessUtxo; legacy P2PKH uses nonWitnessUtxo.
+        const isSegWit = walletAddrType === 'p2wpkh' || walletAddrType === 'p2sh-p2wpkh';
+
+        // Add inputs from selected UTXOs
+        for (const utxo of selectedUTXOs) {
+            const txHex = await this.electrum.getTransaction(utxo.txid, false);
+            const prevTx = bitcoin.Transaction.fromHex(txHex);
+            const prevOut = prevTx.outs[utxo.vout];
+
+            if (isSegWit) {
+                // SegWit inputs: provide witnessUtxo (the output being spent) so PSBT can compute
+                // the BIP143 sighash without the full previous transaction. Stamp sighashType so a
+                // signer knows Avian's 0x41 is expected.
+                const inputObj: any = {
+                    hash: utxo.txid,
+                    index: utxo.vout,
+                    sighashType: SIGHASH_ALL_FORKID,
+                    witnessUtxo: {
+                        script: prevOut.script,
+                        value: prevOut.value,
+                    },
+                };
+                // P2SH-P2WPKH also needs the redeemScript so the finaliser can build the input
+                // scriptSig (the push of the redeem script). Only available when we hold the pubkey.
+                if (walletAddrType === 'p2sh-p2wpkh' && pubkey) {
+                    const p2wpkh = bitcoin.payments.p2wpkh({ pubkey, network: avianNetwork });
+                    inputObj.redeemScript = p2wpkh.output!;
+                }
+                psbt.addInput(inputObj);
+            } else {
+                // Legacy P2PKH inputs: provide the full previous transaction hex.
+                psbt.addInput({
+                    hash: utxo.txid,
+                    index: utxo.vout,
+                    nonWitnessUtxo: Buffer.from(txHex, 'hex'),
+                });
+            }
+        }
+
+        // Add output for recipient
+        psbt.addOutput({ address: toAddress, value: finalSendAmount });
+
+        // Add change output if needed
+        if (finalChange > 0) {
+            psbt.addOutput({ address: changeAddress, value: finalChange });
+        }
+
+        return { psbt, selectedUTXOs, fee, finalSendAmount, finalChange, changeAddress };
+    }
+
+    /**
+     * Build an unsigned PSBT for a spend and return it as base64 — the same selection and fee logic
+     * as `sendTransaction`, but stopping before signing. Requires no password for P2PKH/P2WPKH
+     * wallets (no key needed to describe the inputs). Use it to sign the transaction elsewhere
+     * (Avian Core, a co-signer) and broadcast it there or via the PSBT import tool.
+     */
+    async buildUnsignedPsbt(
+        toAddress: string,
+        amount: number,
+        options?: {
+            strategy?: CoinSelectionStrategy;
+            feeRate?: number;
+            maxInputs?: number;
+            minConfirmations?: number;
+            changeAddress?: string;
+            subtractFeeFromAmount?: boolean;
+        },
+    ): Promise<{ psbt: string; fee: number; inputs: number; sendAmount: number; changeAmount: number }> {
+        const activeWallet = await StorageService.getActiveWallet();
+        if (!activeWallet) throw new Error('No active wallet found');
+        const walletAddrType: AddressType = activeWallet.addressType || 'p2pkh';
+        if (walletAddrType === 'p2sh-p2wpkh') {
+            // The redeemScript needs the public key, which we can't derive without decrypting; a
+            // wrapped-SegWit wallet should sign directly instead of exporting an unsigned PSBT.
+            throw new Error('Exporting an unsigned PSBT is not supported for wrapped-SegWit wallets');
+        }
+        const plan = await this.planSpend({
+            fromAddress: activeWallet.address,
+            walletAddrType,
+            toAddress,
+            amount,
+            options,
+        });
+        return {
+            psbt: plan.psbt.toBase64(),
+            fee: plan.fee,
+            inputs: plan.selectedUTXOs.length,
+            sendAmount: plan.finalSendAmount,
+            changeAmount: plan.finalChange,
+        };
     }
 
     async sendTransaction(
@@ -812,179 +1053,21 @@ export class WalletService {
             const keyPair = ECPair.fromWIF(privateKeyWIF, avianNetwork);
             const fromAddress = activeWallet.address;
 
-            // Get UTXOs for the address
-            const rawUTXOs = await this.electrum.getUTXOs(fromAddress);
-            if (rawUTXOs.length === 0) {
-                throw new Error('No unspent transaction outputs found');
-            }
-
-            // Enhance UTXOs with additional metadata
-            const currentBlockHeight = await this.electrum.getCurrentBlockHeight();
-            const enhancedUTXOs: EnhancedUTXO[] = rawUTXOs.map((utxo) => ({
-                ...utxo,
-                confirmations: utxo.height ? Math.max(0, currentBlockHeight - utxo.height + 1) : 0,
-                isConfirmed: utxo.height ? currentBlockHeight - utxo.height + 1 >= 1 : false,
-                ageInBlocks: utxo.height ? currentBlockHeight - utxo.height + 1 : 0,
-                address: fromAddress,
-            }));
-
-            // Calculate total available amount
-            const totalAvailable = enhancedUTXOs.reduce((sum, utxo) => sum + utxo.value, 0);
-
-            // Size-based fee: sat/vByte rate (caller override, else the node's rate, floored).
-            const subtractFee = options?.subtractFeeFromAmount ?? false;
-            const satPerVByte = await this.resolveFeeRate(options?.feeRate);
-
-            // Select optimal UTXOs using the selection service
-            const strategyRecommendation = UTXOSelectionService.getRecommendedStrategy(
-                amount,
-                enhancedUTXOs,
-                {
-                    consolidateDust: options?.strategy === CoinSelectionStrategy.CONSOLIDATE_DUST,
-                },
-            );
-
-            // Get wallet's own address for dust consolidation
-            let selfAddress;
-            if (
-                strategyRecommendation.recommendSelfAddress ||
-                options?.strategy === CoinSelectionStrategy.CONSOLIDATE_DUST
-            ) {
-                const wallet = await StorageService.getActiveWallet();
-                if (wallet) {
-                    selfAddress = wallet.address;
-                }
-            }
-
-            // The fee depends on how many inputs get selected, and selection depends on the fee, so
-            // iterate: estimate a fee, select, re-estimate from the actual input count, and reselect
-            // if it grew. Converges in a pass or two because the fee is tiny next to the amounts.
-            let selectedUTXOs: any[] = [];
-            let totalSelected = 0;
-            let fee = estimateTxFee(1, 2, satPerVByte);
-            for (let iteration = 0; iteration < 4; iteration++) {
-                // For subtract-fee the recipient absorbs the fee, so the inputs only need to cover
-                // `amount`; otherwise they must cover `amount + fee`. This is what makes send-max
-                // with subtract-fee possible.
-                const selectionTarget = subtractFee ? Math.max(0, amount - fee) : amount;
-                const totalRequired = selectionTarget + fee;
-                if (totalAvailable < totalRequired) {
-                    throw new Error(
-                        `Insufficient funds. Required: ${totalRequired} satoshis, Available: ${totalAvailable} satoshis`,
-                    );
-                }
-
-                const selectionOptions: UTXOSelectionOptions = {
-                    strategy: options?.strategy || strategyRecommendation.strategy,
-                    targetAmount: selectionTarget,
-                    feeRate: fee,
-                    maxInputs: options?.maxInputs || 20,
-                    minConfirmations: options?.minConfirmations || 0,
-                    allowUnconfirmed: true,
-                    includeDust: options?.strategy === CoinSelectionStrategy.CONSOLIDATE_DUST,
-                    isAutoConsolidation: options?.strategy === CoinSelectionStrategy.CONSOLIDATE_DUST,
-                    selfAddress: selfAddress,
-                };
-
-                const selectionResult = UTXOSelectionService.selectUTXOs(enhancedUTXOs, selectionOptions);
-                if (!selectionResult) {
-                    throw new Error('Unable to select suitable UTXOs for transaction');
-                }
-                selectedUTXOs = selectionResult.selectedUTXOs;
-                totalSelected = selectedUTXOs.reduce((sum, utxo) => sum + utxo.value, 0);
-
-                const recomputed = estimateTxFee(selectedUTXOs.length, 2, satPerVByte);
-                if (recomputed <= fee) {
-                    fee = recomputed;
-                    break;
-                }
-                fee = recomputed; // grew with the input count — reselect to cover the larger fee
-            }
-
-            // Split into recipient and change, folding sub-dust change into the fee rather than
-            // emitting an output the network would reject as dust.
-            const split = resolveSendAmounts(amount, fee, totalSelected, subtractFee);
-            const finalSendAmount = split.sendAmount;
-            if (finalSendAmount <= 0) {
-                throw new Error('Send amount is zero or negative after subtracting the fee');
-            }
-            if (split.change < 0) {
-                throw new Error('Insufficient funds to cover the network fee');
-            }
-            const finalChange = split.change >= DUST_THRESHOLD_SATS ? split.change : 0;
-
-            // Determine change address - use custom address if provided, otherwise sender's address
-            const changeAddress =
-                options?.changeAddress && options.changeAddress.trim() !== ''
-                    ? options.changeAddress
-                    : fromAddress;
-
-            // Build transaction using PSBT
-            const psbt = new bitcoin.Psbt({ network: avianNetwork });
-
             // Avian requires SIGHASH_ALL | SIGHASH_FORKID (0x41) for all inputs.
-            // Declare here so the value can be stamped onto each PSBT input.
-            const SIGHASH_ALL = 0x01;
-            const SIGHASH_FORKID = 0x40;
-            const hashType = SIGHASH_ALL | SIGHASH_FORKID; // 0x41
-
-            // Determine the wallet's address type so we can populate the correct PSBT input fields.
-            // SegWit inputs (P2WPKH, P2SH-P2WPKH) use witnessUtxo; legacy P2PKH uses nonWitnessUtxo.
+            const hashType = SIGHASH_ALL_FORKID; // 0x41
             const walletAddrType: AddressType = activeWallet.addressType || 'p2pkh';
-            const isSegWit = walletAddrType === 'p2wpkh' || walletAddrType === 'p2sh-p2wpkh';
 
-            // Add inputs from selected UTXOs
-            for (const utxo of selectedUTXOs) {
-                const txHex = await this.electrum.getTransaction(utxo.txid, false);
-                const prevTx = bitcoin.Transaction.fromHex(txHex);
-                const prevOut = prevTx.outs[utxo.vout];
-
-                if (isSegWit) {
-                    // SegWit inputs: provide witnessUtxo (the output being spent) so PSBT can
-                    // compute the BIP143 sighash without the full previous transaction.
-                    // sighashType must be set on the input so bitcoinjs-lib signs with 0x41.
-                    const inputObj: any = {
-                        hash: utxo.txid,
-                        index: utxo.vout,
-                        sighashType: hashType,
-                        witnessUtxo: {
-                            script: prevOut.script,
-                            value: prevOut.value,
-                        },
-                    };
-                    // P2SH-P2WPKH also needs the redeemScript so the finaliser can build the
-                    // input scriptSig (the push of the redeem script).
-                    if (walletAddrType === 'p2sh-p2wpkh') {
-                        const p2wpkh = bitcoin.payments.p2wpkh({
-                            pubkey: Buffer.from(keyPair.publicKey),
-                            network: avianNetwork,
-                        });
-                        inputObj.redeemScript = p2wpkh.output!;
-                    }
-                    psbt.addInput(inputObj);
-                } else {
-                    // Legacy P2PKH inputs: provide the full previous transaction hex.
-                    psbt.addInput({
-                        hash: utxo.txid,
-                        index: utxo.vout,
-                        nonWitnessUtxo: Buffer.from(txHex, 'hex'),
-                    });
-                }
-            }
-
-            // Add output for recipient
-            psbt.addOutput({
-                address: toAddress,
-                value: finalSendAmount,
-            });
-
-            // Add change output if needed
-            if (finalChange > 0) {
-                psbt.addOutput({
-                    address: changeAddress,
-                    value: finalChange,
+            // Select UTXOs, size the fee, and build the unsigned PSBT. Shared with buildUnsignedPsbt
+            // so selection and fee logic live in one place.
+            const { psbt, selectedUTXOs, finalSendAmount, finalChange, changeAddress } =
+                await this.planSpend({
+                    fromAddress,
+                    walletAddrType,
+                    toAddress,
+                    amount,
+                    options,
+                    pubkey: Buffer.from(keyPair.publicKey),
                 });
-            }
 
             // Create a compatible signer object with Avian fork ID support
             const signer = {
