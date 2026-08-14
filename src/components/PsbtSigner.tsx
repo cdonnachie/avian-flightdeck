@@ -38,7 +38,7 @@ const shorten = (a: string) => (a.length > 24 ? `${a.slice(0, 12)}…${a.slice(-
  * the signed PSBT back. Asset inputs are surfaced and never signed. See src/services/wallet/psbt.ts.
  */
 export default function PsbtSigner() {
-  const { address, isEncrypted, refreshAfterTransaction } = useWallet();
+  const { address, isEncrypted, refreshAfterTransaction, electrum, isConnected } = useWallet();
   const [walletService] = useState(() => new WalletService());
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -146,12 +146,22 @@ export default function PsbtSigner() {
   };
 
   const handleBroadcast = async () => {
+    // The component's WalletService is offline (summarize/sign/finalize need no network); broadcast
+    // must go through the wallet's live, connected ElectrumService from context.
+    if (!electrum || !isConnected) {
+      toast.error('Not connected', {
+        description: 'Connect to the Avian network before broadcasting.',
+      });
+      return;
+    }
     setIsBusy(true);
     try {
       const { hex, txid: id } = walletService.finalizePsbt(signedPsbt);
-      const broadcastId = await walletService.broadcastRawTransaction(hex);
-      const finalId = typeof broadcastId === 'string' ? broadcastId : id;
-      setTxid(finalId);
+      const broadcastId = await electrum.broadcastTransaction(hex);
+      if (!broadcastId || typeof broadcastId !== 'string') {
+        throw new Error('Transaction broadcast failed. Please try again later.');
+      }
+      setTxid(broadcastId || id);
       toast.success('Transaction broadcast');
       void refreshAfterTransaction(1500);
     } catch (error) {
