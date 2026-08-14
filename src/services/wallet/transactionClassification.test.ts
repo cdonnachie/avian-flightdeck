@@ -699,18 +699,32 @@ describe('rich history path', () => {
     });
   });
 
-  it('labels a null-counterparty receive (a coinbase payout) as Coinbase, never null', async () => {
+  it('labels an explicit coinbase row as Coinbase', async () => {
     await ownWallets(WALLET_A);
     const electrum = richElectrum([
-      { total: 1, txs: [richRow({ type: 'receive', counterparty: null })] },
+      { total: 1, txs: [richRow({ type: 'receive', counterparty: null, coinbase: true })] },
     ]);
 
     await new WalletService(electrum as never).processTransactionHistory(WALLET_A);
 
     const [entry] = await historyFor(WALLET_A);
-    expect(entry.type).toBe('receive');
-    expect(entry.address).toBe('Coinbase'); // coerced from null, matches the standard path
+    expect(entry.address).toBe('Coinbase');
     expect(entry.fromAddress).toBe('Coinbase');
+  });
+
+  it('stores a non-coinbase null counterparty as no address, not Coinbase', async () => {
+    // null also happens for OP_RETURN / bare multisig / asset-tagging outputs — only the coinbase
+    // flag means "mined", so these must not be mislabelled Coinbase.
+    await ownWallets(WALLET_A);
+    const electrum = richElectrum([
+      { total: 1, txs: [richRow({ type: 'receive', counterparty: null })] }, // no coinbase flag
+    ]);
+
+    await new WalletService(electrum as never).processTransactionHistory(WALLET_A);
+
+    const [entry] = await historyFor(WALLET_A);
+    expect(entry.address).toBe(''); // never null, but not "Coinbase" either
+    expect(entry.fromAddress).toBe('');
   });
 
   it('maps a send row with the wallet as the sender', async () => {

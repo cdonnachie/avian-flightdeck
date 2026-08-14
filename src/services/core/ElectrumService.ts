@@ -52,7 +52,11 @@ export interface RichHistoryTx {
   time: number;
   type: 'send' | 'receive';
   amount: number;
-  counterparty: string;
+  /** The other party, or null when none resolves (e.g. a coinbase payout — see `coinbase`). */
+  counterparty: string | null;
+  /** True for a coinbase / mining payout. Optional: older servers omit it (infer from a null
+   *  counterparty on a receive instead). */
+  coinbase?: boolean;
   fee: number;
   confirmations: number;
 }
