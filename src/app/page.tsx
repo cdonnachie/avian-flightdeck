@@ -237,7 +237,7 @@ export default function Home() {
             }}
         >
             {/* Multi-panel dashboard for desktop, single column for mobile */}
-            <div className="block lg:hidden max-w-xl md:max-w-2xl space-y-6">
+            <div className="block lg:hidden min-w-0 max-w-xl md:max-w-2xl space-y-6">
                 {/* Mobile layout */}
 
                 {/* Balance instrument */}
