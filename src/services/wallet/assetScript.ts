@@ -61,6 +61,26 @@ function readCompactSize(buf: Buffer, offset: number): { value: number; size: nu
   return { value: Number(buf.readBigUInt64LE(offset + 1)), size: 9 };
 }
 
+/** The 25-byte P2PKH output script for a legacy R-address. Throws on bech32 — assets are legacy-only. */
+function legacyP2PKHScript(address: string): Buffer {
+  const p2pkh = bitcoin.address.toOutputScript(address, avianNetwork);
+  if (p2pkh.length !== 25 || p2pkh[0] !== bitcoin.opcodes.OP_DUP) {
+    throw new Error('Assets require a legacy P2PKH (R…) address — not a bech32 (avn1…) address');
+  }
+  return p2pkh;
+}
+
+/** Wrap an asset payload as `<P2PKH> OP_AVN_ASSET <push payload> OP_DROP`. */
+function wrapAssetScript(p2pkh: Buffer, payload: Buffer): Buffer {
+  return Buffer.concat([p2pkh, bitcoin.script.compile([OP_AVN_ASSET, payload, bitcoin.opcodes.OP_DROP])]);
+}
+
+function int64LE(value: bigint): Buffer {
+  const b = Buffer.alloc(8);
+  b.writeBigInt64LE(value);
+  return b;
+}
+
 /**
  * Build a transfer output that pays `amount` (integer units) of `name` to `address`. The address
  * must be a legacy P2PKH (`R…`) — assets never live on bech32. Throws on a non-P2PKH address or a
@@ -68,24 +88,83 @@ function readCompactSize(buf: Buffer, offset: number): { value: number; size: nu
  */
 export function buildAssetTransferScript(address: string, name: string, amount: bigint): Buffer {
   if (amount <= 0n) throw new Error('Asset transfer amount must be positive');
-  const p2pkh = bitcoin.address.toOutputScript(address, avianNetwork);
-  if (p2pkh.length !== 25 || p2pkh[0] !== bitcoin.opcodes.OP_DUP) {
-    throw new Error('Asset transfers require a legacy P2PKH (R…) address');
-  }
   const nameBuf = Buffer.from(name, 'ascii');
-  const amountBuf = Buffer.alloc(8);
-  amountBuf.writeBigInt64LE(amount);
-
   const payload = Buffer.concat([
     ASSET_MARKER,
     Buffer.from([ASSET_TYPE.transfer]),
     encodeCompactSize(nameBuf.length),
     nameBuf,
-    amountBuf,
+    int64LE(amount),
   ]);
+  return wrapAssetScript(legacyP2PKHScript(address), payload);
+}
 
-  const tag = bitcoin.script.compile([OP_AVN_ASSET, payload, bitcoin.opcodes.OP_DROP]);
-  return Buffer.concat([p2pkh, tag]);
+// Issuance burn cost + mainnet burn address per type (Avian Core assets.cpp). Creating an asset
+// sends this AVN to an unspendable burn address — it is permanently destroyed.
+export const ISSUE_BURN = {
+  root: { amount: 500n * 100_000_000n, address: 'RXissueAssetXXXXXXXXXXXXXXXXXhhZGt' },
+  sub: { amount: 100n * 100_000_000n, address: 'RXissueSubAssetXXXXXXXXXXXXXWcwhwL' },
+  unique: { amount: 5n * 100_000_000n, address: 'RXissueUniqueAssetXXXXXXXXXXWEAe58' },
+} as const;
+
+/**
+ * Whether `name` is a valid root asset name (a friendly pre-flight; consensus is authoritative).
+ * Core: 3–30 of A–Z 0–9 `_` `.`, no leading/trailing or doubled punctuation.
+ */
+export function isValidRootAssetName(name: string): boolean {
+  if (name.length < 3 || name.length > 30) return false;
+  if (!/^[A-Z0-9._]+$/.test(name)) return false;
+  if (/^[._]|[._]$/.test(name)) return false;
+  if (/[._]{2}/.test(name)) return false;
+  return true;
+}
+
+export interface IssuanceParams {
+  name: string;
+  /** Total supply in integer units (10^8-scaled), e.g. 1 whole unit = 100000000. */
+  amount: bigint;
+  /** Divisibility 0–8. */
+  units: number;
+  reissuable: boolean;
+}
+
+/**
+ * Build a new-asset issuance output (`rvn·q · CNewAsset`) paying the created supply to `address`.
+ * IPFS/ANS are not carried (both flags 0) — deferred. Byte-exact to Avian Core `CNewAsset`.
+ */
+export function buildIssuanceScript(address: string, params: IssuanceParams): Buffer {
+  const { name, amount, units, reissuable } = params;
+  if (amount <= 0n) throw new Error('Issuance amount must be positive');
+  if (units < 0 || units > 8) throw new Error('Units must be between 0 and 8');
+  const nameBuf = Buffer.from(name, 'ascii');
+  const payload = Buffer.concat([
+    ASSET_MARKER,
+    Buffer.from([ASSET_TYPE.issue]),
+    encodeCompactSize(nameBuf.length),
+    nameBuf,
+    int64LE(amount),
+    Buffer.from([units & 0xff]),
+    Buffer.from([reissuable ? 1 : 0]),
+    Buffer.from([0]), // hasIPFS = 0 (IPFS deferred)
+    Buffer.from([0]), // hasANS = 0
+  ]);
+  return wrapAssetScript(legacyP2PKHScript(address), payload);
+}
+
+/**
+ * Build the owner-token output (`rvn·o`) for an issuance. `assetName` is the asset being created
+ * (root or sub); the token name carries the trailing `!` and no amount. Byte-exact to Core's
+ * ConstructOwnerTransaction.
+ */
+export function buildOwnerScript(address: string, assetName: string): Buffer {
+  const nameBuf = Buffer.from(`${assetName}!`, 'ascii');
+  const payload = Buffer.concat([
+    ASSET_MARKER,
+    Buffer.from([ASSET_TYPE.owner]),
+    encodeCompactSize(nameBuf.length),
+    nameBuf,
+  ]);
+  return wrapAssetScript(legacyP2PKHScript(address), payload);
 }
 
 /** Decode an asset output script into its type, address, name and amount (null if not an asset). */

@@ -32,7 +32,13 @@ import {
     type PsbtInputSummary,
     type PsbtOutputSummary,
 } from './psbt';
-import { buildAssetTransferScript } from './assetScript';
+import {
+    buildAssetTransferScript,
+    buildIssuanceScript,
+    buildOwnerScript,
+    isValidRootAssetName,
+    ISSUE_BURN,
+} from './assetScript';
 
 // How many transaction.get requests to keep in flight while syncing history. Electrum matches
 // responses by id, so a small pool cuts the latency of a large sync ~N-fold. Kept deliberately low:
@@ -1170,6 +1176,141 @@ export class WalletService {
             walletLogger.error('Asset transfer failed:', error);
             const message = error instanceof Error ? error.message : 'Unknown error';
             throw new Error(`Asset transfer failed: ${message}`);
+        }
+    }
+
+    /**
+     * Create (issue) a new root asset. This **burns 500 AVN** to an unspendable address and is
+     * irreversible. Builds `[burn, AVN change, owner token, new asset]` — the new-asset output must
+     * be last and the owner token second-to-last (Avian Core requires that ordering) — funds the
+     * burn + fee from AVN inputs, signs P2PKH inputs with the FORKID sighash, and broadcasts.
+     * Also mints the `NAME!` owner token (controls reissue) to the sender.
+     *
+     * The scripts are byte-validated against a real Core issuance (see assetScript.ts). Sub/unique
+     * issuance (which spends the parent owner token) is a separate method.
+     */
+    async issueAsset(
+        name: string,
+        params: { amount: bigint; units: number; reissuable: boolean },
+        password?: string,
+        options?: { feeRate?: number; changeAddress?: string },
+    ): Promise<string> {
+        try {
+            if (!isValidRootAssetName(name)) {
+                throw new Error(
+                    'Invalid asset name. Use 3–30 characters of A–Z, 0–9, _ and . (no leading, trailing or doubled punctuation).',
+                );
+            }
+            if (params.amount <= 0n) throw new Error('Issuance amount must be positive');
+            if (params.units < 0 || params.units > 8) throw new Error('Units must be between 0 and 8');
+
+            const activeWallet = await StorageService.getActiveWallet();
+            if (!activeWallet) throw new Error('No active wallet found');
+            if ((activeWallet.addressType || 'p2pkh') !== 'p2pkh') {
+                throw new Error('Assets can only be issued from a legacy (R…) address');
+            }
+
+            let privateKeyWIF = activeWallet.privateKey;
+            if (activeWallet.isEncrypted) {
+                if (!password) throw new Error('Password required for encrypted wallet');
+                try {
+                    const { decrypted } = await decryptData(privateKeyWIF, password);
+                    if (!decrypted) throw new Error('Invalid password');
+                    privateKeyWIF = decrypted;
+                } catch {
+                    throw new Error('Invalid password');
+                }
+            }
+
+            const keyPair = ECPair.fromWIF(privateKeyWIF, avianNetwork);
+            const pubkey = Buffer.from(keyPair.publicKey);
+            const fromAddress = activeWallet.address;
+            const changeAddress = options?.changeAddress?.trim() || fromAddress;
+
+            const burnAmount = Number(ISSUE_BURN.root.amount); // 500 AVN in sats
+            const burnScript = bitcoin.address.toOutputScript(ISSUE_BURN.root.address, avianNetwork);
+            const ownerScript = buildOwnerScript(fromAddress, name);
+            const assetScript = buildIssuanceScript(fromAddress, {
+                name,
+                amount: params.amount,
+                units: params.units,
+                reissuable: params.reissuable,
+            });
+
+            // Fund the burn + fee from AVN UTXOs (iterating on the selected input count).
+            const satPerVByte = await this.resolveFeeRate(options?.feeRate);
+            const avnUTXOs = await this.electrum.getUTXOs(fromAddress);
+            const sortedAvn = [...avnUTXOs].sort((a, b) => b.value - a.value);
+            const totalAvn = sortedAvn.reduce((sum, utxo) => sum + utxo.value, 0);
+
+            // Outputs: burn (34) + AVN change (34) + owner + new asset.
+            const fixedOutputsVBytes =
+                34 + 34 + (8 + 1 + ownerScript.length) + (8 + 1 + assetScript.length);
+            const sizeFor = (inputCount: number) => 10 + inputCount * 148 + fixedOutputsVBytes;
+
+            let selectedAvn: typeof avnUTXOs = [];
+            let avnIn = 0;
+            let fee = 0;
+            for (let iteration = 0; iteration < 6; iteration++) {
+                fee = Math.ceil(sizeFor(Math.max(selectedAvn.length, 1)) * satPerVByte);
+                const target = burnAmount + fee;
+                if (totalAvn < target) {
+                    throw new Error(
+                        `Insufficient AVN: issuing "${name}" burns 500 AVN plus a network fee.`,
+                    );
+                }
+                selectedAvn = [];
+                avnIn = 0;
+                for (const utxo of sortedAvn) {
+                    if (avnIn >= target) break;
+                    selectedAvn.push(utxo);
+                    avnIn += utxo.value;
+                }
+                const recomputed = Math.ceil(sizeFor(selectedAvn.length) * satPerVByte);
+                if (avnIn >= burnAmount + recomputed && recomputed <= fee) {
+                    fee = recomputed;
+                    break;
+                }
+                fee = recomputed;
+            }
+            if (avnIn < burnAmount + fee) throw new Error('Insufficient AVN for the burn and fee');
+            const change = avnIn - burnAmount - fee;
+            const finalChange = change >= DUST_THRESHOLD_SATS ? change : 0;
+
+            // Build: burn, [AVN change], owner (second-to-last), new asset (last).
+            const tx = new bitcoin.Transaction();
+            tx.version = 2;
+            tx.locktime = 0;
+            for (const utxo of selectedAvn) {
+                tx.addInput(Buffer.from(utxo.txid, 'hex').reverse(), utxo.vout);
+            }
+            tx.addOutput(burnScript, burnAmount);
+            if (finalChange > 0) {
+                tx.addOutput(bitcoin.address.toOutputScript(changeAddress, avianNetwork), finalChange);
+            }
+            tx.addOutput(ownerScript, 0);
+            tx.addOutput(assetScript, 0);
+
+            for (let i = 0; i < selectedAvn.length; i++) {
+                const utxo = selectedAvn[i];
+                const prevTxHex = await this.electrum.getTransaction(utxo.txid, false);
+                const prevOut = bitcoin.Transaction.fromHex(prevTxHex).outs[utxo.vout];
+                const digest = tx.hashForSignature(i, prevOut.script, SIGHASH_ALL_FORKID);
+                const derSignature = this.encodeDERWithCustomHashType(
+                    Buffer.from(keyPair.sign(digest)),
+                    SIGHASH_ALL_FORKID,
+                );
+                tx.ins[i].script = bitcoin.script.compile([derSignature, pubkey]);
+            }
+
+            const txHex = tx.toHex();
+            const txId = tx.getId();
+            await this.broadcastRawTransaction(txHex);
+            return txId;
+        } catch (error) {
+            walletLogger.error('Asset issuance failed:', error);
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            throw new Error(`Asset issuance failed: ${message}`);
         }
     }
 
