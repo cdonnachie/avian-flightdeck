@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { OriginPermission } from '@/types/avianConnect';
+import { OriginPermission, SignPsbtResult } from '@/types/avianConnect';
 import { grantPermission, revokePermission, touchPermission } from './permissions';
 // vi.mock below is hoisted above this import, so ProviderService picks up the stub.
 import { ProviderService } from './ProviderService';
@@ -33,6 +33,9 @@ const ORIGIN = 'https://realm.example';
 const ADDRESS = 'RAaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const PUBLIC_KEY = '02'.padEnd(66, 'a');
 const SIGNATURE = 'H9base64signature==';
+// Base64-charset placeholder; the host is mocked so the bytes never get decoded.
+const PSBT = 'cHNidP8BAAoAAAAAAAAAAAAA';
+const SIGNED_PSBT: SignPsbtResult = { psbt: PSBT, complete: true, signedInputs: 1 };
 
 const createHost = (overrides: Partial<ReturnType<typeof baseHost>> = {}) => ({
   ...baseHost(),
@@ -49,6 +52,8 @@ function baseHost() {
     })),
     requestSignApproval: vi.fn(async () => true),
     signMessage: vi.fn(async () => SIGNATURE as string | null),
+    requestSignPsbtApproval: vi.fn(async () => true),
+    signPsbt: vi.fn(async () => SIGNED_PSBT as SignPsbtResult | null),
     getPublicKey: vi.fn(async () => undefined as string | undefined),
     getNetwork: vi.fn(async () => ({ network: 'mainnet' as const, genesisHash: null })),
     emit: vi.fn(),
@@ -86,7 +91,7 @@ describe('envelope handling', () => {
 });
 
 describe('unsupported methods', () => {
-  it.each(['signPsbt', 'sendTransaction', 'issueAsset', 'eth_requestAccounts'])(
+  it.each(['sendTransaction', 'issueAsset', 'eth_requestAccounts'])(
     'refuses %s',
     async (method) => {
       const host = createHost();
@@ -303,6 +308,103 @@ describe('signMessage', () => {
 
     const response = await provider.handle(request('signMessage', { message: 'hi' }));
     expect(response.error?.code).toBe('ORIGIN_NOT_APPROVED');
+  });
+});
+
+describe('signPsbt', () => {
+  const connectFirst = async (host: ReturnType<typeof baseHost>) => {
+    const provider = new ProviderService(ORIGIN, host);
+    await provider.handle(request('connect'));
+    return provider;
+  };
+
+  it('requires a permission', async () => {
+    const host = createHost();
+    const response = await new ProviderService(ORIGIN, host).handle(
+      request('signPsbt', { psbt: PSBT }),
+    );
+
+    expect(response.error?.code).toBe('ORIGIN_NOT_APPROVED');
+    expect(host.requestSignPsbtApproval).not.toHaveBeenCalled();
+    expect(host.signPsbt).not.toHaveBeenCalled();
+  });
+
+  it('reports WALLET_LOCKED before anything else', async () => {
+    const host = createHost();
+    const provider = await connectFirst(host);
+    host.isLocked.mockReturnValue(true);
+
+    const response = await provider.handle(request('signPsbt', { psbt: PSBT }));
+
+    expect(response.error?.code).toBe('WALLET_LOCKED');
+    expect(host.signPsbt).not.toHaveBeenCalled();
+  });
+
+  it('always shows the approval screen, even for a remembered origin', async () => {
+    const host = createHost();
+    const provider = await connectFirst(host);
+
+    const response = await provider.handle(request('signPsbt', { psbt: PSBT }));
+
+    expect(host.requestSignPsbtApproval).toHaveBeenCalledWith(ORIGIN, PSBT, ADDRESS);
+    expect(response.result).toEqual(SIGNED_PSBT);
+  });
+
+  it('never signs when the user rejects the approval screen', async () => {
+    const host = createHost({ requestSignPsbtApproval: vi.fn(async () => false) });
+    const provider = await connectFirst(host);
+
+    const response = await provider.handle(request('signPsbt', { psbt: PSBT }));
+
+    expect(response.error?.code).toBe('USER_REJECTED');
+    expect(host.signPsbt).not.toHaveBeenCalled();
+  });
+
+  it('treats cancelled authentication as a rejection', async () => {
+    const host = createHost({ signPsbt: vi.fn(async () => null) });
+    const provider = await connectFirst(host);
+
+    const response = await provider.handle(request('signPsbt', { psbt: PSBT }));
+
+    expect(response.error?.code).toBe('USER_REJECTED');
+    expect(response.result).toBeUndefined();
+  });
+
+  it.each([
+    ['no params', undefined],
+    ['an empty psbt', { psbt: '' }],
+    ['a non-string psbt', { psbt: 42 }],
+    ['a non-base64 psbt', { psbt: 'not valid base64!!' }],
+  ])('rejects %s as INVALID_REQUEST', async (_label, params) => {
+    const host = createHost();
+    const provider = await connectFirst(host);
+
+    const response = await provider.handle(request('signPsbt', params));
+
+    expect(response.error?.code).toBe('INVALID_REQUEST');
+    expect(host.requestSignPsbtApproval).not.toHaveBeenCalled();
+  });
+
+  it('returns exactly the signed PSBT, complete flag and count — nothing else', async () => {
+    const provider = await connectFirst(createHost());
+    const response = await provider.handle(request('signPsbt', { psbt: PSBT }));
+
+    expect(Object.keys(response.result as object).sort()).toEqual([
+      'complete',
+      'psbt',
+      'signedInputs',
+    ]);
+  });
+
+  it('never broadcasts — the wallet only hands back a signed PSBT', async () => {
+    const host = createHost();
+    const provider = await connectFirst(host);
+
+    await provider.handle(request('signPsbt', { psbt: PSBT }));
+
+    // The host exposes no broadcast path to the engine; signing is all it can do.
+    expect(host.signPsbt).toHaveBeenCalledWith(ADDRESS, PSBT);
+    expect(host).not.toHaveProperty('broadcast');
   });
 });
 

@@ -157,6 +157,27 @@ Nonce: 6f1a…
 Issued At: 2026-08-10T12:00:00Z
 ```
 
+### `signPsbt({ psbt })`
+
+- **params**: `{ psbt: string }` — a base64 PSBT (BIP174), at most 100000 characters
+- **result**: `{ psbt: string, complete: boolean, signedInputs: number }`
+
+**Sign-only.** The wallet signs the inputs the connected account owns with Avian's
+`SIGHASH_ALL | SIGHASH_FORKID` (`0x41`) sighash and hands the updated PSBT back. It **never
+broadcasts** on a site's behalf — the dApp finalises and broadcasts (or hands the PSBT on to
+another signer). `complete` is true when every input is now signed; `signedInputs` is how many
+this wallet added.
+
+Asset inputs are **never** signed (spending an Avian asset as a bare transfer would burn it), and
+they are surfaced in the approval screen.
+
+Requires an existing permission, an explicit per-request approval screen that **decodes the PSBT**
+— showing each input and output, the total moved, the network fee, any asset, and how many inputs
+the wallet will sign — and wallet authentication. There is no way to pre-approve signing. A PSBT
+that does not parse is rejected without a prompt. The wallet does not select inputs or set the fee
+for `signPsbt`; it signs exactly the transaction the dApp presents, so the dApp is responsible for
+building a correct PSBT (see the wallet's own unsigned-PSBT export for the format).
+
 ### `getNetwork()`
 
 - **params**: none
@@ -182,8 +203,8 @@ succeeds. In popup mode the wallet also emits a `disconnect` event.
 
 ### Unknown methods
 
-Any method not listed above — including `signPsbt`, `sendTransaction`, and asset operations —
-returns `UNSUPPORTED_METHOD`. These are phase 2+ work.
+Any method not listed above — including `sendTransaction` and asset operations — returns
+`UNSUPPORTED_METHOD`. These are phase 2+ work.
 
 ---
 

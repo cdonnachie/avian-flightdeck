@@ -24,6 +24,7 @@ export const SUPPORTED_METHODS = [
   'connect',
   'getAccounts',
   'signMessage',
+  'signPsbt',
   'getNetwork',
   'disconnect',
 ] as const;
@@ -39,6 +40,8 @@ export const LIMITS = {
   id: 128,
   method: 64,
   message: 8192,
+  /** Base64 PSBT length. ~100 KB of base64 is ~75 KB of PSBT — far beyond any normal transaction. */
+  psbt: 100_000,
 } as const;
 
 export interface ConnectRequest {
@@ -76,6 +79,19 @@ export interface ConnectResult {
 
 export interface SignMessageResult {
   signature: string;
+}
+
+/**
+ * signPsbt is sign-only: the wallet signs the inputs it owns with Avian's FORKID sighash and hands
+ * the updated PSBT back. It never broadcasts on a site's behalf, so the dApp finalises/broadcasts.
+ */
+export interface SignPsbtResult {
+  /** The base64 PSBT with this wallet's signatures added. */
+  psbt: string;
+  /** Every input is now signed — the dApp can finalise and broadcast. */
+  complete: boolean;
+  /** How many inputs this wallet signed. */
+  signedInputs: number;
 }
 
 export interface NetworkResult {

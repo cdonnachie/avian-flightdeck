@@ -16,10 +16,17 @@ import {
   NetworkResult,
   OriginPermission,
   SignMessageResult,
+  SignPsbtResult,
 } from '@/types/avianConnect';
 import { providerLogger } from '@/lib/Logger';
 import { PermissionService } from './PermissionService';
-import { makeError, makeResult, parseRequest, parseSignMessageParams } from './protocol';
+import {
+  makeError,
+  makeResult,
+  parseRequest,
+  parseSignMessageParams,
+  parseSignPsbtParams,
+} from './protocol';
 
 /** What the connect approval screen hands back. */
 export interface ConnectApprovalDecision {
@@ -45,6 +52,16 @@ export interface ProviderHost {
    * cancels authentication. Never resolves with anything but a base64 signature.
    */
   signMessage(account: string, message: string): Promise<string | null>;
+  /**
+   * Shows the origin and the decoded PSBT (what it moves, the fee, any asset) and resolves false
+   * when the user declines. The account is the one the origin is connected with.
+   */
+  requestSignPsbtApproval(origin: string, psbt: string, account: string): Promise<boolean>;
+  /**
+   * Authenticates the user and signs the wallet's inputs with Avian's FORKID sighash, returning the
+   * updated PSBT. Resolves null when the user cancels authentication. Never broadcasts.
+   */
+  signPsbt(account: string, psbt: string): Promise<SignPsbtResult | null>;
   getPublicKey(account: string): Promise<string | undefined>;
   getNetwork(): Promise<NetworkResult>;
   emit(event: ConnectEventName, data: unknown): void;
@@ -85,6 +102,8 @@ export class ProviderService {
           return await this.getAccounts(id);
         case 'signMessage':
           return await this.signMessage(id, params);
+        case 'signPsbt':
+          return await this.signPsbt(id, params);
         case 'getNetwork':
           return await this.getNetwork(id);
         case 'disconnect':
@@ -185,6 +204,44 @@ export class ProviderService {
 
     await PermissionService.touch(this.origin);
     const result: SignMessageResult = { signature };
+    return makeResult(id, result);
+  }
+
+  private async signPsbt(
+    id: string,
+    params: Record<string, unknown> | undefined,
+  ): Promise<ConnectResponse> {
+    if (this.host.isLocked()) {
+      return makeError(id, 'WALLET_LOCKED', 'The wallet is locked');
+    }
+
+    const accounts = await this.resolveAccounts();
+    if (accounts.length === 0) {
+      return makeError(id, 'ORIGIN_NOT_APPROVED', 'This site has not been granted account access');
+    }
+
+    const parsedParams = parseSignPsbtParams(params);
+    if (!parsedParams.ok) {
+      return { avianConnect: 1, id, error: parsedParams.error };
+    }
+
+    const account = accounts[0];
+
+    // Remembering a site skips the connect screen only: every signature is approved explicitly,
+    // and the approval screen decodes the PSBT so the user sees what they are signing.
+    const approved = await this.host.requestSignPsbtApproval(this.origin, parsedParams.psbt, account);
+    if (!approved) {
+      return makeError(id, 'USER_REJECTED', 'User rejected the PSBT signing request');
+    }
+
+    // The host performs requireAuth before touching the key; a cancelled prompt lands here.
+    const signed = await this.host.signPsbt(account, parsedParams.psbt);
+    if (!signed) {
+      return makeError(id, 'USER_REJECTED', 'Authentication was cancelled');
+    }
+
+    await PermissionService.touch(this.origin);
+    const result: SignPsbtResult = signed;
     return makeResult(id, result);
   }
 

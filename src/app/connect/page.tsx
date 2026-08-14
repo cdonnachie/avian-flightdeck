@@ -14,6 +14,8 @@ import ConnectApprovalDialog, {
   ConnectAccountOption,
 } from '@/components/connect/ConnectApprovalDialog';
 import SignMessageApprovalDialog from '@/components/connect/SignMessageApprovalDialog';
+import SignPsbtApprovalDialog from '@/components/connect/SignPsbtApprovalDialog';
+import type { PsbtSummary } from '@/services/wallet/psbt';
 
 import { useWallet } from '@/contexts/WalletContext';
 import { useSecurity } from '@/contexts/SecurityContext';
@@ -42,6 +44,12 @@ interface SignPrompt {
   message: string;
 }
 
+interface PsbtPrompt {
+  origin: string;
+  account: string;
+  summary: PsbtSummary;
+}
+
 /** Channel used by Settings → Connected Sites to tell a live session its grants changed. */
 const PERMISSION_CHANNEL = 'avian-connect';
 
@@ -60,6 +68,7 @@ function ConnectClient() {
   const [hasWallet, setHasWallet] = useState<boolean | null>(null);
   const [connectPromptOrigin, setConnectPromptOrigin] = useState<string | null>(null);
   const [signPrompt, setSignPrompt] = useState<SignPrompt | null>(null);
+  const [psbtPrompt, setPsbtPrompt] = useState<PsbtPrompt | null>(null);
   const [completed, setCompleted] = useState<{ origin: string; method: string } | null>(null);
 
   // Live values the (stable) provider host closures read from.
@@ -72,6 +81,7 @@ function ConnectClient() {
 
   const connectResolverRef = useRef<((decision: ConnectApprovalDecision) => void) | null>(null);
   const signResolverRef = useRef<((approved: boolean) => void) | null>(null);
+  const psbtResolverRef = useRef<((approved: boolean) => void) | null>(null);
   const providerRef = useRef<ProviderService | null>(null);
   const pendingIdsRef = useRef<Set<string>>(new Set());
   const answeredRef = useRef<Map<string, ConnectResponse>>(new Map());
@@ -151,6 +161,32 @@ function ConnectClient() {
     resolver?.(approved);
   }, []);
 
+  const requestSignPsbtApproval = useCallback(
+    async (origin: string, psbt: string, account: string) => {
+      // Decode the PSBT before showing the screen so the user sees exactly what they are signing.
+      // A PSBT that will not even parse is rejected without a prompt.
+      let summary: PsbtSummary;
+      try {
+        summary = await walletService.summarizePsbt(psbt, account);
+      } catch (error) {
+        providerLogger.warn('Rejected an unparseable PSBT from a site:', error);
+        return false;
+      }
+      return new Promise<boolean>((resolve) => {
+        psbtResolverRef.current = resolve;
+        setPsbtPrompt({ origin, account, summary });
+      });
+    },
+    [walletService],
+  );
+
+  const resolvePsbtPrompt = useCallback((approved: boolean) => {
+    setPsbtPrompt(null);
+    const resolver = psbtResolverRef.current;
+    psbtResolverRef.current = null;
+    resolver?.(approved);
+  }, []);
+
   // ---------------------------------------------------------------------
   // Provider host
   // ---------------------------------------------------------------------
@@ -203,6 +239,26 @@ function ConnectClient() {
         return signature;
       },
 
+      requestSignPsbtApproval,
+
+      signPsbt: async (account: string, psbt: string) => {
+        const wallet = await StorageService.getWalletByAddress(account);
+        if (!wallet?.privateKey) {
+          providerLogger.warn('No private key available for the requested account');
+          return null;
+        }
+
+        // Authenticated afresh — remembering a site never skips this.
+        const auth = await requireAuthRef.current(
+          `Authenticate to sign a transaction for ${pinnedOriginRef.current || 'this site'}`,
+        );
+        if (!auth.success) return null;
+
+        // Sign-only: return the updated PSBT. The wallet never broadcasts on a site's behalf.
+        const signed = await walletService.signPsbt(psbt, auth.password);
+        return { psbt: signed.psbt, complete: signed.complete, signedInputs: signed.signedInputs };
+      },
+
       getPublicKey: async (account: string) => {
         const publicKey = await StorageService.getKnownPublicKey(account);
         return publicKey || undefined;
@@ -212,7 +268,7 @@ function ConnectClient() {
 
       emit,
     }),
-    [emit, requestConnectApproval, requestSignApproval, walletService],
+    [emit, requestConnectApproval, requestSignApproval, requestSignPsbtApproval, walletService],
   );
 
   const pinOrigin = useCallback(
@@ -505,13 +561,13 @@ function ConnectClient() {
         )}
 
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          {completed && !connectPromptOrigin && !signPrompt ? (
+          {completed && !connectPromptOrigin && !signPrompt && !psbtPrompt ? (
             <CheckCircle2 className="h-4 w-4 text-primary" />
           ) : (
             <Loader2 className="h-4 w-4 animate-spin" />
           )}
           <span>
-            {completed && !connectPromptOrigin && !signPrompt
+            {completed && !connectPromptOrigin && !signPrompt && !psbtPrompt
               ? `Answered ${completed.method}. ${transport === 'popup' ? 'You can close this window.' : ''}`
               : status}
           </span>
@@ -550,6 +606,14 @@ function ConnectClient() {
         account={signPrompt?.account || ''}
         message={signPrompt?.message || ''}
         onDecision={resolveSignPrompt}
+      />
+
+      <SignPsbtApprovalDialog
+        open={psbtPrompt !== null}
+        origin={psbtPrompt?.origin || ''}
+        account={psbtPrompt?.account || ''}
+        summary={psbtPrompt?.summary || null}
+        onDecision={resolvePsbtPrompt}
       />
     </GradientBackground>
   );

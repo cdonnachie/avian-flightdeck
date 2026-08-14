@@ -109,6 +109,34 @@ export function parseSignMessageParams(
   return { ok: true, message };
 }
 
+/** Extracts and bounds-checks the `psbt` param of signPsbt (a base64 string). */
+export function parseSignPsbtParams(
+  params: Record<string, unknown> | undefined,
+): { ok: true; psbt: string } | { ok: false; error: ConnectError } {
+  const psbt = params?.psbt;
+  if (typeof psbt !== 'string' || psbt.length === 0) {
+    return {
+      ok: false,
+      error: { code: 'INVALID_REQUEST', message: 'signPsbt requires a non-empty base64 psbt string' },
+    };
+  }
+  if (psbt.length > LIMITS.psbt) {
+    return {
+      ok: false,
+      error: { code: 'INVALID_REQUEST', message: `PSBT exceeds the ${LIMITS.psbt} character limit` },
+    };
+  }
+  // Standard base64 alphabet with optional padding — reject anything else before it reaches the
+  // decoder so a hostile page can't probe the parser with junk.
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(psbt)) {
+    return {
+      ok: false,
+      error: { code: 'INVALID_REQUEST', message: 'signPsbt psbt must be valid base64' },
+    };
+  }
+  return { ok: true, psbt };
+}
+
 export function makeResult(id: string, result: unknown): ConnectResponse {
   return { avianConnect: AVIAN_CONNECT_VERSION, id, result };
 }

@@ -49,6 +49,8 @@ describe('signMessage over Avian Connect', () => {
       requestSignApproval: async () => true,
       signMessage: (_account, message) =>
         wallet.signMessage(generated.privateKey, message, PASSWORD),
+      requestSignPsbtApproval: async () => true,
+      signPsbt: async () => null,
       getPublicKey: async () => undefined,
       getNetwork: async () => ({ network: 'mainnet', genesisHash: null }),
       emit: () => undefined,
