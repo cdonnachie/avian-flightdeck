@@ -78,9 +78,12 @@ export default function CreateAssetDialog({
   const [isBusy, setIsBusy] = useState(false);
   const [txid, setTxid] = useState('');
 
+  // Reset only when the dialog opens — NOT when ownedRoots changes. After a successful issuance the
+  // asset list refreshes and ownedRoots gains the new owner token; if that re-ran this effect it
+  // would wipe txid and drop the success screen (with its explorer link) back to the empty form.
   useEffect(() => {
     if (open) {
-      setType(ownedRoots.length === 0 ? 'root' : 'root');
+      setType('root');
       setRootName('');
       setParent(ownedRoots[0] ?? '');
       setChildPart('');
@@ -94,7 +97,8 @@ export default function CreateAssetDialog({
       setTxid('');
       setIsBusy(false);
     }
-  }, [open, ownedRoots]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const fullName = useMemo(() => {
     if (type === 'root') return rootName.trim();
