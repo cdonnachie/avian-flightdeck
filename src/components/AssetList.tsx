@@ -6,14 +6,15 @@ import { Coins, Plus, RefreshCw, Search, Send } from 'lucide-react';
 import { useWallet } from '@/contexts/WalletContext';
 import { getHeldAssets, ipfsImageUrl, type HeldAsset } from '@/services/wallet/AssetService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import SendAssetDialog from './SendAssetDialog';
 import CreateAssetDialog from './CreateAssetDialog';
 
-/** A small asset avatar: the IPFS image when the asset has one, otherwise a coin glyph. */
-function AssetThumbnail({ asset }: { asset: HeldAsset }) {
+/** A small asset avatar: the IPFS image when the asset has one (click to enlarge), else a coin glyph. */
+function AssetThumbnail({ asset, onPreview }: { asset: HeldAsset; onPreview: (url: string) => void }) {
   const [failed, setFailed] = useState(false);
   const url = asset.meta?.hasIpfs ? ipfsImageUrl(asset.meta.ipfs) : null;
 
@@ -25,16 +26,23 @@ function AssetThumbnail({ asset }: { asset: HeldAsset }) {
     );
   }
   return (
-    // Plain <img> (not next/image) — external IPFS content, lazily loaded, hidden gracefully if the
-    // hash isn't an image or the gateway fails.
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={url}
-      alt=""
-      loading="lazy"
-      onError={() => setFailed(true)}
-      className="h-9 w-9 flex-shrink-0 rounded-md object-cover"
-    />
+    <button
+      type="button"
+      onClick={() => onPreview(url)}
+      className="h-9 w-9 flex-shrink-0 overflow-hidden rounded-md"
+      aria-label={`View ${asset.name} image`}
+    >
+      {/* Plain <img> (not next/image) — external IPFS content, lazily loaded, hidden gracefully if
+          the hash isn't an image or the gateway fails. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt=""
+        loading="lazy"
+        onError={() => setFailed(true)}
+        className="h-full w-full object-cover"
+      />
+    </button>
   );
 }
 
@@ -60,6 +68,7 @@ export function AssetList({ className }: { className?: string }) {
   const [query, setQuery] = useState('');
   const [sending, setSending] = useState<HeldAsset | null>(null);
   const [creating, setCreating] = useState(false);
+  const [preview, setPreview] = useState<{ url: string; name: string } | null>(null);
 
   const load = useCallback(async () => {
     if (!electrum || !address) return;
@@ -157,12 +166,14 @@ export function AssetList({ className }: { className?: string }) {
               return (
                 <li
                   key={asset.name}
-                  className="flex items-center justify-between gap-3 px-4 py-3"
+                  className="flex items-center gap-3 px-4 py-3"
                 >
-                  <span className="flex min-w-0 items-center gap-3">
-                    <AssetThumbnail asset={asset} />
-                    <span className="flex min-w-0 flex-col">
-                      <span className="truncate font-medium">{asset.name}</span>
+                  <AssetThumbnail
+                    asset={asset}
+                    onPreview={(url) => setPreview({ url, name: asset.name })}
+                  />
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate font-medium">{asset.name}</span>
                       <span className="mt-0.5 flex flex-wrap gap-1">
                         {kind && (
                           <Badge variant="secondary" className="h-4 px-1.5 text-[10px] capitalize">
@@ -181,7 +192,6 @@ export function AssetList({ className }: { className?: string }) {
                         )}
                       </span>
                     </span>
-                  </span>
                   <span className="flex flex-shrink-0 items-center gap-2">
                     <span className="font-mono text-sm">{asset.amount}</span>
                     <Button
@@ -221,6 +231,22 @@ export function AssetList({ className }: { className?: string }) {
         ownedRoots={ownedRoots}
         onSuccess={reloadSoon}
       />
+
+      <Dialog open={preview !== null} onOpenChange={(next) => !next && setPreview(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="break-all font-mono text-sm">{preview?.name}</DialogTitle>
+          </DialogHeader>
+          {preview && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={preview.url}
+              alt={preview.name}
+              className="mx-auto max-h-[70vh] w-full rounded-md object-contain"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
