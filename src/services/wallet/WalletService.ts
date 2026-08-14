@@ -25,6 +25,13 @@ import { randomBytes, createHash, createCipheriv, createDecipheriv, createHmac }
 import { secureEncrypt, secureDecrypt, decryptData, legacyDecrypt } from './encryption';
 import { runWithConcurrency } from './concurrency';
 import { estimateTxFee, DEFAULT_FEE_RATE_SAT_PER_VBYTE, DUST_THRESHOLD_SATS } from './fees';
+import {
+    SIGHASH_ALL_FORKID,
+    isAssetScript,
+    type PsbtSummary,
+    type PsbtInputSummary,
+    type PsbtOutputSummary,
+} from './psbt';
 
 // How many transaction.get requests to keep in flight while syncing history. Electrum matches
 // responses by id, so a small pool cuts the latency of a large sync ~N-fold. Kept deliberately low:
@@ -520,6 +527,247 @@ export class WalletService {
             networkRate = 0;
         }
         return Math.max(DEFAULT_FEE_RATE_SAT_PER_VBYTE, networkRate);
+    }
+
+    // --- PSBT (BIP174) -------------------------------------------------------------------------
+    // Avian PSBTs are stock BIP174; the only Avian detail is the 0x41 (ALL|FORKID) sighash, which
+    // bitcoinjs already produces for legacy and SegWit-v0 inputs when that type is set. So signing
+    // reuses the same path regular sends use. Asset inputs are never signed (that would burn them).
+
+    /** Decrypt the active wallet's key into an ECPair (throws on a missing/bad password). */
+    private async getActiveKeyPair(password?: string) {
+        const activeWallet = await StorageService.getActiveWallet();
+        if (!activeWallet) throw new Error('No active wallet found');
+        let wif = activeWallet.privateKey;
+        if (activeWallet.isEncrypted) {
+            if (!password) throw new Error('Password required for encrypted wallet');
+            try {
+                const { decrypted } = await decryptData(wif, password);
+                if (!decrypted) throw new Error('Invalid password');
+                wif = decrypted;
+            } catch {
+                throw new Error('Invalid password');
+            }
+        }
+        return ECPair.fromWIF(wif, avianNetwork);
+    }
+
+    /** Prevout {script,value} for a PSBT input, from its witnessUtxo or nonWitnessUtxo. */
+    private psbtPrevOut(psbt: bitcoin.Psbt, index: number): { script: Buffer; value: number } | null {
+        const data = psbt.data.inputs[index];
+        if (data.witnessUtxo) {
+            return { script: data.witnessUtxo.script, value: data.witnessUtxo.value };
+        }
+        if (data.nonWitnessUtxo) {
+            const prevTx = bitcoin.Transaction.fromBuffer(data.nonWitnessUtxo);
+            const out = prevTx.outs[psbt.txInputs[index].index];
+            return out ? { script: out.script, value: out.value } : null;
+        }
+        return null;
+    }
+
+    private scriptToAddress(script: Buffer): string | null {
+        try {
+            return bitcoin.address.fromOutputScript(script, avianNetwork);
+        } catch {
+            return null;
+        }
+    }
+
+    private inputSignedBy(data: any, pubkey: Buffer): boolean {
+        return !!data.partialSig?.some((ps: any) => Buffer.from(ps.pubkey).equals(pubkey));
+    }
+
+    private inputHasAnySig(data: any): boolean {
+        return !!(
+            data.finalScriptSig ||
+            data.finalScriptWitness ||
+            (data.partialSig && data.partialSig.length)
+        );
+    }
+
+    /**
+     * Decode a base64 PSBT and describe it — each input's prevout, ownership and asset status, each
+     * output, totals and fee, how many inputs this wallet can sign, and whether it is ready to
+     * finalize. No key access, so it is safe to show before authentication.
+     */
+    async summarizePsbt(psbtBase64: string, ownAddress?: string): Promise<PsbtSummary> {
+        const psbt = bitcoin.Psbt.fromBase64(psbtBase64, { network: avianNetwork });
+        const mine = ownAddress ?? (await StorageService.getActiveWallet())?.address ?? null;
+        const myScript = mine ? bitcoin.address.toOutputScript(mine, avianNetwork) : null;
+
+        const inputs: PsbtInputSummary[] = psbt.txInputs.map((txIn, i) => {
+            const prev = this.psbtPrevOut(psbt, i);
+            const script = prev?.script ?? null;
+            return {
+                txid: Buffer.from(txIn.hash).reverse().toString('hex'),
+                vout: txIn.index,
+                value: prev?.value ?? null,
+                address: script ? this.scriptToAddress(script) : null,
+                isMine: !!(script && myScript && script.equals(myScript)),
+                isAsset: !!(script && isAssetScript(script)),
+                signed: this.inputHasAnySig(psbt.data.inputs[i]),
+            };
+        });
+
+        const outputs: PsbtOutputSummary[] = psbt.txOutputs.map((out) => ({
+            address: this.scriptToAddress(out.script),
+            value: out.value,
+            isMine: !!(myScript && out.script.equals(myScript)),
+            isAsset: isAssetScript(out.script),
+        }));
+
+        const knownIn = inputs.every((i) => i.value !== null);
+        const totalIn = knownIn ? inputs.reduce((s, i) => s + (i.value ?? 0), 0) : null;
+        const totalOut = outputs.reduce((s, o) => s + o.value, 0);
+
+        return {
+            inputs,
+            outputs,
+            totalIn,
+            totalOut,
+            fee: totalIn !== null ? totalIn - totalOut : null,
+            signableByUs: inputs.filter((i) => i.isMine && !i.isAsset && !i.signed).length,
+            complete: inputs.every((i) => i.signed),
+            hasAsset: inputs.some((i) => i.isAsset) || outputs.some((o) => o.isAsset),
+        };
+    }
+
+    /** The unsigned global transaction of a PSBT (empty input scripts), for computing sighashes. */
+    private unsignedTxFromPsbt(psbt: bitcoin.Psbt): bitcoin.Transaction {
+        const tx = new bitcoin.Transaction();
+        tx.version = psbt.version;
+        tx.locktime = psbt.locktime;
+        for (const input of psbt.txInputs) tx.addInput(Buffer.from(input.hash), input.index, input.sequence);
+        for (const output of psbt.txOutputs) tx.addOutput(output.script, output.value);
+        return tx;
+    }
+
+    /** Whether a prevout script is a native P2WPKH (`OP_0 <20-byte hash>`). */
+    private isP2wpkhScript(script: Buffer): boolean {
+        return script.length === 22 && script[0] === 0x00 && script[1] === 0x14;
+    }
+
+    /** Serialize a witness stack (count + length-prefixed items) for a PSBT finalScriptWitness. */
+    private serializeWitnessStack(items: Buffer[]): Buffer {
+        const chunks: Buffer[] = [this.encodeVarint(items.length)];
+        for (const item of items) chunks.push(this.encodeVarint(item.length), item);
+        return Buffer.concat(chunks);
+    }
+
+    private encodeVarint(n: number): Buffer {
+        if (n < 0xfd) return Buffer.from([n]);
+        if (n <= 0xffff) {
+            const b = Buffer.allocUnsafe(3);
+            b[0] = 0xfd;
+            b.writeUInt16LE(n, 1);
+            return b;
+        }
+        const b = Buffer.allocUnsafe(5);
+        b[0] = 0xfe;
+        b.writeUInt32LE(n, 1);
+        return b;
+    }
+
+    /**
+     * Sign every input the active wallet owns — skipping asset inputs and any already signed — with
+     * the Avian FORKID sighash, and return the updated base64 PSBT. Does not finalize, so the result
+     * can be handed to another signer or exported.
+     *
+     * bitcoinjs-lib's own PSBT signer rejects the 0x41 (ALL|FORKID) sighash ("Invalid hashType 65"),
+     * so we compute the digest ourselves — legacy `hashForSignature` for P2PKH, BIP143
+     * `hashForWitnessV0` for native SegWit — exactly as the regular send path does, then inject the
+     * DER signature as a partialSig. This is the same signing that FlightDeck already broadcasts and
+     * confirms on mainnet, just carried through the PSBT container.
+     */
+    async signPsbt(
+        psbtBase64: string,
+        password?: string,
+    ): Promise<{ psbt: string; complete: boolean; signedInputs: number }> {
+        const psbt = bitcoin.Psbt.fromBase64(psbtBase64, { network: avianNetwork });
+        const keyPair = await this.getActiveKeyPair(password);
+        const pubkey = Buffer.from(keyPair.publicKey);
+        const p2pkhScript = bitcoin.payments.p2pkh({ pubkey, network: avianNetwork }).output!;
+        const p2wpkhScript = bitcoin.payments.p2wpkh({ pubkey, network: avianNetwork }).output!;
+        const unsigned = this.unsignedTxFromPsbt(psbt);
+
+        let signedInputs = 0;
+        for (let i = 0; i < psbt.inputCount; i++) {
+            const prev = this.psbtPrevOut(psbt, i);
+            if (!prev) continue;
+            if (isAssetScript(prev.script)) continue; // never sign an asset input — it would burn it
+            const isP2pkh = prev.script.equals(p2pkhScript);
+            const isP2wpkh = prev.script.equals(p2wpkhScript);
+            if (!isP2pkh && !isP2wpkh) continue; // not our key
+            if (this.inputSignedBy(psbt.data.inputs[i], pubkey)) continue;
+            try {
+                let digest: Buffer;
+                if (isP2wpkh) {
+                    // BIP143 sighash: the scriptCode is the equivalent P2PKH, amount is committed.
+                    const scriptCode = bitcoin.script.compile([
+                        bitcoin.opcodes.OP_DUP,
+                        bitcoin.opcodes.OP_HASH160,
+                        bitcoin.crypto.hash160(pubkey),
+                        bitcoin.opcodes.OP_EQUALVERIFY,
+                        bitcoin.opcodes.OP_CHECKSIG,
+                    ]);
+                    digest = unsigned.hashForWitnessV0(i, scriptCode, prev.value, SIGHASH_ALL_FORKID);
+                } else {
+                    // Legacy sighash: amount is not committed; the prevout script is the scriptCode.
+                    digest = unsigned.hashForSignature(i, prev.script, SIGHASH_ALL_FORKID);
+                }
+                const sig = this.encodeDERWithCustomHashType(
+                    Buffer.from(keyPair.sign(digest)),
+                    SIGHASH_ALL_FORKID,
+                );
+                psbt.updateInput(i, { partialSig: [{ pubkey, signature: sig }] });
+                signedInputs++;
+            } catch (error) {
+                walletLogger.warn(`Could not sign PSBT input ${i}:`, error);
+            }
+        }
+
+        return {
+            psbt: psbt.toBase64(),
+            complete: psbt.data.inputs.every((d) => this.inputHasAnySig(d)),
+            signedInputs,
+        };
+    }
+
+    /**
+     * Finalize a fully-signed PSBT and extract the raw transaction (hex + txid). bitcoinjs-lib's
+     * finalizer also rejects the 0x41 sighash on decode, so we build each input's finalScriptSig
+     * (legacy) or finalScriptWitness (SegWit) from its partialSig ourselves before extracting.
+     */
+    finalizePsbt(psbtBase64: string): { hex: string; txid: string } {
+        const psbt = bitcoin.Psbt.fromBase64(psbtBase64, { network: avianNetwork });
+        for (let i = 0; i < psbt.inputCount; i++) {
+            const data = psbt.data.inputs[i];
+            if (data.finalScriptSig || data.finalScriptWitness) continue; // already finalized
+            const partialSig = data.partialSig?.[0];
+            if (!partialSig) throw new Error(`PSBT input ${i} is not signed`);
+            const sig = Buffer.from(partialSig.signature);
+            const pub = Buffer.from(partialSig.pubkey);
+            const prev = this.psbtPrevOut(psbt, i);
+            if (prev && this.isP2wpkhScript(prev.script)) {
+                psbt.updateInput(i, { finalScriptWitness: this.serializeWitnessStack([sig, pub]) });
+            } else {
+                psbt.updateInput(i, { finalScriptSig: bitcoin.script.compile([sig, pub]) });
+            }
+        }
+        const tx = psbt.extractTransaction();
+        return { hex: tx.toHex(), txid: tx.getId() };
+    }
+
+    /** Sign the active wallet's inputs, finalize, and broadcast. Returns the txid. */
+    async signAndBroadcastPsbt(psbtBase64: string, password?: string): Promise<string> {
+        const signed = await this.signPsbt(psbtBase64, password);
+        const { hex, txid } = this.finalizePsbt(signed.psbt);
+        const result = await this.electrum.broadcastTransaction(hex);
+        if (!result || typeof result !== 'string') {
+            throw new Error('Transaction broadcast failed. Please try again later.');
+        }
+        return txid;
     }
 
     async sendTransaction(
