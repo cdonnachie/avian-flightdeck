@@ -557,3 +557,68 @@ describe('sendTransactionWithManualUTXOs', () => {
     expect(broadcast).not.toHaveBeenCalled();
   });
 });
+
+describe('buildUnsignedPsbt', () => {
+  const RATE = 1;
+  const feeFor = (inputs: number, outputs: number) => estimateTxFee(inputs, outputs, RATE);
+
+  it('exports an unsigned PSBT with the same selection and fee as a send — no key needed', async () => {
+    const { address } = await createActiveWallet();
+    const { electrum } = createFakeElectrum(address, [500_000]);
+    const wallet = new WalletService(electrum as never);
+
+    // No password passed — building the unsigned PSBT must not need the private key.
+    const result = await wallet.buildUnsignedPsbt(RECIPIENT, 100_000, { feeRate: RATE });
+
+    expect(result.inputs).toBe(1);
+    expect(result.fee).toBe(feeFor(1, 2));
+    expect(result.sendAmount).toBe(100_000);
+    expect(result.changeAmount).toBe(500_000 - 100_000 - feeFor(1, 2));
+
+    const psbt = bitcoin.Psbt.fromBase64(result.psbt, { network: avianNetwork });
+    expect(psbt.inputCount).toBe(1);
+    // Unsigned: no input carries a signature yet.
+    expect(psbt.data.inputs.every((i) => !i.partialSig && !i.finalScriptSig)).toBe(true);
+    // Outputs: recipient + change back to us.
+    const outs = psbt.txOutputs.map((o) => ({ address: o.address, value: o.value }));
+    expect(outs).toContainEqual({ address: RECIPIENT, value: 100_000 });
+    expect(outs).toContainEqual({ address, value: 500_000 - 100_000 - feeFor(1, 2) });
+  });
+
+  it('round-trips: the exported PSBT signs and finalises to a valid FORKID transaction', async () => {
+    const { address, keyPair } = await createActiveWallet();
+    const { electrum } = createFakeElectrum(address, [500_000]);
+    const wallet = new WalletService(electrum as never);
+
+    const { psbt } = await wallet.buildUnsignedPsbt(RECIPIENT, 100_000, { feeRate: RATE });
+    const signed = await wallet.signPsbt(psbt, TEST_PASSWORD);
+    expect(signed.signedInputs).toBe(1);
+    expect(signed.complete).toBe(true);
+
+    const { hex } = wallet.finalizePsbt(signed.psbt);
+    const tx = bitcoin.Transaction.fromHex(hex);
+    const [signature, pubkey] = bitcoin.script.decompile(tx.ins[0].script) as Buffer[];
+    expect(signature[signature.length - 1]).toBe(SIGHASH_ALL_FORKID);
+    expect(Buffer.from(pubkey).toString('hex')).toBe(Buffer.from(keyPair.publicKey).toString('hex'));
+    expect(outputsOf(tx)).toContainEqual({ address: RECIPIENT, value: 100_000 });
+  });
+
+  it('refuses to export for a wrapped-SegWit wallet (needs the pubkey for a redeemScript)', async () => {
+    // Register a p2sh-p2wpkh active wallet directly so the export guard trips.
+    const keyPair = ECPair.makeRandom({ network: avianNetwork });
+    const address = deriveAddress(Buffer.from(keyPair.publicKey), 'p2pkh');
+    await StorageService.createWallet({
+      name: 'Wrapped',
+      address,
+      privateKey: await secureEncrypt(keyPair.toWIF(), TEST_PASSWORD),
+      isEncrypted: true,
+      addressType: 'p2sh-p2wpkh',
+    });
+    const { electrum } = createFakeElectrum(address, [500_000]);
+    const wallet = new WalletService(electrum as never);
+
+    await expect(wallet.buildUnsignedPsbt(RECIPIENT, 100_000, { feeRate: RATE })).rejects.toThrow(
+      /wrapped-SegWit/,
+    );
+  });
+});
