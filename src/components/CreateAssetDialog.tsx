@@ -198,7 +198,15 @@ export default function CreateAssetDialog({
     </div>
   ) : (
     <div className="space-y-4">
-      <Tabs value={type} onValueChange={(v) => setType(v as AssetType)}>
+      <Tabs
+        value={type}
+        onValueChange={(v) => {
+          setType(v as AssetType);
+          // The burn amount differs per type — never carry a confirmation across a change.
+          setConfirmBurn(false);
+          setError('');
+        }}
+      >
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="root">Root</TabsTrigger>
           <TabsTrigger value="sub" disabled={ownedRoots.length === 0}>
