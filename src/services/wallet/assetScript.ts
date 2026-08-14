@@ -20,20 +20,21 @@ import { OP_AVN_ASSET, isAssetScript } from './psbt';
 /** The on-chain asset marker: "rvn" (0x72 0x76 0x6e). NOT "avn" — see the file header. */
 export const ASSET_MARKER = Buffer.from('rvn', 'ascii');
 
+// Type byte after the "rvn" marker. Confirmed against a real mainnet Core issuance tx: 'q' is a new
+// asset, 'r' is a reissue (they are NOT the other way round), 't' a transfer, 'o' an owner token.
 export const ASSET_TYPE = {
   transfer: 0x74, // 't'
-  issue: 0x72, // 'r'
+  issue: 0x71, // 'q' — new asset issuance
+  reissue: 0x72, // 'r'
   owner: 0x6f, // 'o'
-  qualifier: 0x71, // 'q'
 } as const;
 
 export interface AssetScriptInfo {
-  /** 'transfer' | 'issue' | 'owner' | 'qualifier' | 'unknown' */
-  type: 'transfer' | 'issue' | 'owner' | 'qualifier' | 'unknown';
+  type: 'transfer' | 'issue' | 'reissue' | 'owner' | 'unknown';
   /** Address the P2PKH part pays to (null if it isn't a standard address). */
   address: string | null;
   name: string;
-  /** Transfer/issue amount in integer units (scaled by the asset's divisions); null for owner. */
+  /** Amount in integer units (scaled by 10^8); null for an owner token, which carries no amount. */
   amount: bigint | null;
 }
 
@@ -116,16 +117,14 @@ export function parseAssetScript(script: Buffer): AssetScriptInfo | null {
 
   let type: AssetScriptInfo['type'] = 'unknown';
   let amount: bigint | null = null;
-  if (typeByte === ASSET_TYPE.transfer) {
-    type = 'transfer';
-    if (offset + 8 <= payload.length) amount = payload.readBigInt64LE(offset);
-  } else if (typeByte === ASSET_TYPE.issue) {
-    type = 'issue';
-    if (offset + 8 <= payload.length) amount = payload.readBigInt64LE(offset);
-  } else if (typeByte === ASSET_TYPE.owner) {
-    type = 'owner';
-  } else if (typeByte === ASSET_TYPE.qualifier) {
-    type = 'qualifier';
+  // transfer / new-asset issue / reissue all carry an int64 amount right after the name; an owner
+  // token carries none.
+  if (typeByte === ASSET_TYPE.transfer) type = 'transfer';
+  else if (typeByte === ASSET_TYPE.issue) type = 'issue';
+  else if (typeByte === ASSET_TYPE.reissue) type = 'reissue';
+  else if (typeByte === ASSET_TYPE.owner) type = 'owner';
+  if (type !== 'owner' && type !== 'unknown' && offset + 8 <= payload.length) {
+    amount = payload.readBigInt64LE(offset);
   }
 
   return { type, address, name, amount };

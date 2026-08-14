@@ -91,3 +91,65 @@ describe('parseAssetScript', () => {
     expect(parseAssetScript(plain)).toBeNull();
   });
 });
+
+describe('real mainnet Core golden vectors', () => {
+  // Output scripts lifted from a real Avian Core asset-issuance transaction (creating FLIGHTDECK).
+  // These pin the parser to what Core actually emits on mainnet.
+  const OWNER = 'RXt29uFKBr8RnyUqyp7m71S4DXPtauYyXm';
+  const ownerScript = Buffer.from(
+    '76a914f7e90a9c1fd4bacfd771b70152e3ecf775697f2b88acc01072766e6f0b464c494748544445434b2175',
+    'hex',
+  );
+  const issueScript = Buffer.from(
+    '76a914f7e90a9c1fd4bacfd771b70152e3ecf775697f2b88acc01b72766e710a464c494748544445434b00e1f505000000000001000075',
+    'hex',
+  );
+
+  it('parses a real owner token (type o, no amount)', () => {
+    expect(parseAssetScript(ownerScript)).toEqual({
+      type: 'owner',
+      address: OWNER,
+      name: 'FLIGHTDECK!',
+      amount: null,
+    });
+  });
+
+  it('parses a real new-asset issuance (type q, with amount)', () => {
+    // 'q' (0x71) is issuance — the label the parser bug used to get wrong.
+    expect(parseAssetScript(issueScript)).toEqual({
+      type: 'issue',
+      address: OWNER,
+      name: 'FLIGHTDECK',
+      amount: 100_000_000n, // qty 1, scaled by 10^8
+    });
+  });
+
+  it('builds a transfer whose name+amount bytes match Core’s real encoding', () => {
+    // The issuance payload is "rvn" ‖ 'q' ‖ compactSize(name) ‖ name ‖ int64LE(amount) ‖ …extra.
+    // A transfer is "rvn" ‖ 't' ‖ compactSize(name) ‖ name ‖ int64LE(amount) — the name+amount run
+    // is identical, so our builder must produce exactly those bytes.
+    const built = buildAssetTransferScript(OWNER, 'FLIGHTDECK', 100_000_000n);
+    const nameAndAmount = Buffer.from('0a464c494748544445434b00e1f50500000000', 'hex');
+    expect(built.includes(nameAndAmount)).toBe(true);
+    expect(issueScript.includes(nameAndAmount)).toBe(true);
+  });
+
+  it('builds a transfer byte-identical to a real Core SMAUG transfer output', () => {
+    // The transfer output of a real Avian Core SMAUG transfer (1.0 SMAUG, type 't'). This is the
+    // definitive check: our builder must reproduce Core's transfer script exactly, or an asset move
+    // could be malformed and unrecoverable.
+    const RECIPIENT_ADDR = 'RWdrtiny9B5zGcyVzjyZtj4sLhZpn2XQfL';
+    const realTransfer =
+      '76a914ea435c63940947432bfa2c53263c6d9ad82a163788acc01272766e7405534d41554700e1f5050000000075';
+
+    expect(parseAssetScript(Buffer.from(realTransfer, 'hex'))).toEqual({
+      type: 'transfer',
+      address: RECIPIENT_ADDR,
+      name: 'SMAUG',
+      amount: 100_000_000n, // 1.0 SMAUG
+    });
+    expect(buildAssetTransferScript(RECIPIENT_ADDR, 'SMAUG', 100_000_000n).toString('hex')).toBe(
+      realTransfer,
+    );
+  });
+});
