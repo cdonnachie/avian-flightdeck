@@ -209,10 +209,54 @@ export function decodeRequestParam(param: string): ParseResult {
 
 const LOCAL_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
 
+// Extra hosts/subnets allowed to use plaintext http, for LAN development against a self-hosted
+// deploy. Comma-separated NEXT_PUBLIC_CONNECT_HTTP_HOSTS, each entry an exact hostname or an IPv4
+// CIDR (e.g. "10.10.30.0/24"). Empty by default, so the public build keeps the https-or-loopback
+// rule; NEXT_PUBLIC_* is inlined at build time, so set it in the environment that builds the app.
+const EXTRA_HTTP_HOSTS = (process.env.NEXT_PUBLIC_CONNECT_HTTP_HOSTS ?? '')
+  .split(',')
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+
+/** Parse an IPv4 dotted-quad to a 32-bit unsigned int, or null if it isn't a valid IPv4 address. */
+function ipv4ToInt(host: string): number | null {
+  const parts = host.split('.');
+  if (parts.length !== 4) return null;
+  let n = 0;
+  for (const part of parts) {
+    if (!/^\d{1,3}$/.test(part)) return null;
+    const octet = Number(part);
+    if (octet > 255) return null;
+    n = (n << 8) | octet;
+  }
+  return n >>> 0;
+}
+
+/** True if `hostname` is an IPv4 address inside the `a.b.c.d/bits` CIDR range. */
+export function ipv4InCidr(hostname: string, cidr: string): boolean {
+  const [range, bitsRaw] = cidr.split('/');
+  const bits = Number(bitsRaw);
+  if (!Number.isInteger(bits) || bits < 0 || bits > 32) return false;
+  const ip = ipv4ToInt(hostname);
+  const base = ipv4ToInt(range);
+  if (ip === null || base === null) return false;
+  const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+  return (ip & mask) === (base & mask);
+}
+
+/** Whether a plaintext-http origin with this hostname is permitted (loopback + configured LAN). */
+function isHttpHostAllowed(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (LOCAL_HOSTS.includes(host)) return true;
+  return EXTRA_HTTP_HOSTS.some((entry) =>
+    entry.includes('/') ? ipv4InCidr(host, entry) : entry === host,
+  );
+}
+
 /**
  * Normalises an origin or URL to `scheme://host[:port]`, lowercased and without a trailing slash.
  * Returns null for anything that is not an origin we are willing to talk to: opaque origins,
- * and plaintext http outside of local development.
+ * and plaintext http outside of local development (loopback, plus any NEXT_PUBLIC_CONNECT_HTTP_HOSTS).
  */
 export function normalizeOrigin(value: string): string | null {
   if (typeof value !== 'string' || value.length === 0 || value.length > 2048) {
@@ -229,7 +273,7 @@ export function normalizeOrigin(value: string): string | null {
   if (url.protocol !== 'https:' && url.protocol !== 'http:') {
     return null;
   }
-  if (url.protocol === 'http:' && !LOCAL_HOSTS.includes(url.hostname.toLowerCase())) {
+  if (url.protocol === 'http:' && !isHttpHostAllowed(url.hostname)) {
     return null;
   }
 
