@@ -6,6 +6,7 @@ import {
   buildRedirectUrl,
   decodeRequestParam,
   encodeEnvelope,
+  ipv4InCidr,
   isConnectResponse,
   makeError,
   makeEvent,
@@ -211,6 +212,8 @@ describe('normalizeOrigin', () => {
     expect(normalizeOrigin('http://localhost:3000')).toBe('http://localhost:3000');
     expect(normalizeOrigin('http://127.0.0.1:3000')).toBe('http://127.0.0.1:3000');
     expect(normalizeOrigin('http://realm.example')).toBeNull();
+    // A LAN address is rejected unless NEXT_PUBLIC_CONNECT_HTTP_HOSTS opts it in (unset in tests).
+    expect(normalizeOrigin('http://10.10.30.5:3000')).toBeNull();
   });
 
   it('rejects non-http(s) and opaque origins', () => {
@@ -219,6 +222,33 @@ describe('normalizeOrigin', () => {
     expect(normalizeOrigin('data:text/html,hi')).toBeNull();
     expect(normalizeOrigin('not a url')).toBeNull();
     expect(normalizeOrigin('')).toBeNull();
+  });
+});
+
+describe('ipv4InCidr', () => {
+  it('matches addresses inside a /24', () => {
+    expect(ipv4InCidr('10.10.30.1', '10.10.30.0/24')).toBe(true);
+    expect(ipv4InCidr('10.10.30.254', '10.10.30.0/24')).toBe(true);
+    // A base written with a host part still masks correctly (10.10.30.1/24 → 10.10.30.0/24).
+    expect(ipv4InCidr('10.10.30.50', '10.10.30.1/24')).toBe(true);
+  });
+
+  it('rejects addresses outside the range', () => {
+    expect(ipv4InCidr('10.10.31.1', '10.10.30.0/24')).toBe(false);
+    expect(ipv4InCidr('192.168.1.1', '10.10.30.0/24')).toBe(false);
+  });
+
+  it('handles /32 and /0 edges', () => {
+    expect(ipv4InCidr('10.10.30.7', '10.10.30.7/32')).toBe(true);
+    expect(ipv4InCidr('10.10.30.8', '10.10.30.7/32')).toBe(false);
+    expect(ipv4InCidr('8.8.8.8', '0.0.0.0/0')).toBe(true);
+  });
+
+  it('rejects malformed input', () => {
+    expect(ipv4InCidr('not-an-ip', '10.10.30.0/24')).toBe(false);
+    expect(ipv4InCidr('10.10.30.1', '10.10.30.0/33')).toBe(false);
+    expect(ipv4InCidr('10.10.30.999', '10.10.30.0/24')).toBe(false);
+    expect(ipv4InCidr('10.10.30.1', 'garbage')).toBe(false);
   });
 });
 
