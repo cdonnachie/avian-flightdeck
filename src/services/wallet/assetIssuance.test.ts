@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as bitcoin from 'bitcoinjs-lib';
 import { ECPairFactory } from 'ecpair';
 import * as ecc from 'tiny-secp256k1';
@@ -61,8 +61,35 @@ async function createActiveWallet() {
   return { address, keyPair };
 }
 
+// These tests exercise the issuance builders, which are gated behind the asset-issuance kill-switch
+// (off by default during the network incident). Enable it for this suite; a dedicated test below
+// covers the disabled path.
+beforeAll(() => {
+  process.env.NEXT_PUBLIC_ASSET_ISSUANCE = 'on';
+});
+afterAll(() => {
+  delete process.env.NEXT_PUBLIC_ASSET_ISSUANCE;
+});
+
 beforeEach(() => {
   resetStorage();
+});
+
+describe('asset issuance kill-switch', () => {
+  it('refuses to build an issuance while issuance is disabled', async () => {
+    const prev = process.env.NEXT_PUBLIC_ASSET_ISSUANCE;
+    delete process.env.NEXT_PUBLIC_ASSET_ISSUANCE;
+    try {
+      const { address } = await createActiveWallet();
+      const { electrum } = createElectrum(address, [600 * COIN]);
+      const wallet = new WalletService(electrum as never);
+      await expect(
+        wallet.issueAsset('PAUSEDASSET', { amount: 1n * BigInt(COIN), units: 0, reissuable: true }, TEST_PASSWORD),
+      ).rejects.toThrow(/temporarily paused/);
+    } finally {
+      process.env.NEXT_PUBLIC_ASSET_ISSUANCE = prev;
+    }
+  });
 });
 
 describe('issueAsset (root)', () => {

@@ -40,6 +40,7 @@ import {
     isValidRootAssetName,
     ISSUE_BURN,
 } from './assetScript';
+import { isAssetIssuanceEnabled, ASSET_ISSUANCE_PAUSED_MESSAGE } from '@/lib/featureFlags';
 
 // How many transaction.get requests to keep in flight while syncing history. Electrum matches
 // responses by id, so a small pool cuts the latency of a large sync ~N-fold. Kept deliberately low:
@@ -1197,6 +1198,7 @@ export class WalletService {
         options?: { feeRate?: number; changeAddress?: string },
     ): Promise<string> {
         try {
+            if (!isAssetIssuanceEnabled()) throw new Error(ASSET_ISSUANCE_PAUSED_MESSAGE);
             if (!isValidRootAssetName(name)) {
                 throw new Error(
                     'Invalid asset name. Use 3–30 characters of A–Z, 0–9, _ and . (no leading, trailing or doubled punctuation).',
@@ -1386,6 +1388,7 @@ export class WalletService {
         options?: { feeRate?: number; changeAddress?: string };
     }): Promise<string> {
         try {
+            if (!isAssetIssuanceEnabled()) throw new Error(ASSET_ISSUANCE_PAUSED_MESSAGE);
             const { childName, parentName, amount, units, reissuable, burnAmount, burnAddress } = opts;
             if (amount <= 0n) throw new Error('Issuance amount must be positive');
             if (units < 0 || units > 8) throw new Error('Units must be between 0 and 8');
@@ -1533,6 +1536,7 @@ export class WalletService {
         options?: { feeRate?: number; changeAddress?: string },
     ): Promise<string> {
         try {
+            if (!isAssetIssuanceEnabled()) throw new Error(ASSET_ISSUANCE_PAUSED_MESSAGE);
             if (params.amount < 0n) throw new Error('Reissue amount cannot be negative');
 
             const activeWallet = await StorageService.getActiveWallet();
