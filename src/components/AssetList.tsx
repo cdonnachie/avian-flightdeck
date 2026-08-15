@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Coins, Plus, PlusCircle, RefreshCw, Search, Send } from 'lucide-react';
+import { AlertTriangle, Coins, Plus, PlusCircle, RefreshCw, Search, Send } from 'lucide-react';
 
 import { useWallet } from '@/contexts/WalletContext';
 import { getHeldAssets, ipfsImageUrl, type HeldAsset } from '@/services/wallet/AssetService';
+import { isAssetIssuanceEnabled, ASSET_ISSUANCE_PAUSED_MESSAGE } from '@/lib/featureFlags';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
@@ -94,8 +95,10 @@ export function AssetList({ className }: { className?: string }) {
     if (isConnected && address) void load();
   }, [isConnected, address, load]);
 
-  // Assets are legacy-address-only; a legacy wallet can create even with nothing held yet.
-  const canCreate = !!address && address.startsWith('R');
+  // Assets are legacy-address-only; a legacy wallet can create even with nothing held yet — but
+  // issuance is gated by a kill-switch while the network consensus issue is resolved.
+  const issuanceEnabled = isAssetIssuanceEnabled();
+  const canCreate = !!address && address.startsWith('R') && issuanceEnabled;
   // Owner tokens we hold (NAME!) → the roots we can create sub/unique assets under.
   const ownedRoots = assets
     .filter((a) => a.name.endsWith('!'))
@@ -143,6 +146,12 @@ export function AssetList({ className }: { className?: string }) {
         </span>
       </CardHeader>
       <CardContent className="p-0">
+        {!issuanceEnabled && (
+          <div className="flex items-start gap-2 border-b border-caution/30 bg-caution/10 px-4 py-3 text-sm text-caution">
+            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+            <span>{ASSET_ISSUANCE_PAUSED_MESSAGE}</span>
+          </div>
+        )}
         {assets.length > 6 && (
           <div className="relative border-b border-border/60 p-3">
             <Search className="absolute left-5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -196,7 +205,7 @@ export function AssetList({ className }: { className?: string }) {
                     </span>
                   <span className="flex flex-shrink-0 items-center gap-1">
                     <span className="mr-1 font-mono text-sm">{asset.amount}</span>
-                    {asset.meta?.reissuable && ownedRoots.includes(asset.name) && (
+                    {issuanceEnabled && asset.meta?.reissuable && ownedRoots.includes(asset.name) && (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -225,7 +234,11 @@ export function AssetList({ className }: { className?: string }) {
             })}
             {filtered.length === 0 && (
               <li className="px-4 py-6 text-center text-sm text-muted-foreground">
-                {query ? `No assets match “${query}”.` : 'No assets yet — create one to get started.'}
+                {query
+                  ? `No assets match “${query}”.`
+                  : issuanceEnabled
+                    ? 'No assets yet — create one to get started.'
+                    : 'No assets yet.'}
               </li>
             )}
           </ul>
@@ -240,14 +253,14 @@ export function AssetList({ className }: { className?: string }) {
       />
 
       <ReissueAssetDialog
-        open={reissuing !== null}
+        open={issuanceEnabled && reissuing !== null}
         onOpenChange={(next) => !next && setReissuing(null)}
         asset={reissuing}
         onSuccess={reloadSoon}
       />
 
       <CreateAssetDialog
-        open={creating}
+        open={issuanceEnabled && creating}
         onOpenChange={setCreating}
         ownedRoots={ownedRoots}
         onSuccess={reloadSoon}
