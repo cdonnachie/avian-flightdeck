@@ -1924,30 +1924,47 @@ export class WalletService {
             );
             let hdRoot = null;
             let mnemonic = null;
+            // Account-level node for descriptor-imported wallets (xprv, no mnemonic)
+            let hdAccountNode: ReturnType<typeof bip32.fromBase58> | null = null;
 
             if (hasHdUtxos) {
                 // Get mnemonic for HD wallet operations
                 mnemonic = await StorageService.getMnemonic();
-                if (!mnemonic) {
+
+                if (mnemonic) {
+                    // Decrypt mnemonic if needed
+                    let decryptedMnemonic = mnemonic;
+                    if (activeWallet.isEncrypted && password) {
+                        try {
+                            decryptedMnemonic = await secureDecrypt(mnemonic, password);
+                        } catch (error) {
+                            // If mnemonic decryption fails, try using it as-is (might not be encrypted)
+                            decryptedMnemonic = mnemonic;
+                        }
+                    }
+
+                    // Create HD root from mnemonic
+                    const seed = await bip39.mnemonicToSeed(decryptedMnemonic);
+                    hdRoot = bip32.fromSeed(seed, avianNetwork);
+                } else if (activeWallet.xprv) {
+                    // Descriptor-imported wallet — the stored xprv is already at account level
+                    let decryptedXprv = activeWallet.xprv;
+                    if (activeWallet.isEncrypted) {
+                        if (!password) {
+                            throw new Error('Password required to sign from derived addresses');
+                        }
+                        try {
+                            decryptedXprv = await secureDecrypt(activeWallet.xprv, password);
+                        } catch (error) {
+                            throw new Error('Invalid password or corrupted xprv');
+                        }
+                    }
+                    hdAccountNode = bip32.fromBase58(decryptedXprv, avianNetwork);
+                } else {
                     throw new Error(
-                        'HD wallet UTXOs detected but no mnemonic found. Cannot sign from derived addresses.',
+                        'HD wallet UTXOs detected but no mnemonic or account key found. Cannot sign from derived addresses.',
                     );
                 }
-
-                // Decrypt mnemonic if needed
-                let decryptedMnemonic = mnemonic;
-                if (activeWallet.isEncrypted && password) {
-                    try {
-                        decryptedMnemonic = await secureDecrypt(mnemonic, password);
-                    } catch (error) {
-                        // If mnemonic decryption fails, try using it as-is (might not be encrypted)
-                        decryptedMnemonic = mnemonic;
-                    }
-                }
-
-                // Create HD root from mnemonic
-                const seed = await bip39.mnemonicToSeed(decryptedMnemonic);
-                hdRoot = bip32.fromSeed(seed, avianNetwork);
             }
 
             // Helper function to get the correct key pair for an address
@@ -1955,13 +1972,15 @@ export class WalletService {
                 if (address === activeWallet.address) {
                     // Main wallet address - use main private key
                     return ECPair.fromWIF(privateKeyWIF, avianNetwork);
-                } else if (hdRoot) {
-                    // HD address - derive the correct key
-                    // We need to find which derivation path this address corresponds to
-                    // Use the wallet's stored coin type and address type for derivation
-                    const coinType = activeWallet.coinType || 921;
-                    const walletType: AddressType = activeWallet.addressType || 'p2pkh';
-                    const walletPurpose = purposeForAddressType(walletType);
+                }
+
+                // HD address - find which derivation path this address corresponds to.
+                // Use the wallet's stored coin type and address type for derivation.
+                const coinType = activeWallet.coinType || 921;
+                const walletType: AddressType = activeWallet.addressType || 'p2pkh';
+                const walletPurpose = purposeForAddressType(walletType);
+
+                if (hdRoot) {
                     // Check both receiving (0) and change (1) paths
                     for (const changePath of [0, 1]) {
                         for (let addressIndex = 0; addressIndex < 50; addressIndex++) {
@@ -1982,9 +2001,28 @@ export class WalletService {
                         }
                     }
                     throw new Error(`Could not find derivation path for HD address: ${address}`);
-                } else {
-                    throw new Error(`Cannot sign UTXO from address ${address} - HD wallet not available`);
+                } else if (hdAccountNode) {
+                    // xprv is at account level, so only change/index remain to be derived
+                    for (const changePath of [0, 1]) {
+                        const changeNode = hdAccountNode.derive(changePath);
+                        for (let addressIndex = 0; addressIndex < 50; addressIndex++) {
+                            const child = changeNode.derive(addressIndex);
+                            const derivedAddress = deriveAddress(
+                                Buffer.from(child.publicKey),
+                                walletType,
+                            );
+
+                            if (derivedAddress === address) {
+                                return ECPair.fromPrivateKey(Buffer.from(child.privateKey!), {
+                                    network: avianNetwork,
+                                });
+                            }
+                        }
+                    }
+                    throw new Error(`Could not find derivation path for HD address: ${address}`);
                 }
+
+                throw new Error(`Cannot sign UTXO from address ${address} - HD wallet not available`);
             };
 
             // Manual transaction building (skip PSBT since it has sighash issues)
@@ -4644,7 +4682,7 @@ export class WalletService {
         password: string,
         accountIndex: number = 0,
         addressCount: number = 10,
-        addressType: string = 'p2pkh',
+        addressType?: string,
         changePath: number = 0, // 0 for receiving addresses, 1 for change addresses
     ): Promise<Array<{ path: string; address: string; balance: number; hasTransactions: boolean }>> {
         try {
@@ -4653,6 +4691,10 @@ export class WalletService {
             if (!activeWallet) {
                 throw new Error('No active wallet found');
             }
+
+            // Callers that don't specify a type get the wallet's own script type —
+            // deriving p2pkh for a wpkh wallet would scan addresses it doesn't own
+            const resolvedAddressType = addressType || activeWallet.addressType || 'p2pkh';
 
             // Use the wallet's stored coin type, defaulting to 921 for legacy wallets
             const coinType = activeWallet.coinType || 921;
@@ -4674,14 +4716,15 @@ export class WalletService {
                 }
 
                 const accountNode = bip32.fromBase58(decryptedXprv, avianNetwork);
-                const resolvedType = (addressType as AddressType) || activeWallet.addressType || 'p2pkh';
-                const purpose = purposeForAddressType(resolvedType as AddressType);
+                const resolvedType = resolvedAddressType as AddressType;
+                const purpose = purposeForAddressType(resolvedType);
 
                 const result: Array<{ path: string; address: string; balance: number; hasTransactions: boolean }> = [];
                 const electrum = this.electrum;
+                const changeNode = accountNode.derive(changePath);
 
                 for (let i = 0; i < addressCount; i++) {
-                    const childNode = accountNode.derive(changePath).derive(i);
+                    const childNode = changeNode.derive(i);
                     if (!childNode.privateKey) throw new Error(`Failed to derive key at ${changePath}/${i}`);
                     const kp = ECPair.fromPrivateKey(Buffer.from(childNode.privateKey), { network: avianNetwork });
                     const addr = deriveAddress(Buffer.from(kp.publicKey), resolvedType as AddressType);
@@ -4743,7 +4786,7 @@ export class WalletService {
                 decryptedPassphrase, // Use the decrypted passphrase from wallet
                 accountIndex,
                 addressCount,
-                addressType,
+                resolvedAddressType,
                 changePath,
                 coinType,
             );

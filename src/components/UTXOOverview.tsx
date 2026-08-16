@@ -330,8 +330,7 @@ export function UTXOOverview({ isOpen, onClose, onConsolidateUTXOs, maxInputs = 
         }
 
         // Check if this is an HD wallet
-        const storedMnemonic = await StorageService.getMnemonic();
-        const hasHdCapabilities = !!storedMnemonic;
+        const hasHdCapabilities = await StorageService.hasHdCapability();
         setIsHdWallet(hasHdCapabilities);
 
         const currentBlockHeight = await electrum.getCurrentBlockHeight();

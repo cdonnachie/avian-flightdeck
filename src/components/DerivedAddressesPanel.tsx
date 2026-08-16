@@ -691,11 +691,9 @@ export default function DerivedAddressesPanel() {
             }
 
             try {
-                // Check if there's a stored mnemonic for this wallet
-                const storedMnemonic = await StorageService.getMnemonic();
-
-                // A wallet is HD-compatible if it has a stored mnemonic
-                const hasHdCapabilities = !!storedMnemonic;
+                // A wallet is HD-compatible if it has a stored mnemonic, or an
+                // account-level xprv from a descriptor import
+                const hasHdCapabilities = await StorageService.hasHdCapability();
 
                 setIsHdWallet(hasHdCapabilities);
 
@@ -736,7 +734,8 @@ export default function DerivedAddressesPanel() {
                         This wallet was not created with HD (hierarchical deterministic) capabilities.
                     </p>
                     <p className="text-xs text-caution mt-1">
-                        Only wallets created with a seed phrase support derived addresses.
+                        Only wallets created from a seed phrase or imported from a descriptor
+                        support derived addresses.
                     </p>
                 </div>
             </div>

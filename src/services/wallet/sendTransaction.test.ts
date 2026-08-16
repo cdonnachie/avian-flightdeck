@@ -3,17 +3,22 @@ import * as bitcoin from 'bitcoinjs-lib';
 import { ECPairFactory } from 'ecpair';
 import * as ecc from 'tiny-secp256k1';
 
+import * as bip39 from 'bip39';
+import { BIP32Factory } from 'bip32';
+
 import {
   WalletService,
   avianNetwork,
+  buildDescriptorBody,
   deriveAddress,
+  descriptorChecksum,
   resolveSendAmounts,
   secureEncrypt,
 } from './WalletService';
 import { estimateTxFee } from './fees';
 import { CoinSelectionStrategy } from './UTXOSelectionService';
 import { StorageService } from '@/services/core/StorageService';
-import { TEST_PASSWORD, resetStorage } from '@/test/helpers';
+import { TEST_MNEMONIC, TEST_PASSWORD, resetStorage } from '@/test/helpers';
 
 /**
  * Transaction building against a stubbed network layer. Nothing is broadcast: the fake Electrum
@@ -23,6 +28,7 @@ import { TEST_PASSWORD, resetStorage } from '@/test/helpers';
  */
 
 const ECPair = ECPairFactory(ecc);
+const bip32 = BIP32Factory(ecc);
 
 const SIGHASH_ALL_FORKID = 0x41;
 const RECIPIENT = 'RJNi221gkDstBPUxeeJgtmDY4EXMEj6uvF';
@@ -555,6 +561,44 @@ describe('sendTransactionWithManualUTXOs', () => {
       ),
     ).rejects.toThrow();
     expect(broadcast).not.toHaveBeenCalled();
+  });
+
+  it('signs a UTXO on a derived address of a descriptor-imported wallet', async () => {
+    // A descriptor import has no mnemonic, so the HD signing path has to fall back to the
+    // stored account xprv — otherwise funds on any address but the first are unspendable.
+    const accountNode = bip32
+      .fromSeed(bip39.mnemonicToSeedSync(TEST_MNEMONIC), avianNetwork)
+      .derivePath("m/44'/921'/0'");
+    const derivedChild = accountNode.derive(0).derive(3);
+    const derivedAddress = deriveAddress(Buffer.from(derivedChild.publicKey), 'p2pkh');
+
+    const { electrum, broadcast, utxos } = createFakeElectrum(derivedAddress, [500_000]);
+    const wallet = new WalletService(electrum as never);
+
+    const body = buildDescriptorBody('p2pkh', 'deadbeef', 44, 921, accountNode.toBase58());
+    const imported = await wallet.importWalletFromDescriptor({
+      name: 'Descriptor',
+      descriptor: `${body}#${descriptorChecksum(body)}`,
+      password: TEST_PASSWORD,
+      makeActive: true,
+    });
+    expect(derivedAddress).not.toBe(imported.address);
+
+    await wallet.sendTransactionWithManualUTXOs(
+      RECIPIENT,
+      100_000,
+      [{ ...utxos[0], address: derivedAddress }],
+      TEST_PASSWORD,
+    );
+
+    const tx = broadcastTx(broadcast);
+    expect(tx.ins).toHaveLength(1);
+    // Signed with the derived key rather than the wallet's primary key.
+    const [signature, pubkey] = bitcoin.script.decompile(tx.ins[0].script) as Buffer[];
+    expect(signature[signature.length - 1]).toBe(SIGHASH_ALL_FORKID);
+    expect(Buffer.from(pubkey).toString('hex')).toBe(
+      Buffer.from(derivedChild.publicKey).toString('hex'),
+    );
   });
 });
 

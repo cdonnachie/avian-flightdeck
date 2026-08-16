@@ -26,9 +26,21 @@ vi.mock('../core/ElectrumService', () => {
   return { ElectrumService };
 });
 
-import { WalletService, decryptData } from './WalletService';
+import * as bip39 from 'bip39';
+import { BIP32Factory } from 'bip32';
+import * as ecc from 'tiny-secp256k1';
+
+import {
+  WalletService,
+  avianNetwork,
+  buildDescriptorBody,
+  decryptData,
+  descriptorChecksum,
+} from './WalletService';
 import { StorageService } from '@/services/core/StorageService';
 import { TEST_MNEMONIC, TEST_PASSWORD, resetStorage } from '@/test/helpers';
+
+const bip32 = BIP32Factory(ecc);
 
 const GOLDEN = {
   /** m/44'/921'/0'/0/0 — the wallet's default path */
@@ -335,6 +347,80 @@ describe('deriveAddressesWithBalances', () => {
   it('produces unique addresses across an index range', async () => {
     const derived = await WalletService.deriveAddressesWithBalances(TEST_MNEMONIC, '', 0, 10);
     expect(new Set(derived.map((entry) => entry.address)).size).toBe(10);
+  });
+});
+
+describe('deriveCurrentWalletAddresses for a descriptor-imported wallet', () => {
+  /**
+   * A descriptor import stores an account-level xprv and no mnemonic. The whole account tree
+   * is still reachable, so these must land on the same golden addresses the mnemonic produces —
+   * a descriptor wallet is not a single-address wallet.
+   */
+  const seed = bip39.mnemonicToSeedSync(TEST_MNEMONIC);
+  const accountNodeFor = (purpose: number) =>
+    bip32.fromSeed(seed, avianNetwork).derivePath(`m/${purpose}'/921'/0'`);
+
+  const importDescriptor = async (
+    addrType: 'p2pkh' | 'p2wpkh' = 'p2pkh',
+    purpose = 44,
+  ) => {
+    const body = buildDescriptorBody(
+      addrType,
+      'deadbeef',
+      purpose,
+      921,
+      accountNodeFor(purpose).toBase58(),
+    );
+    return wallet.importWalletFromDescriptor({
+      name: `Descriptor ${addrType}`,
+      descriptor: `${body}#${descriptorChecksum(body)}`,
+      password: TEST_PASSWORD,
+      makeActive: true,
+    });
+  };
+
+  it('derives past the first address, without a mnemonic', async () => {
+    const imported = await importDescriptor();
+    expect(imported.mnemonic).toBeFalsy();
+
+    const derived = await wallet.deriveCurrentWalletAddresses(TEST_PASSWORD, 0, 2, 'p2pkh', 0);
+
+    expect(derived).toHaveLength(2);
+    expect(derived[0]).toMatchObject({
+      path: "m/44'/921'/0'/0/0",
+      address: GOLDEN.avianAccount0,
+    });
+    expect(derived[1]).toMatchObject({
+      path: "m/44'/921'/0'/0/1",
+      address: GOLDEN.index1,
+    });
+  });
+
+  it('derives the change chain separately', async () => {
+    await importDescriptor();
+
+    const [change] = await wallet.deriveCurrentWalletAddresses(TEST_PASSWORD, 0, 1, 'p2pkh', 1);
+
+    expect(change.path).toBe("m/44'/921'/0'/1/0");
+    expect(change.address).toBe(GOLDEN.change0);
+  });
+
+  it("falls back to the wallet's own script type when the caller names none", async () => {
+    // Callers that hardcoded 'p2pkh' would otherwise scan addresses a wpkh wallet never owns.
+    await importDescriptor('p2wpkh', 84);
+
+    const [derived] = await wallet.deriveCurrentWalletAddresses(TEST_PASSWORD, 0, 1);
+
+    expect(derived.path).toBe("m/84'/921'/0'/0/0");
+    expect(derived.address).toBe(GOLDEN.nativeSegwit);
+  });
+
+  it('refuses the wrong password rather than deriving from a corrupt key', async () => {
+    await importDescriptor();
+
+    await expect(
+      wallet.deriveCurrentWalletAddresses('not-the-password', 0, 1, 'p2pkh', 0),
+    ).rejects.toThrow(/Invalid password/);
   });
 });
 

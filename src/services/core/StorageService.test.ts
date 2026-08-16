@@ -131,6 +131,22 @@ describe('lookups', () => {
     expect(await StorageService.getActiveWallet()).toBeNull();
   });
 
+  it('treats both mnemonic and descriptor wallets as HD-capable', async () => {
+    // The UI gates the derived-address panel and HD UTXO scan on this, so a descriptor
+    // import — which stores an account xprv instead of a mnemonic — must qualify too.
+    await createWallet({ mnemonic: 'encrypted-mnemonic-blob' });
+    expect(await StorageService.hasHdCapability()).toBe(true);
+
+    resetStorage();
+    await createWallet({ xprv: 'encrypted-xprv-blob' });
+    expect(await StorageService.hasHdCapability()).toBe(true);
+    expect(await StorageService.hasMnemonic()).toBe(false);
+
+    resetStorage();
+    await createWallet();
+    expect(await StorageService.hasHdCapability()).toBe(false);
+  });
+
   it('reports emptiness consistently', async () => {
     expect(await StorageService.hasWallet()).toBe(false);
     expect(await StorageService.getWalletCount()).toBe(0);
