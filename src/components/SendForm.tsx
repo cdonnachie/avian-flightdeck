@@ -568,8 +568,7 @@ export default function SendForm() {
   // Check if current wallet is HD-compatible (without loading change addresses immediately)
   const checkHdWalletCapabilities = useCallback(async () => {
     try {
-      const storedMnemonic = await StorageService.getMnemonic();
-      const hasHdCapabilities = !!storedMnemonic;
+      const hasHdCapabilities = await StorageService.hasHdCapability();
       setIsHdWallet(hasHdCapabilities);
 
       if (!hasHdCapabilities) {
@@ -606,7 +605,7 @@ export default function SendForm() {
               authResult.password,
               0, // account index
               preferredCount, // number of addresses from preference
-              'p2pkh', // address type
+              undefined, // address type — falls back to the wallet's own script type
               1, // change path (1 for change addresses)
             );
 

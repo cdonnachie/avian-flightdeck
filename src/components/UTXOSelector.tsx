@@ -101,8 +101,7 @@ export function UTXOSelector({
         }
 
         // Check if this is an HD wallet
-        const storedMnemonic = await StorageService.getMnemonic();
-        const hasHdCapabilities = !!storedMnemonic;
+        const hasHdCapabilities = await StorageService.hasHdCapability();
         setIsHdWallet(hasHdCapabilities);
 
         const currentBlockHeight = await electrum.getCurrentBlockHeight();
@@ -160,8 +159,9 @@ export function UTXOSelector({
 
         // Get both receiving and change addresses
         const [receivingAddresses, changeAddresses] = await Promise.all([
-          deriveCurrentWalletAddresses!(password, 0, changeAddressCount, 'p2pkh', 0, 921),
-          deriveCurrentWalletAddresses!(password, 0, changeAddressCount, 'p2pkh', 1, 921),
+          // undefined address type = use the wallet's own script type
+          deriveCurrentWalletAddresses!(password, 0, changeAddressCount, undefined, 0),
+          deriveCurrentWalletAddresses!(password, 0, changeAddressCount, undefined, 1),
         ]);
 
         const allAddresses = [...receivingAddresses, ...changeAddresses];

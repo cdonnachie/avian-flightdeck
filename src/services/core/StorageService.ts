@@ -1668,6 +1668,16 @@ export class StorageService {
     return !!activeWallet?.mnemonic;
   }
 
+  /**
+   * Whether the active wallet can derive further addresses in its account tree.
+   * True for mnemonic wallets and for descriptor-imported wallets, which store an
+   * account-level xprv instead of a mnemonic.
+   */
+  static async hasHdCapability(): Promise<boolean> {
+    const activeWallet = await this.getActiveWallet();
+    return !!(activeWallet?.mnemonic || activeWallet?.xprv);
+  }
+
   static async getIsEncrypted(): Promise<boolean> {
     const activeWallet = await this.getActiveWallet();
     return activeWallet?.isEncrypted || false;
