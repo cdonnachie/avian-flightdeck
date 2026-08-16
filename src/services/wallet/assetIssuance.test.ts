@@ -257,20 +257,19 @@ describe('issueUniqueAsset', () => {
           })(),
       ),
     ).toBe(true);
-    // Parent owner returned, then new owner (2nd-last), new asset (last).
-    expect(parseAssetScript(outs[outs.length - 3].script as Buffer)).toMatchObject({
+    // A unique has NO owner token of its own: parent owner returned (2nd-last), unique asset (last).
+    expect(parseAssetScript(outs[outs.length - 2].script as Buffer)).toMatchObject({
       type: 'transfer',
       name: 'MYASSET!',
-    });
-    expect(parseAssetScript(outs[outs.length - 2].script as Buffer)).toMatchObject({
-      type: 'owner',
-      name: 'MYASSET#001!',
     });
     expect(parseAssetScript(outs[outs.length - 1].script as Buffer)).toMatchObject({
       type: 'issue',
       name: 'MYASSET#001',
       amount: 1n * BigInt(COIN),
     });
+    // A NAME#unique! owner-creation output is rejected by Avian consensus (it split the chain versus
+    // 4.2.0), so unique issuance must never emit one.
+    expect(outs.some((o) => parseAssetScript(o.script as Buffer)?.type === 'owner')).toBe(false);
     // First input is the parent owner token.
     expect(tx.ins.length).toBe(2); // owner + one AVN
   });

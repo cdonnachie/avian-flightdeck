@@ -1335,6 +1335,7 @@ export class WalletService {
             amount: params.amount,
             units: params.units,
             reissuable: params.reissuable,
+            createOwnerToken: true, // sub-assets have their own CHILD! owner token
             ipfs: params.ipfs,
             burnAmount: ISSUE_BURN.sub.amount,
             burnAddress: ISSUE_BURN.sub.address,
@@ -1361,6 +1362,7 @@ export class WalletService {
             amount: 100_000_000n, // exactly 1 unit
             units: 0,
             reissuable: false,
+            createOwnerToken: false, // uniques have NO owner token — consensus rejects one
             ipfs,
             burnAmount: ISSUE_BURN.unique.amount,
             burnAddress: ISSUE_BURN.unique.address,
@@ -1371,9 +1373,12 @@ export class WalletService {
 
     /**
      * Shared engine for sub/unique issuance. Spends the `PARENT!` owner token (returning it to
-     * ourselves), burns the type's fee, and creates the child asset + its `CHILD!` owner token.
-     * Output order matches Core: burn, AVN change, parent-owner transfer, new owner (2nd-last),
-     * new asset (last). Validated byte-for-byte against real Core sub and unique issuances.
+     * ourselves) and burns the type's fee. Sub-assets also create their own `CHILD!` owner token;
+     * unique assets must NOT — a unique has no owner token of its own, it inherits authority from
+     * the parent root owner. Emitting a `NAME#unique!` owner-creation output is rejected by Avian
+     * consensus (Core 4.2.0, and 5.0.3 onward) and previously split the chain, so `createOwnerToken`
+     * is false for uniques. Output order matches Core: burn, AVN change, parent-owner transfer,
+     * [new owner (2nd-last) for sub only], new asset (last). Validated against real Core issuances.
      */
     private async issueChildAsset(opts: {
         childName: string;
@@ -1381,6 +1386,8 @@ export class WalletService {
         amount: bigint;
         units: number;
         reissuable: boolean;
+        /** Sub-assets get a `CHILD!` owner token; unique assets must not (consensus rejects it). */
+        createOwnerToken: boolean;
         ipfs?: string;
         burnAmount: bigint;
         burnAddress: string;
@@ -1427,7 +1434,9 @@ export class WalletService {
 
             const burnScript = bitcoin.address.toOutputScript(burnAddress, avianNetwork);
             const parentReturnScript = buildAssetTransferScript(changeAddress, ownerName, ownerAmount);
-            const newOwnerScript = buildOwnerScript(fromAddress, childName);
+            // Sub-assets carry their own owner token; unique assets must not — a NAME#unique! owner
+            // output is rejected by consensus and caused the 5.0.x/4.2.0 chain split.
+            const newOwnerScript = opts.createOwnerToken ? buildOwnerScript(fromAddress, childName) : null;
             const newAssetScript = buildIssuanceScript(fromAddress, {
                 name: childName,
                 amount,
@@ -1447,7 +1456,7 @@ export class WalletService {
             const fixedOutputsVBytes =
                 34 + 34 +
                 (8 + 1 + parentReturnScript.length) +
-                (8 + 1 + newOwnerScript.length) +
+                (newOwnerScript ? 8 + 1 + newOwnerScript.length : 0) +
                 (8 + 1 + newAssetScript.length);
             const sizeFor = (avnInputCount: number) =>
                 10 + (1 + avnInputCount) * 148 + fixedOutputsVBytes;
@@ -1494,7 +1503,7 @@ export class WalletService {
                 tx.addOutput(bitcoin.address.toOutputScript(changeAddress, avianNetwork), finalChange);
             }
             tx.addOutput(parentReturnScript, 0);
-            tx.addOutput(newOwnerScript, 0);
+            if (newOwnerScript) tx.addOutput(newOwnerScript, 0);
             tx.addOutput(newAssetScript, 0);
 
             for (let i = 0; i < allInputs.length; i++) {

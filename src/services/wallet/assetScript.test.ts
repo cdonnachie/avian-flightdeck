@@ -241,16 +241,15 @@ describe('real mainnet Core golden vectors', () => {
     );
   });
 
-  // Real Core sub/unique issuances share one structure: parent-owner transfer (rvn·t), new owner
-  // (rvn·o), new asset (rvn·q). These pin all three builders against Core for both types at once.
-  it('reproduces a real Core UNIQUE issuance (FLIGHTDECK#TEST) byte-for-byte', () => {
+  // Sub and unique issuances differ on the owner token: a SUB gets its own CHILD! owner (rvn·o),
+  // a UNIQUE does NOT — a unique inherits authority from its parent root owner and creates only the
+  // parent-owner transfer (rvn·t) + the new asset (rvn·q). Emitting a NAME#unique! owner output is
+  // rejected by consensus and split the chain (see issueChildAsset / the 5.0.3 fix).
+  it('reproduces a real Core UNIQUE issuance (FLIGHTDECK#TEST) byte-for-byte — no owner token', () => {
     const PARENT_OWNER_DEST = 'RGAFrTpnpPWtT1UBxuxzuB8xMg9mxiq8Ah';
     const UNIQUE_DEST = 'RV3Tjt8ZLnuahSL9QjTtVxLKBR7CQCfv49';
     expect(buildAssetTransferScript(PARENT_OWNER_DEST, 'FLIGHTDECK!', 100_000_000n).toString('hex')).toBe(
       '76a9144b791eb36f35affad78c1ef45461da116e91d77988acc01872766e740b464c494748544445434b2100e1f5050000000075',
-    );
-    expect(buildOwnerScript(UNIQUE_DEST, 'FLIGHTDECK#TEST').toString('hex')).toBe(
-      '76a914d8c9c40901617159d1ad92822da95f7ce4ca262988acc01572766e6f10464c494748544445434b23544553542175',
     );
     expect(
       buildIssuanceScript(UNIQUE_DEST, {
