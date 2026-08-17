@@ -23,6 +23,8 @@ const bip32 = BIP32Factory(ecc);
 
 const GOLDEN = {
   bip44Avian: 'RMBnRfw6tV7dC7LS4Lr8JBWvocokzHQNeG',
+  /** m/44'/921'/0'/0/1 — the same golden vector derivation.test.ts pins */
+  bip44AvianIndex1: 'RUqbuDKvv8x31EVVmNfmdb31BQ7xG6HDmU',
   bip44AvianWif: 'KwgGM49xXFfGn1FK3JjbaKHzjNq2jydshvoYmwqjnGAsA4FeuqS4',
   bip44Ravencoin: 'RDjNvZL1TJQ7R8L23jDutdEioQG4eTC38V',
   bip84Avian: 'avn1qwq3xtmwmzelhwdtvfc9dslda32mlrngceqk4mr',
@@ -428,6 +430,162 @@ describe('importWalletFromDescriptor', () => {
         password: 'short',
       }),
     ).rejects.toThrow(/at least 8 characters/);
+  });
+
+  describe('addressIndex', () => {
+    it('anchors the wallet to the requested receive address', async () => {
+      const created = await wallet.importWalletFromDescriptor({
+        name: 'Index 1',
+        descriptor: descriptorFor(accountNode.toBase58()),
+        password: TEST_PASSWORD,
+        addressIndex: 1,
+      });
+
+      expect(created.address).toBe(GOLDEN.bip44AvianIndex1);
+      // The stored key is the one for that address, not index 0's.
+      expect((await decryptData(created.privateKey, TEST_PASSWORD)).decrypted).toBe(
+        accountNode.derive(0).derive(1).toWIF(),
+      );
+    });
+
+    it('stores the same account xprv whatever the index, so the chain stays derivable', async () => {
+      const created = await wallet.importWalletFromDescriptor({
+        name: 'Index 5',
+        descriptor: descriptorFor(accountNode.toBase58()),
+        password: TEST_PASSWORD,
+        addressIndex: 5,
+      });
+
+      expect((await decryptData(created.xprv!, TEST_PASSWORD)).decrypted).toBe(
+        accountNode.toBase58(),
+      );
+    });
+
+    it('defaults to index 0', async () => {
+      const created = await wallet.importWalletFromDescriptor({
+        name: 'Default',
+        descriptor: descriptorFor(accountNode.toBase58()),
+        password: TEST_PASSWORD,
+      });
+
+      expect(created.address).toBe(GOLDEN.bip44Avian);
+    });
+
+    it('allows two wallets from one descriptor at different indexes', async () => {
+      const first = await wallet.importWalletFromDescriptor({
+        name: 'First',
+        descriptor: descriptorFor(accountNode.toBase58()),
+        password: TEST_PASSWORD,
+      });
+      const second = await wallet.importWalletFromDescriptor({
+        name: 'Second',
+        descriptor: descriptorFor(accountNode.toBase58()),
+        password: TEST_PASSWORD,
+        addressIndex: 1,
+      });
+
+      expect(second.address).not.toBe(first.address);
+      expect(await StorageService.getWalletCount()).toBe(2);
+    });
+
+    it('still refuses the same index twice', async () => {
+      await wallet.importWalletFromDescriptor({
+        name: 'First',
+        descriptor: descriptorFor(accountNode.toBase58()),
+        password: TEST_PASSWORD,
+        addressIndex: 2,
+      });
+
+      await expect(
+        wallet.importWalletFromDescriptor({
+          name: 'Duplicate',
+          descriptor: descriptorFor(accountNode.toBase58()),
+          password: TEST_PASSWORD,
+          addressIndex: 2,
+        }),
+      ).rejects.toThrow(/already exists/);
+    });
+
+    it.each([-1, 1.5, WalletService.MAX_IMPORT_ADDRESS_INDEX + 1, NaN])(
+      'refuses the out-of-range index %s',
+      async (index) => {
+        await expect(
+          wallet.importWalletFromDescriptor({
+            name: 'Bad',
+            descriptor: descriptorFor(accountNode.toBase58()),
+            password: TEST_PASSWORD,
+            addressIndex: index,
+          }),
+        ).rejects.toThrow(/whole number/);
+      },
+    );
+  });
+
+  describe('previewDescriptorAddresses', () => {
+    it('lists the account addresses so the user can pick one without knowing its index', () => {
+      const preview = WalletService.previewDescriptorAddresses(
+        descriptorFor(accountNode.toBase58()),
+        3,
+      );
+
+      expect(preview).toHaveLength(3);
+      expect(preview[0]).toEqual({
+        index: 0,
+        path: "m/44'/921'/0'/0/0",
+        address: GOLDEN.bip44Avian,
+      });
+      expect(preview[1].address).toBe(GOLDEN.bip44AvianIndex1);
+    });
+
+    it('pages from an offset, matching what importing at that index would produce', async () => {
+      const [preview] = WalletService.previewDescriptorAddresses(
+        descriptorFor(accountNode.toBase58()),
+        1,
+        4,
+      );
+      expect(preview.index).toBe(4);
+
+      const imported = await wallet.importWalletFromDescriptor({
+        name: 'Index 4',
+        descriptor: descriptorFor(accountNode.toBase58()),
+        password: TEST_PASSWORD,
+        addressIndex: 4,
+      });
+      expect(imported.address).toBe(preview.address);
+    });
+
+    it('previews a watch-only xpub descriptor, which import itself would refuse', () => {
+      const preview = WalletService.previewDescriptorAddresses(
+        descriptorFor(accountNode.neutered().toBase58()),
+        2,
+      );
+
+      expect(preview[0].address).toBe(GOLDEN.bip44Avian);
+      expect(preview[1].address).toBe(GOLDEN.bip44AvianIndex1);
+    });
+
+    it('reflects the descriptor script type', () => {
+      const [preview] = WalletService.previewDescriptorAddresses(
+        descriptorFor(
+          bip32
+            .fromSeed(bip39.mnemonicToSeedSync(TEST_MNEMONIC), avianNetwork)
+            .derivePath("m/84'/921'/0'")
+            .toBase58(),
+          'p2wpkh',
+          84,
+        ),
+        1,
+      );
+
+      expect(preview.path).toBe("m/84'/921'/0'/0/0");
+      expect(preview.address).toBe(GOLDEN.bip84Avian);
+    });
+
+    it('refuses a descriptor it cannot parse', () => {
+      expect(() => WalletService.previewDescriptorAddresses('tr(xprvWhatever/0/*)', 1)).toThrow(
+        /Unsupported descriptor type/,
+      );
+    });
   });
 
   it('round-trips: the descriptor it stores re-imports to the same address', async () => {

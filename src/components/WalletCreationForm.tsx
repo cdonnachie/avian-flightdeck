@@ -6,6 +6,7 @@ import * as bip39 from 'bip39';
 import { AddressType, ADDRESS_TYPE_INFO } from '@/services/wallet/WalletService';
 import PasswordStrengthChecker, { PasswordStrength } from '@/components/PasswordStrength';
 import { StorageService } from '@/services/core/StorageService';
+import { useWallet } from '@/contexts/WalletContext';
 
 // Import Shadcn UI components
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,27 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 // Define the wallet creation modes
 export type WalletCreationMode = 'create' | 'importMnemonic' | 'importWIF' | 'importDescriptor';
 
+// Mirrors WalletService.MAX_IMPORT_ADDRESS_INDEX — the service revalidates on import.
+const MAX_ADDRESS_INDEX = 1000;
+
+/** Blank reads as index 0, the ordinary first receive address. NaN for anything unparseable. */
+const parseAddressIndex = (raw: string): number => {
+  const trimmed = raw.trim();
+  return trimmed === '' ? 0 : Number(trimmed);
+};
+
+// How many addresses one scan step reveals.
+const ADDRESS_PAGE_SIZE = 10;
+
+interface DescriptorAddressPreview {
+  index: number;
+  path: string;
+  address: string;
+  /** Only set when an ElectrumX connection was available during the scan. */
+  balance?: number;
+  assets?: string[];
+}
+
 // Define component props
 interface WalletCreationFormProps {
   mode: WalletCreationMode;
@@ -41,6 +63,7 @@ export interface WalletCreationData {
   mnemonic?: string;
   privateKey?: string;
   descriptor?: string; // BIP380 xprv descriptor
+  addressIndex?: number; // Receive index the descriptor import is anchored to (account/0/N)
   passphrase?: string; // Optional BIP39 passphrase
   mnemonicLength?: '12' | '24'; // Recovery phrase length
   coinType?: 921 | 175; // BIP44 coin type for import compatibility
@@ -54,6 +77,8 @@ export default function WalletCreationForm({
   isSubmitting,
   isFullscreen = false,
 }: WalletCreationFormProps) {
+  const { electrum, isConnected } = useWallet();
+
   // Form state
   const [walletName, setWalletName] = useState('');
   const [password, setPassword] = useState('');
@@ -61,6 +86,10 @@ export default function WalletCreationForm({
   const [mnemonic, setMnemonic] = useState('');
   const [privateKey, setPrivateKey] = useState('');
   const [descriptor, setDescriptor] = useState('');
+  const [addressIndex, setAddressIndex] = useState('0');
+  const [previews, setPreviews] = useState<DescriptorAddressPreview[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [balancesAvailable, setBalancesAvailable] = useState(false);
   const [passphrase, setPassphrase] = useState('');
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [mnemonicLength, setMnemonicLength] = useState<'12' | '24'>('12');
@@ -73,6 +102,7 @@ export default function WalletCreationForm({
   const [mnemonicError, setMnemonicError] = useState('');
   const [privateKeyError, setPrivateKeyError] = useState('');
   const [descriptorError, setDescriptorError] = useState('');
+  const [addressIndexError, setAddressIndexError] = useState('');
 
   // Password strength
   const [passwordStrength, setPasswordStrength] = useState<PasswordStrength | null>(null);
@@ -85,6 +115,63 @@ export default function WalletCreationForm({
   const [showPassphrase, setShowPassphrase] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  /**
+   * Derives the descriptor's receive addresses so the user can pick the one holding their
+   * funds. Derivation is local — the descriptor carries the key — so this works offline;
+   * balances and asset counts are filled in only when ElectrumX is reachable.
+   */
+  const scanDescriptorAddresses = useCallback(
+    async (startIndex: number) => {
+      const raw = descriptor.trim();
+      if (!raw) return;
+
+      setScanning(true);
+      try {
+        const { WalletService } = await import('@/services/wallet/WalletService');
+        const derived = WalletService.previewDescriptorAddresses(
+          raw,
+          ADDRESS_PAGE_SIZE,
+          startIndex,
+        );
+        setDescriptorError('');
+
+        let enriched: DescriptorAddressPreview[] = derived;
+        if (electrum && isConnected) {
+          enriched = await Promise.all(
+            derived.map(async (entry) => {
+              try {
+                const [balance, assetBalances] = await Promise.all([
+                  electrum.getBalance(entry.address),
+                  electrum.getAssetBalances(entry.address),
+                ]);
+                return {
+                  ...entry,
+                  balance,
+                  assets: Object.keys(assetBalances || {}),
+                };
+              } catch {
+                // A per-address lookup failure must not lose the address itself.
+                return entry;
+              }
+            }),
+          );
+        }
+        setBalancesAvailable(!!electrum && isConnected);
+
+        // startIndex 0 is a fresh scan; anything else extends the list.
+        setPreviews((current) => (startIndex === 0 ? enriched : [...current, ...enriched]));
+      } catch (error) {
+        setPreviews([]);
+        setDescriptorError(
+          error instanceof Error ? error.message : 'Could not derive addresses from this descriptor',
+        );
+      } finally {
+        setScanning(false);
+      }
+    },
+    [descriptor, electrum, isConnected],
+  );
 
   // Generate a creative bird-themed wallet name
   const generateWalletName = useCallback(async () => {
@@ -351,6 +438,13 @@ export default function WalletCreationForm({
         return;
       }
       setDescriptorError('');
+
+      const parsedIndex = parseAddressIndex(addressIndex);
+      if (!Number.isInteger(parsedIndex) || parsedIndex < 0 || parsedIndex > MAX_ADDRESS_INDEX) {
+        setAddressIndexError(`Enter a whole number between 0 and ${MAX_ADDRESS_INDEX}`);
+        return;
+      }
+      setAddressIndexError('');
     }
 
     // Create data object for submission
@@ -377,6 +471,7 @@ export default function WalletCreationForm({
       data.privateKey = privateKey.trim();
     } else if (mode === 'importDescriptor') {
       data.descriptor = descriptor.trim();
+      data.addressIndex = parseAddressIndex(addressIndex);
     }
 
     // Submit form data
@@ -1347,7 +1442,13 @@ export default function WalletCreationForm({
               <Textarea
                 id="descriptor-input"
                 value={descriptor}
-                onChange={(e) => { setDescriptor(e.target.value); setDescriptorError(''); }}
+                onChange={(e) => {
+                  setDescriptor(e.target.value);
+                  setDescriptorError('');
+                  // A different descriptor means different addresses; don't leave a stale pick.
+                  setPreviews([]);
+                  setAddressIndex('0');
+                }}
                 placeholder="wpkh([a1b2c3d4/84h/921h/0h]xprvABC.../0/*)#checksum"
                 disabled={isSubmitting}
                 className="font-mono text-xs min-h-[80px] resize-none"
@@ -1360,6 +1461,90 @@ export default function WalletCreationForm({
               <p className="text-xs text-muted-foreground">
                 Paste a descriptor containing an <strong>xprv</strong> (private key). Descriptors with xpub only cannot sign transactions.
               </p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="desc-address-index">Address</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void scanDescriptorAddresses(0)}
+                  disabled={isSubmitting || scanning || !descriptor.trim()}
+                >
+                  {scanning ? 'Scanning…' : previews.length ? 'Rescan' : 'Show addresses'}
+                </Button>
+              </div>
+
+              {previews.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  The wallet points at the first receive address by default. If your coins or assets
+                  sit further along the chain, scan the descriptor and pick the address that holds
+                  them — the rest of the account stays derivable either way.
+                </p>
+              ) : (
+                <>
+                  <div className="max-h-64 overflow-y-auto rounded-md border border-border divide-y divide-border">
+                    {previews.map((entry) => (
+                      <label
+                        key={entry.index}
+                        className={`flex items-center gap-3 p-2 cursor-pointer hover:bg-muted/40 ${parseAddressIndex(addressIndex) === entry.index ? 'bg-primary/10' : ''
+                          }`}
+                      >
+                        <input
+                          type="radio"
+                          name="descriptor-address-index"
+                          checked={parseAddressIndex(addressIndex) === entry.index}
+                          onChange={() => { setAddressIndex(String(entry.index)); setAddressIndexError(''); }}
+                          disabled={isSubmitting}
+                        />
+                        <span className="font-mono text-xs text-muted-foreground w-10 shrink-0">
+                          0/{entry.index}
+                        </span>
+                        <span className="font-mono text-xs break-all flex-1">{entry.address}</span>
+                        {entry.balance !== undefined && (
+                          <span
+                            className={`text-xs whitespace-nowrap ${entry.balance > 0 ? 'text-primary font-medium' : 'text-muted-foreground'
+                              }`}
+                          >
+                            {(entry.balance / 100000000).toFixed(4)} AVN
+                          </span>
+                        )}
+                        {entry.assets && entry.assets.length > 0 && (
+                          <span
+                            className="text-xs text-caution whitespace-nowrap"
+                            title={entry.assets.join(', ')}
+                          >
+                            {entry.assets.length} asset{entry.assets.length > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground">
+                      Importing at <span className="font-mono">0/{parseAddressIndex(addressIndex)}</span>
+                      {!balancesAvailable && ' — connect to the network to see balances'}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void scanDescriptorAddresses(previews.length)}
+                      disabled={isSubmitting || scanning || previews.length >= MAX_ADDRESS_INDEX}
+                    >
+                      Show more
+                    </Button>
+                  </div>
+                </>
+              )}
+
+              {addressIndexError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{addressIndexError}</AlertDescription>
+                </Alert>
+              )}
             </div>
 
             <div className="space-y-2">

@@ -3072,20 +3072,81 @@ export class WalletService {
         };
     }
 
+    /** Upper bound on the receive index a descriptor import may be anchored to. */
+    static readonly MAX_IMPORT_ADDRESS_INDEX = 1000;
+
+    /**
+     * Receive addresses a descriptor would produce, without importing anything or touching
+     * storage. Lets the import screen show the account's addresses so the user can pick the
+     * one holding their coins or assets instead of having to know its index up front.
+     *
+     * Works for xpub-only descriptors too: addresses need no private key.
+     */
+    static previewDescriptorAddresses(
+        descriptor: string,
+        count = 10,
+        startIndex = 0,
+    ): Array<{ index: number; path: string; address: string }> {
+        const parsed = WalletService.parseDescriptor(descriptor);
+
+        let accountNode: ReturnType<typeof bip32.fromBase58>;
+        try {
+            const rawNode = bip32.fromBase58(parsed.xkey, avianNetwork);
+            accountNode = parsed.accountDerivationPath
+                ? rawNode.derivePath(parsed.accountDerivationPath)
+                : rawNode;
+        } catch {
+            throw new Error(
+                'Invalid extended key in descriptor — check the descriptor is from an Avian mainnet wallet',
+            );
+        }
+
+        const changeNode = accountNode.derive(0);
+        const addresses: Array<{ index: number; path: string; address: string }> = [];
+
+        for (let i = startIndex; i < startIndex + count; i++) {
+            const child = changeNode.derive(i);
+            addresses.push({
+                index: i,
+                path: `m/${parsed.purpose}'/${parsed.coinType}'/${parsed.accountIndex}'/0/${i}`,
+                address: deriveAddress(Buffer.from(child.publicKey), parsed.addrType),
+            });
+        }
+
+        return addresses;
+    }
+
     /**
      * Import a wallet from a BIP380 output script descriptor containing an xprv.
      * Use `listdescriptors true` in Avian Core v5 to obtain the descriptor.
      * The encrypted xprv is stored, enabling full HD address derivation without a mnemonic.
+     *
+     * `addressIndex` anchors the wallet's primary address to account/0/N rather than the
+     * usual account/0/0. Features that read `wallet.address` — the asset list, asset
+     * transfers, Avian Connect — then operate on that address. The whole account tree stays
+     * derivable either way, since the stored xprv is at account level.
      */
     async importWalletFromDescriptor(params: {
         name: string;
         descriptor: string;
         password: string;
+        addressIndex?: number;
         makeActive?: boolean;
     }): Promise<WalletData> {
         try {
             if (!params.password || params.password.length < 8) {
                 throw new Error('Password is required and must be at least 8 characters long');
+            }
+
+            const addressIndex = params.addressIndex ?? 0;
+            if (
+                !Number.isInteger(addressIndex) ||
+                addressIndex < 0 ||
+                addressIndex > WalletService.MAX_IMPORT_ADDRESS_INDEX
+            ) {
+                throw new Error(
+                    `Address index must be a whole number between 0 and ${WalletService.MAX_IMPORT_ADDRESS_INDEX}`,
+                );
             }
 
             const parsed = WalletService.parseDescriptor(params.descriptor);
@@ -3117,8 +3178,8 @@ export class WalletService {
                 throw new Error('Failed to extract private key from xprv');
             }
 
-            // Derive first receiving address: account/0/0
-            const receiveNode = accountNode.derive(0).derive(0);
+            // Derive the anchor receiving address: account/0/addressIndex
+            const receiveNode = accountNode.derive(0).derive(addressIndex);
             if (!receiveNode.privateKey) {
                 throw new Error('Failed to derive child key from xprv');
             }
