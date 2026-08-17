@@ -96,6 +96,7 @@ export default function OnboardingPage() {
                     name: data.name.trim(),
                     descriptor: data.descriptor!.trim(),
                     password: data.password,
+                    addressIndex: data.addressIndex,
                     makeActive: true,
                 });
             }

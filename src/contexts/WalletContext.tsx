@@ -51,7 +51,12 @@ interface WalletContextType {
     password: string,
     passphrase?: string,
   ) => Promise<void>;
-  importWalletFromDescriptor: (name: string, descriptor: string, password: string) => Promise<void>;
+  importWalletFromDescriptor: (
+    name: string,
+    descriptor: string,
+    password: string,
+    addressIndex?: number,
+  ) => Promise<void>;
   sendTransaction: (
     toAddress: string,
     amount: number,
@@ -973,7 +978,12 @@ export function WalletProvider({ children }: WalletProviderProps) {
     selectElectrumServer,
     testConnection,
     restoreWalletFromMnemonic,
-    importWalletFromDescriptor: async (name: string, descriptor: string, password: string) => {
+    importWalletFromDescriptor: async (
+      name: string,
+      descriptor: string,
+      password: string,
+      addressIndex?: number,
+    ) => {
       if (!wallet) throw new Error('Wallet service not initialized');
       try {
         setIsLoading(true);
@@ -981,6 +991,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
           name,
           descriptor,
           password,
+          addressIndex,
           makeActive: true,
         });
         setAddress(newWallet.address);

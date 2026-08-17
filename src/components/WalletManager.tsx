@@ -965,6 +965,7 @@ export function WalletManager({ onWalletSelect, onClose }: WalletManagerProps) {
                         name: data.name,
                         descriptor: data.descriptor!,
                         password: data.password,
+                        addressIndex: data.addressIndex,
                         makeActive: true,
                       });
 
