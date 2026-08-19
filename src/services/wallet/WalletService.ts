@@ -40,7 +40,7 @@ import {
     isValidRootAssetName,
     ISSUE_BURN,
 } from './assetScript';
-import { isAssetIssuanceEnabled, ASSET_ISSUANCE_PAUSED_MESSAGE } from '@/lib/featureFlags';
+import { isAssetIssuanceEnabled, ASSET_ISSUANCE_DISABLED_MESSAGE } from '@/lib/featureFlags';
 
 // How many transaction.get requests to keep in flight while syncing history. Electrum matches
 // responses by id, so a small pool cuts the latency of a large sync ~N-fold. Kept deliberately low:
@@ -1190,15 +1190,19 @@ export class WalletService {
      *
      * The scripts are byte-validated against a real Core issuance (see assetScript.ts). Sub/unique
      * issuance (which spends the parent owner token) is a separate method.
+     *
+     * `options.buildOnly` signs the transaction but does not broadcast it, returning the raw hex
+     * instead of a txid — feed it to Core's `testmempoolaccept` to have consensus check the shape
+     * before anything is irreversible. It still spends nothing: no broadcast, no history entry.
      */
     async issueAsset(
         name: string,
         params: { amount: bigint; units: number; reissuable: boolean; ipfs?: string },
         password?: string,
-        options?: { feeRate?: number; changeAddress?: string },
+        options?: { feeRate?: number; changeAddress?: string; buildOnly?: boolean },
     ): Promise<string> {
         try {
-            if (!isAssetIssuanceEnabled()) throw new Error(ASSET_ISSUANCE_PAUSED_MESSAGE);
+            if (!isAssetIssuanceEnabled()) throw new Error(ASSET_ISSUANCE_DISABLED_MESSAGE);
             if (!isValidRootAssetName(name)) {
                 throw new Error(
                     'Invalid asset name. Use 3–30 characters of A–Z, 0–9, _ and . (no leading, trailing or doubled punctuation).',
@@ -1309,6 +1313,8 @@ export class WalletService {
 
             const txHex = tx.toHex();
             const txId = tx.getId();
+            // Dry run: return the signed hex for `testmempoolaccept` rather than broadcasting.
+            if (options?.buildOnly) return txHex;
             await this.broadcastRawTransaction(txHex);
             return txId;
         } catch (error) {
@@ -1320,12 +1326,13 @@ export class WalletService {
 
     /**
      * Issue a sub-asset (`PARENT/SUB`, burns 100 AVN). Requires owning the `PARENT!` owner token.
+     * `options.buildOnly` returns the signed hex instead of broadcasting (see issueAsset).
      */
     async issueSubAsset(
         subName: string,
         params: { amount: bigint; units: number; reissuable: boolean; ipfs?: string },
         password?: string,
-        options?: { feeRate?: number; changeAddress?: string },
+        options?: { feeRate?: number; changeAddress?: string; buildOnly?: boolean },
     ): Promise<string> {
         const slash = subName.lastIndexOf('/');
         if (slash <= 0) throw new Error('A sub-asset name must be PARENT/CHILD');
@@ -1352,7 +1359,7 @@ export class WalletService {
         uniqueName: string,
         ipfs?: string,
         password?: string,
-        options?: { feeRate?: number; changeAddress?: string },
+        options?: { feeRate?: number; changeAddress?: string; buildOnly?: boolean },
     ): Promise<string> {
         const hash = uniqueName.indexOf('#');
         if (hash <= 0) throw new Error('A unique asset name must be PARENT#tag');
@@ -1392,10 +1399,10 @@ export class WalletService {
         burnAmount: bigint;
         burnAddress: string;
         password?: string;
-        options?: { feeRate?: number; changeAddress?: string };
+        options?: { feeRate?: number; changeAddress?: string; buildOnly?: boolean };
     }): Promise<string> {
         try {
-            if (!isAssetIssuanceEnabled()) throw new Error(ASSET_ISSUANCE_PAUSED_MESSAGE);
+            if (!isAssetIssuanceEnabled()) throw new Error(ASSET_ISSUANCE_DISABLED_MESSAGE);
             const { childName, parentName, amount, units, reissuable, burnAmount, burnAddress } = opts;
             if (amount <= 0n) throw new Error('Issuance amount must be positive');
             if (units < 0 || units > 8) throw new Error('Units must be between 0 and 8');
@@ -1520,6 +1527,8 @@ export class WalletService {
 
             const txHex = tx.toHex();
             const txId = tx.getId();
+            // Dry run: return the signed hex for `testmempoolaccept` rather than broadcasting.
+            if (opts.options?.buildOnly) return txHex;
             await this.broadcastRawTransaction(txHex);
             return txId;
         } catch (error) {
@@ -1542,10 +1551,10 @@ export class WalletService {
         name: string,
         params: { amount: bigint; units: number; reissuable: boolean; ipfs?: string },
         password?: string,
-        options?: { feeRate?: number; changeAddress?: string },
+        options?: { feeRate?: number; changeAddress?: string; buildOnly?: boolean },
     ): Promise<string> {
         try {
-            if (!isAssetIssuanceEnabled()) throw new Error(ASSET_ISSUANCE_PAUSED_MESSAGE);
+            if (!isAssetIssuanceEnabled()) throw new Error(ASSET_ISSUANCE_DISABLED_MESSAGE);
             if (params.amount < 0n) throw new Error('Reissue amount cannot be negative');
 
             const activeWallet = await StorageService.getActiveWallet();
@@ -1657,6 +1666,8 @@ export class WalletService {
 
             const txHex = tx.toHex();
             const txId = tx.getId();
+            // Dry run: return the signed hex for `testmempoolaccept` rather than broadcasting.
+            if (options?.buildOnly) return txHex;
             await this.broadcastRawTransaction(txHex);
             return txId;
         } catch (error) {

@@ -77,6 +77,8 @@ export default function CreateAssetDialog({
   const [error, setError] = useState('');
   const [isBusy, setIsBusy] = useState(false);
   const [txid, setTxid] = useState('');
+  // Signed-but-unbroadcast hex from a dry run, for `avian-cli testmempoolaccept`.
+  const [dryRunHex, setDryRunHex] = useState('');
 
   // Reset only when the dialog opens — NOT when ownedRoots changes. After a successful issuance the
   // asset list refreshes and ownedRoots gains the new owner token; if that re-ran this effect it
@@ -95,6 +97,7 @@ export default function CreateAssetDialog({
       setConfirmBurn(false);
       setError('');
       setTxid('');
+      setDryRunHex('');
       setIsBusy(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -110,8 +113,9 @@ export default function CreateAssetDialog({
   const needsParent = type === 'sub' || type === 'unique';
   const divisions = Number(units) || 0;
 
-  const handleCreate = async () => {
+  const handleCreate = async (dryRun = false) => {
     setError('');
+    setDryRunHex('');
     if (needsParent && !parent) {
       setError('Choose a parent asset — you need its owner token to create this.');
       return;
@@ -124,7 +128,8 @@ export default function CreateAssetDialog({
       setError(type === 'sub' ? 'Enter a sub-asset name.' : 'Enter a unique tag.');
       return;
     }
-    if (!confirmBurn) {
+    // A dry run broadcasts nothing and burns nothing, so it does not need the burn confirmation.
+    if (!confirmBurn && !dryRun) {
       setError(`Please confirm the ${burn} AVN burn.`);
       return;
     }
@@ -155,7 +160,9 @@ export default function CreateAssetDialog({
         /* get_meta throws for a non-existent asset — that's the good case. */
       }
 
-      const auth = await requireAuth(`Authenticate to create ${fullName}`);
+      const auth = await requireAuth(
+        dryRun ? `Authenticate to build ${fullName} (dry run)` : `Authenticate to create ${fullName}`,
+      );
       if (!auth.success) {
         setError('Authentication is required to create an asset.');
         return;
@@ -163,22 +170,38 @@ export default function CreateAssetDialog({
 
       const ipfsValue = addIpfs && ipfs.trim() ? ipfs.trim() : undefined;
       const service = new WalletService(electrum);
+      // With buildOnly the builders return signed raw hex instead of broadcasting.
+      const options = dryRun ? { buildOnly: true } : undefined;
       let id: string;
       if (type === 'root') {
         id = await service.issueAsset(
           fullName,
           { amount, units: divisions, reissuable, ipfs: ipfsValue },
           auth.password,
+          options,
         );
       } else if (type === 'sub') {
         id = await service.issueSubAsset(
           fullName,
           { amount, units: divisions, reissuable, ipfs: ipfsValue },
           auth.password,
+          options,
         );
       } else {
-        id = await service.issueUniqueAsset(fullName, ipfsValue, auth.password);
+        id = await service.issueUniqueAsset(fullName, ipfsValue, auth.password, options);
       }
+
+      if (dryRun) {
+        setDryRunHex(id);
+        try {
+          await navigator.clipboard.writeText(id);
+          toast.success('Raw hex copied — run testmempoolaccept in Core');
+        } catch {
+          toast.success('Transaction built — copy the hex below');
+        }
+        return;
+      }
+
       setTxid(id);
       toast.success(`Created ${fullName}`);
       void refreshAfterTransaction(1500);
@@ -378,11 +401,47 @@ export default function CreateAssetDialog({
         </Alert>
       )}
 
+      {dryRunHex && (
+        <Alert className="border-primary/40 bg-primary/5">
+          <AlertDescription className="space-y-2 text-sm">
+            <p>
+              Built and signed, <strong>not broadcast</strong>. Check it with:{' '}
+              <code className="font-mono text-xs">avian-cli testmempoolaccept &apos;[&quot;&lt;hex&gt;&quot;]&apos;</code>
+            </p>
+            <textarea
+              readOnly
+              value={dryRunHex}
+              onFocus={(e) => e.currentTarget.select()}
+              className="h-24 w-full resize-none rounded-md border border-border bg-card p-2 font-mono text-[10px] break-all"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void navigator.clipboard.writeText(dryRunHex);
+                toast.success('Raw hex copied');
+              }}
+            >
+              Copy hex
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="flex gap-2 pt-1">
         <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)} disabled={isBusy}>
           Cancel
         </Button>
-        <Button className="flex-1 gap-2" onClick={handleCreate} disabled={isBusy || !fullName || !confirmBurn}>
+        <Button
+          variant="outline"
+          className="flex-1"
+          onClick={() => void handleCreate(true)}
+          disabled={isBusy || !fullName}
+          title="Build and sign without broadcasting, for testmempoolaccept"
+        >
+          {isBusy ? 'Building…' : 'Dry run'}
+        </Button>
+        <Button className="flex-1 gap-2" onClick={() => void handleCreate()} disabled={isBusy || !fullName || !confirmBurn}>
           <Lock className="h-4 w-4" />
           {isBusy ? 'Creating…' : `Create (burn ${burn} AVN)`}
         </Button>

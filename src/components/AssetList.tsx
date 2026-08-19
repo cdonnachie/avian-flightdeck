@@ -5,7 +5,7 @@ import { AlertTriangle, Coins, Plus, PlusCircle, RefreshCw, Search, Send } from 
 
 import { useWallet } from '@/contexts/WalletContext';
 import { getHeldAssets, ipfsImageUrl, type HeldAsset } from '@/services/wallet/AssetService';
-import { isAssetIssuanceEnabled, ASSET_ISSUANCE_PAUSED_MESSAGE } from '@/lib/featureFlags';
+import { isAssetIssuanceEnabled, ASSET_ISSUANCE_DISABLED_MESSAGE } from '@/lib/featureFlags';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
@@ -95,8 +95,8 @@ export function AssetList({ className }: { className?: string }) {
     if (isConnected && address) void load();
   }, [isConnected, address, load]);
 
-  // Assets are legacy-address-only; a legacy wallet can create even with nothing held yet — but
-  // issuance is gated by a kill-switch while the network consensus issue is resolved.
+  // Assets are legacy-address-only; a legacy wallet can create even with nothing held yet — unless
+  // issuance has been switched off for this build.
   const issuanceEnabled = isAssetIssuanceEnabled();
   const canCreate = !!address && address.startsWith('R') && issuanceEnabled;
   // Owner tokens we hold (NAME!) → the roots we can create sub/unique assets under.
@@ -149,7 +149,7 @@ export function AssetList({ className }: { className?: string }) {
         {!issuanceEnabled && (
           <div className="flex items-start gap-2 border-b border-caution/30 bg-caution/10 px-4 py-3 text-sm text-caution">
             <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-            <span>{ASSET_ISSUANCE_PAUSED_MESSAGE}</span>
+            <span>{ASSET_ISSUANCE_DISABLED_MESSAGE}</span>
           </div>
         )}
         {assets.length > 6 && (
