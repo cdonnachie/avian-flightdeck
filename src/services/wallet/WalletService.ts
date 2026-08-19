@@ -74,6 +74,19 @@ export const ADDRESS_TYPE_INFO: Record<AddressType, { purpose: number; label: st
     p2wpkh:      { purpose: 84, label: 'Native SegWit (P2WPKH)', bipLabel: 'BIP84' },
 };
 
+/**
+ * Outcome of building an asset issuance or reissue. Both the txid and the raw hex are always
+ * present; `broadcast` says whether it was sent. A `buildOnly` dry run returns `broadcast: false`
+ * — the transaction is signed and valid but nothing has been spent, so the txid is what it *would*
+ * have, not something on chain yet.
+ */
+export interface AssetTxResult {
+    txid: string;
+    /** Raw signed transaction, ready for `testmempoolaccept` or a manual broadcast. */
+    hex: string;
+    broadcast: boolean;
+}
+
 export interface WalletData {
     id?: number;
     name: string;
@@ -1191,16 +1204,16 @@ export class WalletService {
      * The scripts are byte-validated against a real Core issuance (see assetScript.ts). Sub/unique
      * issuance (which spends the parent owner token) is a separate method.
      *
-     * `options.buildOnly` signs the transaction but does not broadcast it, returning the raw hex
-     * instead of a txid — feed it to Core's `testmempoolaccept` to have consensus check the shape
-     * before anything is irreversible. It still spends nothing: no broadcast, no history entry.
+     * `options.buildOnly` signs the transaction but does not broadcast it: the result carries
+     * `broadcast: false` and the raw `hex`, which Core's `testmempoolaccept` will check against
+     * consensus before anything is irreversible. Nothing is spent and no history entry is written.
      */
     async issueAsset(
         name: string,
         params: { amount: bigint; units: number; reissuable: boolean; ipfs?: string },
         password?: string,
         options?: { feeRate?: number; changeAddress?: string; buildOnly?: boolean },
-    ): Promise<string> {
+    ): Promise<AssetTxResult> {
         try {
             if (!isAssetIssuanceEnabled()) throw new Error(ASSET_ISSUANCE_DISABLED_MESSAGE);
             if (!isValidRootAssetName(name)) {
@@ -1313,10 +1326,10 @@ export class WalletService {
 
             const txHex = tx.toHex();
             const txId = tx.getId();
-            // Dry run: return the signed hex for `testmempoolaccept` rather than broadcasting.
-            if (options?.buildOnly) return txHex;
+            // Dry run: signed and valid, but nothing spent — for `testmempoolaccept`.
+            if (options?.buildOnly) return { txid: txId, hex: txHex, broadcast: false };
             await this.broadcastRawTransaction(txHex);
-            return txId;
+            return { txid: txId, hex: txHex, broadcast: true };
         } catch (error) {
             walletLogger.error('Asset issuance failed:', error);
             const message = error instanceof Error ? error.message : 'Unknown error';
@@ -1326,14 +1339,14 @@ export class WalletService {
 
     /**
      * Issue a sub-asset (`PARENT/SUB`, burns 100 AVN). Requires owning the `PARENT!` owner token.
-     * `options.buildOnly` returns the signed hex instead of broadcasting (see issueAsset).
+     * `options.buildOnly` signs without broadcasting (see issueAsset).
      */
     async issueSubAsset(
         subName: string,
         params: { amount: bigint; units: number; reissuable: boolean; ipfs?: string },
         password?: string,
         options?: { feeRate?: number; changeAddress?: string; buildOnly?: boolean },
-    ): Promise<string> {
+    ): Promise<AssetTxResult> {
         const slash = subName.lastIndexOf('/');
         if (slash <= 0) throw new Error('A sub-asset name must be PARENT/CHILD');
         return this.issueChildAsset({
@@ -1360,7 +1373,7 @@ export class WalletService {
         ipfs?: string,
         password?: string,
         options?: { feeRate?: number; changeAddress?: string; buildOnly?: boolean },
-    ): Promise<string> {
+    ): Promise<AssetTxResult> {
         const hash = uniqueName.indexOf('#');
         if (hash <= 0) throw new Error('A unique asset name must be PARENT#tag');
         return this.issueChildAsset({
@@ -1400,7 +1413,7 @@ export class WalletService {
         burnAddress: string;
         password?: string;
         options?: { feeRate?: number; changeAddress?: string; buildOnly?: boolean };
-    }): Promise<string> {
+    }): Promise<AssetTxResult> {
         try {
             if (!isAssetIssuanceEnabled()) throw new Error(ASSET_ISSUANCE_DISABLED_MESSAGE);
             const { childName, parentName, amount, units, reissuable, burnAmount, burnAddress } = opts;
@@ -1527,10 +1540,10 @@ export class WalletService {
 
             const txHex = tx.toHex();
             const txId = tx.getId();
-            // Dry run: return the signed hex for `testmempoolaccept` rather than broadcasting.
-            if (opts.options?.buildOnly) return txHex;
+            // Dry run: signed and valid, but nothing spent — for `testmempoolaccept`.
+            if (opts.options?.buildOnly) return { txid: txId, hex: txHex, broadcast: false };
             await this.broadcastRawTransaction(txHex);
-            return txId;
+            return { txid: txId, hex: txHex, broadcast: true };
         } catch (error) {
             walletLogger.error('Child asset issuance failed:', error);
             const message = error instanceof Error ? error.message : 'Unknown error';
@@ -1552,7 +1565,7 @@ export class WalletService {
         params: { amount: bigint; units: number; reissuable: boolean; ipfs?: string },
         password?: string,
         options?: { feeRate?: number; changeAddress?: string; buildOnly?: boolean },
-    ): Promise<string> {
+    ): Promise<AssetTxResult> {
         try {
             if (!isAssetIssuanceEnabled()) throw new Error(ASSET_ISSUANCE_DISABLED_MESSAGE);
             if (params.amount < 0n) throw new Error('Reissue amount cannot be negative');
@@ -1666,10 +1679,10 @@ export class WalletService {
 
             const txHex = tx.toHex();
             const txId = tx.getId();
-            // Dry run: return the signed hex for `testmempoolaccept` rather than broadcasting.
-            if (options?.buildOnly) return txHex;
+            // Dry run: signed and valid, but nothing spent — for `testmempoolaccept`.
+            if (options?.buildOnly) return { txid: txId, hex: txHex, broadcast: false };
             await this.broadcastRawTransaction(txHex);
-            return txId;
+            return { txid: txId, hex: txHex, broadcast: true };
         } catch (error) {
             walletLogger.error('Asset reissue failed:', error);
             const message = error instanceof Error ? error.message : 'Unknown error';

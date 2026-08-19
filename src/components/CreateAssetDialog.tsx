@@ -7,7 +7,7 @@ import { AlertTriangle, Check, Flame, Lock } from 'lucide-react';
 import { useWallet } from '@/contexts/WalletContext';
 import { useSecurity } from '@/contexts/SecurityContext';
 import { useMediaQuery } from '@/hooks/use-media-query';
-import { WalletService } from '@/services/wallet/WalletService';
+import { WalletService, type AssetTxResult } from '@/services/wallet/WalletService';
 import { parseAssetAmount } from '@/services/wallet/AssetService';
 import { ISSUE_BURN, isValidRootAssetName } from '@/services/wallet/assetScript';
 import { getExplorerUrl } from '@/lib/explorer';
@@ -172,29 +172,29 @@ export default function CreateAssetDialog({
       const service = new WalletService(electrum);
       // With buildOnly the builders return signed raw hex instead of broadcasting.
       const options = dryRun ? { buildOnly: true } : undefined;
-      let id: string;
+      let result: AssetTxResult;
       if (type === 'root') {
-        id = await service.issueAsset(
+        result = await service.issueAsset(
           fullName,
           { amount, units: divisions, reissuable, ipfs: ipfsValue },
           auth.password,
           options,
         );
       } else if (type === 'sub') {
-        id = await service.issueSubAsset(
+        result = await service.issueSubAsset(
           fullName,
           { amount, units: divisions, reissuable, ipfs: ipfsValue },
           auth.password,
           options,
         );
       } else {
-        id = await service.issueUniqueAsset(fullName, ipfsValue, auth.password, options);
+        result = await service.issueUniqueAsset(fullName, ipfsValue, auth.password, options);
       }
 
       if (dryRun) {
-        setDryRunHex(id);
+        setDryRunHex(result.hex);
         try {
-          await navigator.clipboard.writeText(id);
+          await navigator.clipboard.writeText(result.hex);
           toast.success('Raw hex copied — run testmempoolaccept in Core');
         } catch {
           toast.success('Transaction built — copy the hex below');
@@ -202,7 +202,7 @@ export default function CreateAssetDialog({
         return;
       }
 
-      setTxid(id);
+      setTxid(result.txid);
       toast.success(`Created ${fullName}`);
       void refreshAfterTransaction(1500);
       onSuccess?.();
