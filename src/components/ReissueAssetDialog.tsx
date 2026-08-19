@@ -136,7 +136,7 @@ export default function ReissueAssetDialog({
         return;
       }
       const service = new WalletService(electrum);
-      const id = await service.reissueAsset(
+      const result = await service.reissueAsset(
         asset.name,
         { amount, units, reissuable, ipfs: ipfsValue },
         auth.password,
@@ -144,9 +144,9 @@ export default function ReissueAssetDialog({
       );
 
       if (dryRun) {
-        setDryRunHex(id);
+        setDryRunHex(result.hex);
         try {
-          await navigator.clipboard.writeText(id);
+          await navigator.clipboard.writeText(result.hex);
           toast.success('Raw hex copied — run testmempoolaccept in Core');
         } catch {
           toast.success('Transaction built — copy the hex below');
@@ -154,7 +154,7 @@ export default function ReissueAssetDialog({
         return;
       }
 
-      setTxid(id);
+      setTxid(result.txid);
       toast.success(`Reissued ${asset.name}`);
       void refreshAfterTransaction(1500);
       onSuccess?.();

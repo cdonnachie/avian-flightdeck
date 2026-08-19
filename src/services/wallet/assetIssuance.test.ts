@@ -91,7 +91,7 @@ describe('buildOnly (dry run)', () => {
     const { electrum, broadcast } = createElectrum(address, [600 * COIN]);
     const wallet = new WalletService(electrum as never);
 
-    const hex = await wallet.issueAsset(
+    const result = await wallet.issueAsset(
       'DRYRUN',
       { amount: 1n * BigInt(COIN), units: 0, reissuable: true },
       TEST_PASSWORD,
@@ -99,9 +99,12 @@ describe('buildOnly (dry run)', () => {
     );
 
     expect(broadcast).not.toHaveBeenCalled();
+    expect(result.broadcast).toBe(false);
 
     // What comes back is a complete, signed transaction — the same bytes a real issuance sends.
-    const tx = bitcoin.Transaction.fromHex(hex);
+    const tx = bitcoin.Transaction.fromHex(result.hex);
+    // The txid is the one it *would* have, which is what testmempoolaccept reports back.
+    expect(result.txid).toBe(tx.getId());
     expect(tx.ins.length).toBeGreaterThan(0);
     expect(tx.ins.every((input) => input.script.length > 0)).toBe(true);
     expect(parseAssetScript(tx.outs[tx.outs.length - 1].script as Buffer)).toMatchObject({
@@ -116,11 +119,13 @@ describe('buildOnly (dry run)', () => {
     const dry = await (async () => {
       const { address } = await createActiveWallet();
       const { electrum } = createElectrum(address, [600 * COIN]);
-      return new WalletService(electrum as never).issueAsset('SAME', params, TEST_PASSWORD, {
-        feeRate: 1,
-        buildOnly: true,
-        changeAddress: address,
-      });
+      const built = await new WalletService(electrum as never).issueAsset(
+        'SAME',
+        params,
+        TEST_PASSWORD,
+        { feeRate: 1, buildOnly: true, changeAddress: address },
+      );
+      return built.hex;
     })();
 
     resetStorage();
@@ -128,10 +133,14 @@ describe('buildOnly (dry run)', () => {
     const wet = await (async () => {
       const { address } = await createActiveWallet();
       const { electrum, broadcast } = createElectrum(address, [600 * COIN]);
-      await new WalletService(electrum as never).issueAsset('SAME', params, TEST_PASSWORD, {
-        feeRate: 1,
-        changeAddress: address,
-      });
+      const sent = await new WalletService(electrum as never).issueAsset(
+        'SAME',
+        params,
+        TEST_PASSWORD,
+        { feeRate: 1, changeAddress: address },
+      );
+      expect(sent.broadcast).toBe(true);
+      expect(sent.hex).toBe(broadcast.mock.calls[0][0] as string);
       return broadcast.mock.calls[0][0] as string;
     })();
 
