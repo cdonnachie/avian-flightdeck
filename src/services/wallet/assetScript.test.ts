@@ -9,6 +9,7 @@ import {
   buildReissueScript,
   parseAssetScript,
   ASSET_MARKER,
+  REISSUE_UNITS_UNCHANGED,
 } from './assetScript';
 import { isAssetScript, OP_AVN_ASSET } from './psbt';
 
@@ -298,6 +299,77 @@ describe('real mainnet Core golden vectors', () => {
       }).toString('hex'),
     ).toBe(
       '76a914110c0d88b13de35be9708cf83bc76366c2545dd788acc04172766e710e464c494748544445434b2330303100e1f505000000000000011220b3516e0d37699ee67d4d79560b0abc3e99ec2485bb1f326a3eaa5f05e5f8aaf80075',
+    );
+  });
+});
+
+/**
+ * Scripts from three transactions this wallet built and Avian Core accepted via
+ * `testmempoolaccept` on BOTH 5.0.3 and 4.2.0 — the two versions that disagreed during the
+ * consensus incident. They pin the shapes that split the chain:
+ *
+ *   - a unique issuance has NO owner token of its own,
+ *   - a sub-asset issuance DOES have one,
+ *   - a reissue leaves divisions alone with the 0xff "units unchanged" sentinel.
+ *
+ * Unlike the vectors above (lifted from Core's own issuances), these are our bytes, blessed by
+ * Core's validator. A regression here is not a formatting nit — it is a transaction the network
+ * splits over, or an asset redefined by accident.
+ */
+describe('consensus-accepted golden vectors (5.0.3 and 4.2.0)', () => {
+  // Every output below pays this address; the wallet was anchored to it by descriptor import.
+  const HOLDER = 'RChTMyBr6eqFbS1W5WQoJmeCyuEDDpnXuN';
+  const P2PKH = '76a914257f1e5d22e45ae6f576de62011268f68b95cce588ac';
+
+  it('builds the accepted BRAND.AVN#001 unique with no owner token of its own', () => {
+    // txid 3bd8a804…c4f6. The absent NAME#unique! owner output is the whole point: emitting one
+    // is what 4.2.0 rejected and 5.0.x once accepted.
+    expect(
+      buildIssuanceScript(HOLDER, {
+        name: 'BRAND.AVN#001',
+        amount: 100_000_000n,
+        units: 0,
+        reissuable: false,
+      }).toString('hex'),
+    ).toBe(
+      P2PKH + 'c01e72766e710d4252414e442e41564e2330303100e1f505000000000000000075',
+    );
+  });
+
+  it('builds the accepted BRAND.AVN/SUB sub-asset and its own owner token', () => {
+    // txid 8254013a…b363, the complement of the unique above: a sub-asset legitimately carries a
+    // CHILD! owner token, emitted second-to-last.
+    expect(buildOwnerScript(HOLDER, 'BRAND.AVN/SUB').toString('hex')).toBe(
+      P2PKH + 'c01372766e6f0e4252414e442e41564e2f5355422175',
+    );
+    expect(
+      buildIssuanceScript(HOLDER, {
+        name: 'BRAND.AVN/SUB',
+        amount: 100_000_000n,
+        units: 0,
+        reissuable: true,
+      }).toString('hex'),
+    ).toBe(
+      P2PKH + 'c01e72766e710d4252414e442e41564e2f53554200e1f505000000000001000075',
+    );
+  });
+
+  it('builds the accepted CRAIGD.AVN reissue, leaving divisions unchanged', () => {
+    // txid 04efba89…9f98. units = 0xff is the "leave divisions alone" sentinel; encoding a 0 here
+    // instead would silently redefine the asset's divisibility.
+    expect(
+      buildReissueScript(HOLDER, {
+        name: 'CRAIGD.AVN',
+        amount: 1_000_000_000n, // +10.0
+        units: REISSUE_UNITS_UNCHANGED,
+        reissuable: true,
+      }).toString('hex'),
+    ).toBe(P2PKH + 'c01a72766e720a4352414947442e41564e00ca9a3b00000000ff010075');
+  });
+
+  it('builds the parent owner-token transfer these issuances return to self', () => {
+    expect(buildAssetTransferScript(HOLDER, 'BRAND.AVN!', 100_000_000n).toString('hex')).toBe(
+      P2PKH + 'c01772766e740a4252414e442e41564e2100e1f5050000000075',
     );
   });
 });
