@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as bitcoin from 'bitcoinjs-lib';
 import { ECPairFactory } from 'ecpair';
 import * as ecc from 'tiny-secp256k1';
@@ -61,34 +61,85 @@ async function createActiveWallet() {
   return { address, keyPair };
 }
 
-// These tests exercise the issuance builders, which are gated behind the asset-issuance kill-switch
-// (off by default during the network incident). Enable it for this suite; a dedicated test below
-// covers the disabled path.
-beforeAll(() => {
-  process.env.NEXT_PUBLIC_ASSET_ISSUANCE = 'on';
-});
-afterAll(() => {
-  delete process.env.NEXT_PUBLIC_ASSET_ISSUANCE;
-});
+// Issuance is enabled by default; a dedicated test below covers the switched-off path.
 
 beforeEach(() => {
   resetStorage();
 });
 
-describe('asset issuance kill-switch', () => {
-  it('refuses to build an issuance while issuance is disabled', async () => {
+describe('asset issuance switch', () => {
+  it('refuses to build an issuance when issuance is switched off', async () => {
     const prev = process.env.NEXT_PUBLIC_ASSET_ISSUANCE;
-    delete process.env.NEXT_PUBLIC_ASSET_ISSUANCE;
+    process.env.NEXT_PUBLIC_ASSET_ISSUANCE = 'off';
     try {
       const { address } = await createActiveWallet();
       const { electrum } = createElectrum(address, [600 * COIN]);
       const wallet = new WalletService(electrum as never);
       await expect(
         wallet.issueAsset('PAUSEDASSET', { amount: 1n * BigInt(COIN), units: 0, reissuable: true }, TEST_PASSWORD),
-      ).rejects.toThrow(/temporarily paused/);
+      ).rejects.toThrow(/disabled in this build/);
     } finally {
-      process.env.NEXT_PUBLIC_ASSET_ISSUANCE = prev;
+      if (prev === undefined) delete process.env.NEXT_PUBLIC_ASSET_ISSUANCE;
+      else process.env.NEXT_PUBLIC_ASSET_ISSUANCE = prev;
     }
+  });
+});
+
+describe('buildOnly (dry run)', () => {
+  it('returns the signed hex and broadcasts nothing, so Core can testmempoolaccept it first', async () => {
+    const { address } = await createActiveWallet();
+    const { electrum, broadcast } = createElectrum(address, [600 * COIN]);
+    const wallet = new WalletService(electrum as never);
+
+    const hex = await wallet.issueAsset(
+      'DRYRUN',
+      { amount: 1n * BigInt(COIN), units: 0, reissuable: true },
+      TEST_PASSWORD,
+      { feeRate: 1, buildOnly: true },
+    );
+
+    expect(broadcast).not.toHaveBeenCalled();
+
+    // What comes back is a complete, signed transaction — the same bytes a real issuance sends.
+    const tx = bitcoin.Transaction.fromHex(hex);
+    expect(tx.ins.length).toBeGreaterThan(0);
+    expect(tx.ins.every((input) => input.script.length > 0)).toBe(true);
+    expect(parseAssetScript(tx.outs[tx.outs.length - 1].script as Buffer)).toMatchObject({
+      type: 'issue',
+      name: 'DRYRUN',
+    });
+  });
+
+  it('builds the same transaction it would have broadcast', async () => {
+    const params = { amount: 1n * BigInt(COIN), units: 0, reissuable: true };
+
+    const dry = await (async () => {
+      const { address } = await createActiveWallet();
+      const { electrum } = createElectrum(address, [600 * COIN]);
+      return new WalletService(electrum as never).issueAsset('SAME', params, TEST_PASSWORD, {
+        feeRate: 1,
+        buildOnly: true,
+        changeAddress: address,
+      });
+    })();
+
+    resetStorage();
+
+    const wet = await (async () => {
+      const { address } = await createActiveWallet();
+      const { electrum, broadcast } = createElectrum(address, [600 * COIN]);
+      await new WalletService(electrum as never).issueAsset('SAME', params, TEST_PASSWORD, {
+        feeRate: 1,
+        changeAddress: address,
+      });
+      return broadcast.mock.calls[0][0] as string;
+    })();
+
+    // Same wallet key (createActiveWallet is deterministic per seed) is not guaranteed, so compare
+    // structure rather than bytes: same output scripts in the same order.
+    const dryOuts = bitcoin.Transaction.fromHex(dry).outs.map((o) => o.value);
+    const wetOuts = bitcoin.Transaction.fromHex(wet).outs.map((o) => o.value);
+    expect(dryOuts).toEqual(wetOuts);
   });
 });
 

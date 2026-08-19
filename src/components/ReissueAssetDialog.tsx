@@ -67,6 +67,8 @@ export default function ReissueAssetDialog({
   const [error, setError] = useState('');
   const [isBusy, setIsBusy] = useState(false);
   const [txid, setTxid] = useState('');
+  // Signed-but-unbroadcast hex from a dry run, for `avian-cli testmempoolaccept`.
+  const [dryRunHex, setDryRunHex] = useState('');
 
   useEffect(() => {
     if (open) {
@@ -78,6 +80,7 @@ export default function ReissueAssetDialog({
       setConfirmBurn(false);
       setError('');
       setTxid('');
+      setDryRunHex('');
       setIsBusy(false);
     }
   }, [open]);
@@ -88,9 +91,11 @@ export default function ReissueAssetDialog({
   // Reissue can only raise divisions.
   const higherDivisions = [1, 2, 3, 4, 5, 6, 7, 8].filter((u) => u > currentDivisions);
 
-  const handleReissue = async () => {
+  const handleReissue = async (dryRun = false) => {
     setError('');
-    if (!confirmBurn) {
+    setDryRunHex('');
+    // A dry run broadcasts nothing and burns nothing, so it does not need the burn confirmation.
+    if (!confirmBurn && !dryRun) {
       setError(`Please confirm the ${REISSUE_BURN} AVN burn.`);
       return;
     }
@@ -121,7 +126,11 @@ export default function ReissueAssetDialog({
 
     setIsBusy(true);
     try {
-      const auth = await requireAuth(`Authenticate to reissue ${asset.name}`);
+      const auth = await requireAuth(
+        dryRun
+          ? `Authenticate to build a ${asset.name} reissue (dry run)`
+          : `Authenticate to reissue ${asset.name}`,
+      );
       if (!auth.success) {
         setError('Authentication is required to reissue.');
         return;
@@ -131,7 +140,20 @@ export default function ReissueAssetDialog({
         asset.name,
         { amount, units, reissuable, ipfs: ipfsValue },
         auth.password,
+        dryRun ? { buildOnly: true } : undefined,
       );
+
+      if (dryRun) {
+        setDryRunHex(id);
+        try {
+          await navigator.clipboard.writeText(id);
+          toast.success('Raw hex copied — run testmempoolaccept in Core');
+        } catch {
+          toast.success('Transaction built — copy the hex below');
+        }
+        return;
+      }
+
       setTxid(id);
       toast.success(`Reissued ${asset.name}`);
       void refreshAfterTransaction(1500);
@@ -258,11 +280,47 @@ export default function ReissueAssetDialog({
         </Alert>
       )}
 
+      {dryRunHex && (
+        <Alert className="border-primary/40 bg-primary/5">
+          <AlertDescription className="space-y-2 text-sm">
+            <p>
+              Built and signed, <strong>not broadcast</strong>. Check it with:{' '}
+              <code className="font-mono text-xs">avian-cli testmempoolaccept &apos;[&quot;&lt;hex&gt;&quot;]&apos;</code>
+            </p>
+            <textarea
+              readOnly
+              value={dryRunHex}
+              onFocus={(e) => e.currentTarget.select()}
+              className="h-24 w-full resize-none rounded-md border border-border bg-card p-2 font-mono text-[10px] break-all"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void navigator.clipboard.writeText(dryRunHex);
+                toast.success('Raw hex copied');
+              }}
+            >
+              Copy hex
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="flex gap-2 pt-1">
         <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)} disabled={isBusy}>
           Cancel
         </Button>
-        <Button className="flex-1 gap-2" onClick={handleReissue} disabled={isBusy || !confirmBurn}>
+        <Button
+          variant="outline"
+          className="flex-1"
+          onClick={() => void handleReissue(true)}
+          disabled={isBusy}
+          title="Build and sign without broadcasting, for testmempoolaccept"
+        >
+          {isBusy ? 'Building…' : 'Dry run'}
+        </Button>
+        <Button className="flex-1 gap-2" onClick={() => void handleReissue()} disabled={isBusy || !confirmBurn}>
           <Lock className="h-4 w-4" />
           {isBusy ? 'Reissuing…' : `Reissue (burn ${REISSUE_BURN} AVN)`}
         </Button>
